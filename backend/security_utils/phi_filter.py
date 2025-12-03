@@ -80,8 +80,8 @@ class PHIFilter:
         ],
     }
     
-    # Compiled patterns cache
-    _compiled_patterns: Dict[PHIType, List[re.Pattern]] = {}
+    # Compiled patterns cache - NOTE: This is class-level for default patterns only
+    # Instance-specific patterns are stored in self._instance_patterns
     
     def __init__(
         self,
@@ -101,14 +101,20 @@ class PHIFilter:
         self.redaction_format = redaction_format or self.REDACTION_FORMAT
         self.preserve_length = preserve_length
         
-        # Compile patterns
+        # Instance-level compiled patterns (not shared with other instances)
+        self._instance_patterns: Dict[PHIType, List[re.Pattern]] = {}
+        
+        # Compile patterns for this specific instance
         self._compile_patterns()
     
     def _compile_patterns(self) -> None:
         """Compile regex patterns for enabled types."""
+        # Clear any existing patterns for this instance
+        self._instance_patterns.clear()
+        
         for phi_type in self.enabled_types:
             if phi_type in self.PATTERNS:
-                self._compiled_patterns[phi_type] = [
+                self._instance_patterns[phi_type] = [
                     re.compile(pattern, re.IGNORECASE)
                     for pattern in self.PATTERNS[phi_type]
                 ]
@@ -125,7 +131,7 @@ class PHIFilter:
         """
         matches = []
         
-        for phi_type, patterns in self._compiled_patterns.items():
+        for phi_type, patterns in self._instance_patterns.items():
             for pattern in patterns:
                 for match in pattern.finditer(text):
                     original = match.group()
