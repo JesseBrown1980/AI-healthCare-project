@@ -9,11 +9,11 @@ asyncio==3.4.3
 openai==1.3.0
 anthropic==0.7.0
 sentence-transformers==2.2.2
-torch==2.0.0
+torch==2.2.0
 transformers==4.35.0
 
 # Medical/Healthcare
-fhir==0.3.5
+fhir.resources==7.1.0
 hl7==0.4.5
 
 # Data Processing
