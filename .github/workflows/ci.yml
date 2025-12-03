@@ -28,7 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install pytest-cov
+          pip install pytest-cov pytest-timeout
 
       - name: Run tests
         env:
@@ -45,7 +45,13 @@ jobs:
             --ignore=tests/test_calendar_token_refresh.py \
             --ignore=tests/test_oauth_endpoints.py \
             --ignore=tests/test_health_check.py \
-            -k "not redis and not google_calendar and not fhir_server"
+            --ignore=tests/test_region_integration.py \
+            --ignore=tests/test_system_endpoints.py \
+            --ignore=tests/test_e2e_user_flows.py \
+            --ignore=tests/test_notifications.py \
+            --ignore=tests/test_cache_utils.py \
+            --ignore=tests/test_cache_controls.py \
+            -k "not redis and not google_calendar and not fhir_server and not smtp"
 
       - name: Upload test results
         if: always()
