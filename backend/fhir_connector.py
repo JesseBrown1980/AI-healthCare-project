@@ -10,6 +10,7 @@ import httpx
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import json
+from fhir.resources.patient import Patient
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class FHIRConnector:
                 f"{self.server_url}/Patient/{patient_id}"
             )
             patient_response.raise_for_status()
-            patient = patient_response.json()
+            patient = self._validate_patient_resource(patient_response.json())
             
             # Fetch related resources
             conditions = await self._get_patient_conditions(patient_id)
@@ -117,6 +118,15 @@ class FHIRConnector:
         except httpx.HTTPError as e:
             logger.error(f"Error fetching patient {patient_id}: {str(e)}")
             raise
+
+    def _validate_patient_resource(self, fhir_patient: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate incoming patient resource using FHIR resource models."""
+        try:
+            validated = Patient.model_validate(fhir_patient)
+            return validated.model_dump(mode="json")
+        except Exception as exc:
+            logger.warning("FHIR Patient validation failed: %s", exc)
+            return fhir_patient
     
     async def _get_patient_conditions(self, patient_id: str) -> List[Dict]:
         """Fetch patient's active conditions (diagnoses)"""
