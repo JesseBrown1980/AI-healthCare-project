@@ -1,5 +1,9 @@
 # 🏥 AI-Powered Healthcare Assistant with FHIR Integration
 
+[![CI](https://github.com/JesseBrown1980/AI-healthCare-project/actions/workflows/ci.yml/badge.svg)](https://github.com/JesseBrown1980/AI-healthCare-project/actions/workflows/ci.yml)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ## Overview
 
 An intelligent healthcare data bridge that connects Electronic Health Record (EHR) systems via FHIR (Fast Healthcare Interoperability Resources) standards with cutting-edge AI analytics. This application serves as middleware between healthcare data and actionable clinical insights, powered by advanced machine learning techniques.

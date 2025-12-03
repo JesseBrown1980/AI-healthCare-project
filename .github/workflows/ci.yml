@@ -64,7 +64,11 @@ jobs:
             --ignore=tests/test_database.py \
             --ignore=tests/test_hl7_endpoints.py \
             --ignore=tests/test_route_contract.py \
-            -k "not redis and not google_calendar and not fhir and not smtp and not llm_engine"
+            -k "not redis and not google_calendar and not fhir and not smtp and not llm_engine" \
+            --cov=backend \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --junitxml=pytest-results.xml
 
       - name: Upload test results
         if: always()
@@ -73,6 +77,9 @@ jobs:
           name: test-results
           path: |
             pytest-results.xml
+            coverage.xml
+            htmlcov/
+            test-reports/
             htmlcov/
           retention-days: 7
 
