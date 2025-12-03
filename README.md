@@ -375,7 +375,7 @@ Designed to position senior AI/healthcare tech roles and showcase the ability to
 
 For questions or issues:
 - GitHub Issues: [Issues](https://github.com/JesseBrown1980/AI-healthCare-project/issues)
-- Email: hello@jessebrown.dev
+- Email: jessebrown.soft1980@gmail.com
 - Documentation: [Full Docs](./docs/)
 
 ---
