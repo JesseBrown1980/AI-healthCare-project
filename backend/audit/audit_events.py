@@ -68,7 +68,7 @@ class AuditEventType(str, Enum):
     # Security events
     SUSPICIOUS_ACTIVITY = "security.suspicious"
     RATE_LIMIT_EXCEEDED = "security.ratelimit"
-    INVALID_TOKEN = "security.token.invalid"
+    TOKEN_VALIDATION_FAILED = "security.token.validation_failed"
     BRUTE_FORCE_DETECTED = "security.bruteforce"
 
 

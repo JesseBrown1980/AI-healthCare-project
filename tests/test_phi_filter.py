@@ -161,14 +161,16 @@ class TestPHIFilterConfiguration:
     
     def test_filter_specific_types(self):
         """Test filtering only specific PHI types."""
-        filter = PHIFilter(enabled_types=[PHIType.SSN])
+        # Create a fresh filter instance with only SSN enabled
+        phi_filter = PHIFilter(enabled_types=[PHIType.SSN])
         text = "SSN: 123-45-6789, Email: john@test.com"
-        result = filter.redact(text)
+        result = phi_filter.redact(text)
         
         # SSN should be redacted
-        assert "123-45-6789" not in result
+        assert "123-45-6789" not in result, f"SSN should be redacted, got: {result}"
         # Email should NOT be redacted (not in enabled types)
-        assert "john@test.com" in result
+        # Note: Since only SSN is enabled, email patterns should not match
+        assert "john@test.com" in result, f"Email should NOT be redacted when only SSN enabled, got: {result}"
     
     def test_contains_phi(self):
         """Test PHI detection check."""
