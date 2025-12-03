@@ -277,7 +277,7 @@ class TestCompliancePolicies:
         policy = get_compliance_policy("US")
         
         assert policy.region == "US"
-        assert policy.allow_phi_in_logs == False
+        assert policy.phi_in_logs == False
         assert policy.enforce_https == True
     
     def test_gdpr_region_config(self):

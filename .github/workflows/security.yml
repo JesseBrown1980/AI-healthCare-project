@@ -114,22 +114,7 @@ jobs:
       - name: Check for critical vulnerabilities
         run: |
           if [ -f pip-audit-report.json ]; then
-            # pip-audit outputs a list of dependencies with vulnerabilities
-            # Handle both array format and potential empty/error cases
-            VULN_COUNT=$(python3 -c "
-import json
-import sys
-try:
-    with open('pip-audit-report.json') as f:
-        data = json.load(f)
-    if isinstance(data, list):
-        count = sum(1 for v in data if isinstance(v, dict) and v.get('vulns'))
-    else:
-        count = 0
-    print(count)
-except Exception as e:
-    print(0)
-")
+            VULN_COUNT=$(cat pip-audit-report.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for v in d if v.get('vulns')))" 2>/dev/null || echo "0")
             echo "Packages with vulnerabilities: $VULN_COUNT"
             if [ "$VULN_COUNT" -gt "5" ]; then
               echo "::warning::Found $VULN_COUNT packages with vulnerabilities"
