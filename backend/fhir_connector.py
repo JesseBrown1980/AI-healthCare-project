@@ -5,9 +5,9 @@ Implements OAuth2 authentication and FHIR resource parsing
 """
 
 import asyncio
-import httpx
 import logging
-from typing import Any, Dict, List
+import httpx
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 import json
 
@@ -20,7 +20,14 @@ class FHIRConnector:
     Handles authentication, data fetching, and resource normalization
     """
     
-    def __init__(self, server_url: str, api_key: str = "", username: str = "", password: str = ""):
+    def __init__(
+        self,
+        server_url: str,
+        api_key: str = "",
+        username: str = "",
+        password: str = "",
+        use_proxies: bool = True,
+    ):
         """
         Initialize FHIR connector
         
@@ -34,6 +41,8 @@ class FHIRConnector:
         self.api_key = api_key
         self.username = username
         self.password = password
+        self.use_proxies = use_proxies
+        self.session: Optional[httpx.AsyncClient] = None
         self.session = self._initialize_session()
         
     def _initialize_session(self) -> httpx.AsyncClient:
@@ -48,11 +57,27 @@ class FHIRConnector:
             auth = (self.username, self.password)
         
         logger.info(f"FHIR connector initialized for {self.server_url}")
-        return httpx.AsyncClient(
-            headers=headers,
-            auth=auth,
-            timeout=30.0
-        )
+
+        trust_env = self.use_proxies
+        try:
+            return httpx.AsyncClient(
+                headers=headers,
+                auth=auth,
+                timeout=30.0,
+                trust_env=trust_env,
+            )
+        except ImportError as exc:
+            # Handles environments lacking optional proxy dependencies (e.g., socksio)
+            logger.warning(
+                "Proxy support unavailable (%s); creating session without proxies.",
+                exc,
+            )
+            return httpx.AsyncClient(
+                headers=headers,
+                auth=auth,
+                timeout=30.0,
+                trust_env=False,
+            )
     
     async def get_patient(self, patient_id: str) -> Dict[str, Any]:
         """
@@ -277,25 +302,29 @@ class FHIRConnector:
 
     async def aclose(self) -> None:
         """Cleanup session asynchronously"""
-        if self.session:
-            await self.session.aclose()
+        session = getattr(self, "session", None)
+        if session:
+            await session.aclose()
 
     def __del__(self):
         """Attempt best-effort cleanup of the async session"""
-        if self.session:
-            try:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
+        session = getattr(self, "session", None)
+        if not session:
+            return
 
-                if loop and loop.is_running():
-                    loop.create_task(self.session.aclose())
-                else:
-                    loop = loop or asyncio.new_event_loop()
-                    try:
-                        loop.run_until_complete(self.session.aclose())
-                    finally:
-                        loop.close()
-            except Exception:
-                pass
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                loop.create_task(session.aclose())
+            else:
+                loop = loop or asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(session.aclose())
+                finally:
+                    loop.close()
+        except Exception:
+            pass
