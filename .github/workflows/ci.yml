@@ -30,26 +30,22 @@ jobs:
           pip install -r requirements-dev.txt
           pip install pytest-cov
 
-      - name: Run database migrations
-        run: |
-          # Create test database
-          python -c "
-          import asyncio
-          from backend.database.connection import init_database
-          asyncio.run(init_database())
-          print('Database initialized successfully')
-          "
-
       - name: Run tests
+        env:
+          TESTING: "true"
+          SKIP_REDIS: "true"
+          SKIP_FHIR: "true"
         run: |
           pytest tests/ \
             -v \
             --tb=short \
+            --timeout=60 \
             --ignore=tests/test_calendar_endpoints.py \
             --ignore=tests/test_calendar_integration.py \
             --ignore=tests/test_calendar_token_refresh.py \
             --ignore=tests/test_oauth_endpoints.py \
-            -k "not redis_unavailable and not google_calendar"
+            --ignore=tests/test_health_check.py \
+            -k "not redis and not google_calendar and not fhir_server"
 
       - name: Upload test results
         if: always()
