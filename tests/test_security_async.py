@@ -1,0 +1,77 @@
+from datetime import datetime, timedelta, timezone
+
+import httpx
+import pytest
+from fastapi import Depends, FastAPI
+from jose import jwt
+
+from backend.security import JWTValidator, TokenContext, auth_dependency
+
+
+@pytest.mark.asyncio
+async def test_auth_dependency_uses_async_jwks(monkeypatch):
+    jwks_url = "https://example.com/jwks"
+    monkeypatch.setenv("IAM_JWKS_URL", jwks_url)
+    monkeypatch.setenv("IAM_ISSUER", "https://issuer.example.com")
+    monkeypatch.setenv("SMART_CLIENT_ID", "client-id")
+    # Disable demo login to force JWKS validation
+    monkeypatch.setenv("ENABLE_DEMO_LOGIN", "false")
+
+    jwks_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal jwks_calls
+        jwks_calls += 1
+        return httpx.Response(200, json={"keys": [{"kid": "kid-1"}]})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as async_client:
+        original_init = JWTValidator.__init__
+
+        def init_with_client(self):
+            original_init(self)
+            self._async_client = async_client
+
+        monkeypatch.setattr(JWTValidator, "__init__", init_with_client)
+        
+        def mock_verify_signature(self, token, jwk_key):
+            # Return claims that match what the validator expects
+            return {
+                "scope": "user/*.read",
+                "sub": "test-user",
+                "exp": int((datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp()),
+            }
+        
+        monkeypatch.setattr(JWTValidator, "_verify_signature", mock_verify_signature)
+
+        dependency = auth_dependency(required_scopes={"user/*.read"})
+
+        app = FastAPI()
+
+        @app.get("/protected")
+        async def protected(context: TokenContext = Depends(dependency)):
+            return {"subject": context.subject, "scopes": sorted(context.scopes)}
+
+        # Create a token with kid header to trigger JWKS validation path
+        # The actual signature won't be validated since we're mocking _verify_signature
+        token = jwt.encode(
+            {"sub": "test-user", "scope": "user/*.read", "exp": int((datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp())},
+            "secret",
+            algorithm="HS256",
+            headers={"kid": "kid-1"}
+        )
+
+        app_transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=app_transport, base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/protected", headers={"Authorization": f"Bearer {token}"}
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "subject": "test-user",
+            "scopes": ["user/*.read"],
+        }
+        assert jwks_calls == 1

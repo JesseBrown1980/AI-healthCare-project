@@ -1,0 +1,135 @@
+/**
+ * Chart Component Styles
+ */
+
+.chart-container {
+  width: 100%;
+  min-height: 200px;
+}
+
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--color-gray-400);
+  font-size: 0.875rem;
+  background-color: var(--color-gray-50);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-gray-200);
+}
+
+/* Risk Gauge */
+.risk-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Stat Card */
+.stat-card {
+  background: white;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.stat-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.stat-card__icon {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-primary-50);
+  color: var(--color-primary-600);
+  border-radius: var(--radius-md);
+}
+
+.stat-card__title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-card__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+}
+
+.stat-card__change {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.stat-card__change--positive {
+  color: var(--color-success);
+}
+
+.stat-card__change--negative {
+  color: var(--color-critical);
+}
+
+.stat-card__sparkline {
+  margin-top: var(--spacing-xs);
+}
+
+/* Recharts Customizations */
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+.recharts-default-tooltip {
+  background-color: white !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+.recharts-legend-item-text {
+  color: var(--color-gray-700) !important;
+  font-size: 0.75rem !important;
+}
+
+/* Chart Grid */
+.chart-grid {
+  display: grid;
+  gap: var(--spacing-lg);
+}
+
+.chart-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.chart-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.chart-grid--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .chart-grid--3,
+  .chart-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .chart-grid--2,
+  .chart-grid--3,
+  .chart-grid--4 {
+    grid-template-columns: 1fr;
+  }
+}

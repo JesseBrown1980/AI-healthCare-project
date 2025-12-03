@@ -1,0 +1,509 @@
+/**
+ * Patient Detail Page Styles
+ */
+
+.patient-detail {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.patient-detail__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xl);
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.patient-detail__header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.patient-detail__title-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.patient-detail__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+  margin: 0;
+}
+
+.patient-detail__subtitle {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+  margin: var(--spacing-xs) 0 0;
+}
+
+.patient-detail__header-right {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+/* Loading State */
+.patient-detail__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  text-align: center;
+}
+
+.patient-detail__loading p {
+  margin: var(--spacing-md) 0 0;
+  color: var(--color-gray-700);
+}
+
+.patient-detail__loading-hint {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+}
+
+/* Quick Stats */
+.patient-detail__quick-stats {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.quick-stat {
+  background: white;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 100px;
+  flex: 1;
+}
+
+.quick-stat__icon {
+  font-size: 1.5rem;
+}
+
+.quick-stat__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+}
+
+.quick-stat__label {
+  font-size: 0.75rem;
+  color: var(--color-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Content Area */
+.patient-detail__content {
+  margin-top: var(--spacing-lg);
+}
+
+/* Summary Tab */
+.summary-tab__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-lg);
+}
+
+.summary-tab__narrative {
+  grid-column: 1 / -1;
+}
+
+.info-list {
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.info-list__item {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.info-list__item:last-child {
+  border-bottom: none;
+}
+
+.info-list__item dt {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+}
+
+.info-list__item dd {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-gray-900);
+  margin: 0;
+}
+
+.risk-overview {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-md);
+}
+
+.narrative-text {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-gray-700);
+}
+
+.narrative-text--empty {
+  color: var(--color-gray-400);
+  font-style: italic;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.empty-text {
+  font-size: 0.875rem;
+  color: var(--color-gray-400);
+  font-style: italic;
+}
+
+/* Alerts Tab */
+.alerts-tab__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.alerts-tab__header h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin: 0;
+}
+
+.alerts-tab__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.alert-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.alert-card__timestamp {
+  font-size: 0.75rem;
+  color: var(--color-gray-400);
+  margin-left: auto;
+}
+
+.alert-card__message {
+  font-size: 0.9375rem;
+  color: var(--color-gray-700);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.alert-card__recommendation {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+  background-color: var(--color-gray-50);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-primary-500);
+}
+
+/* Risk Tab */
+.risk-tab__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-lg);
+}
+
+.risk-tab__chart {
+  grid-column: 1;
+}
+
+.risk-tab__radar {
+  grid-column: 2;
+}
+
+.risk-tab__cards {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.risk-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.risk-card__name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-gray-700);
+}
+
+.risk-card__value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+}
+
+.risk-card__explain {
+  margin-top: var(--spacing-sm);
+  width: 100%;
+}
+
+/* Medications Tab */
+.medications-tab__stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.med-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-md);
+}
+
+.med-stat__value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+}
+
+.med-stat__value--warning {
+  color: var(--color-warning);
+}
+
+.med-stat__label {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+}
+
+.medications-tab__issues {
+  margin-bottom: var(--spacing-lg);
+}
+
+.issues-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.issues-list li {
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-gray-100);
+  color: var(--color-warning);
+}
+
+.issues-list li:last-child {
+  border-bottom: none;
+}
+
+.medication-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.medication-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm);
+  background-color: var(--color-gray-50);
+  border-radius: var(--radius-md);
+}
+
+.medication-item__main {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.medication-item__name {
+  font-weight: 500;
+  color: var(--color-gray-900);
+}
+
+.medication-item__details {
+  font-size: 0.75rem;
+  color: var(--color-gray-500);
+}
+
+/* Recommendations Tab */
+.recommendations-tab__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.recommendation-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-sm);
+}
+
+.recommendation-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin: 0;
+}
+
+.recommendation-card__body {
+  font-size: 0.9375rem;
+  color: var(--color-gray-700);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.recommendation-card__rationale {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+  background-color: var(--color-gray-50);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.recommendation-card__sources {
+  font-size: 0.75rem;
+  color: var(--color-gray-500);
+}
+
+.recommendation-card__sources ul {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-md);
+}
+
+/* Patient Data Tab */
+.patient-data-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.data-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.data-section__header:hover {
+  background-color: var(--color-gray-50);
+}
+
+.data-section__icon {
+  font-size: 1.25rem;
+}
+
+.data-section__label {
+  flex: 1;
+  font-weight: 500;
+  color: var(--color-gray-900);
+}
+
+.data-section__chevron {
+  font-size: 0.75rem;
+  color: var(--color-gray-400);
+}
+
+.data-section__content {
+  padding: 0 var(--spacing-md) var(--spacing-md);
+}
+
+.data-section__json {
+  background-color: var(--color-gray-900);
+  color: var(--color-gray-100);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .summary-tab__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .risk-tab__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .risk-tab__chart,
+  .risk-tab__radar {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .patient-detail {
+    padding: var(--spacing-md);
+  }
+
+  .patient-detail__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .patient-detail__header-left {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .patient-detail__header-right {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .patient-detail__quick-stats {
+    flex-direction: column;
+  }
+
+  .quick-stat {
+    flex-direction: row;
+    justify-content: space-between;
+    min-width: auto;
+  }
+
+  .medications-tab__stats {
+    grid-template-columns: 1fr;
+  }
+}
