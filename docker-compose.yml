@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-ai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - FHIR_SERVER_URL=${FHIR_SERVER_URL:-http://localhost:8080/fhir}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEBUG=${DEBUG:-False}
+    volumes:
+      - ./backend:/app/backend
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./models:/app/models
+    depends_on:
+      - fhir-server
+    networks:
+      - healthcare-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: healthcare-ai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://backend:8000/api/v1
+    depends_on:
+      - backend
+    networks:
+      - healthcare-network
+
+  # FHIR Test Server (optional for testing)
+  fhir-server:
+    image: nickspacemonkey/docker-hapi-fhir-mysql:latest
+    container_name: healthcare-ai-fhir
+    ports:
+      - "8080:8080"
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=hapi
+      - MYSQL_USER=hapi
+      - MYSQL_PASSWORD=hapi
+    volumes:
+      - fhir-data:/var/lib/mysql
+    networks:
+      - healthcare-network
+
+volumes:
+  fhir-data:
+
+networks:
+  healthcare-network:
+    driver: bridge
