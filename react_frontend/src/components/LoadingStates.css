@@ -1,0 +1,329 @@
+/**
+ * Loading States Styles
+ */
+
+/* ============================================================================
+   Page Loading
+   ============================================================================ */
+
+.page-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: var(--spacing-md);
+}
+
+.page-loading__message {
+  color: var(--color-gray-500);
+  font-size: 0.875rem;
+}
+
+/* ============================================================================
+   Spinner
+   ============================================================================ */
+
+.spinner {
+  border: 2px solid var(--color-gray-200);
+  border-top-color: var(--color-primary-600);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner--sm {
+  width: 16px;
+  height: 16px;
+}
+
+.spinner--md {
+  width: 24px;
+  height: 24px;
+}
+
+.spinner--lg {
+  width: 40px;
+  height: 40px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================================
+   Skeleton
+   ============================================================================ */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-gray-200) 25%,
+    var(--color-gray-100) 50%,
+    var(--color-gray-200) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Skeleton Text */
+.skeleton-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.skeleton-text__line {
+  /* Inherits from .skeleton */
+}
+
+/* Skeleton Card */
+.skeleton-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-gray-200);
+}
+
+.skeleton-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.skeleton-card__header-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.skeleton-card__body {
+  margin-bottom: var(--spacing-md);
+}
+
+.skeleton-card__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Skeleton Table */
+.skeleton-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.skeleton-table__header,
+.skeleton-table__row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) 0;
+}
+
+.skeleton-table__header {
+  border-bottom: 1px solid var(--color-gray-200);
+  padding-bottom: var(--spacing-md);
+}
+
+/* ============================================================================
+   Dashboard Skeleton
+   ============================================================================ */
+
+.dashboard-skeleton {
+  padding: var(--spacing-lg);
+}
+
+.dashboard-skeleton__stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+.dashboard-skeleton__stat {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.dashboard-skeleton__chart {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.dashboard-skeleton__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--spacing-md);
+}
+
+/* ============================================================================
+   Patient Detail Skeleton
+   ============================================================================ */
+
+.patient-detail-skeleton {
+  padding: var(--spacing-lg);
+}
+
+.patient-detail-skeleton__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+.patient-detail-skeleton__header-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.patient-detail-skeleton__tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.patient-detail-skeleton__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.patient-detail-skeleton__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.patient-detail-skeleton__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+}
+
+.patient-detail-skeleton__grid-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* ============================================================================
+   Inline Loading
+   ============================================================================ */
+
+.inline-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.inline-loading__spinner {
+  border: 2px solid var(--color-gray-300);
+  border-top-color: var(--color-primary-600);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.inline-loading--sm .inline-loading__spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.inline-loading--md .inline-loading__spinner {
+  width: 16px;
+  height: 16px;
+}
+
+.inline-loading--lg .inline-loading__spinner {
+  width: 20px;
+  height: 20px;
+}
+
+.inline-loading__text {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+}
+
+/* ============================================================================
+   Button Loading
+   ============================================================================ */
+
+.button-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.button-loading__dot {
+  width: 6px;
+  height: 6px;
+  background-color: currentColor;
+  border-radius: 50%;
+  animation: button-loading-bounce 1.4s ease-in-out infinite both;
+}
+
+.button-loading__dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.button-loading__dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes button-loading-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .dashboard-skeleton__stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard-skeleton__cards {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-detail-skeleton__tabs {
+    overflow-x: auto;
+  }
+
+  .patient-detail-skeleton__grid {
+    grid-template-columns: 1fr;
+  }
+}

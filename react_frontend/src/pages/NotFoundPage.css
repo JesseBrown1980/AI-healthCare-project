@@ -1,0 +1,67 @@
+/**
+ * Not Found Page Styles
+ */
+
+.not-found-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--spacing-lg);
+  background-color: var(--color-gray-50);
+}
+
+.not-found-card {
+  max-width: 400px;
+  width: 100%;
+}
+
+.not-found-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--spacing-xl);
+}
+
+.not-found-icon {
+  font-size: 4rem;
+  margin-bottom: var(--spacing-md);
+}
+
+.not-found-title {
+  font-size: 4rem;
+  font-weight: 800;
+  color: var(--color-gray-300);
+  margin: 0;
+  line-height: 1;
+}
+
+.not-found-subtitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin: var(--spacing-md) 0 0;
+}
+
+.not-found-description {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+  margin: var(--spacing-sm) 0 var(--spacing-xl);
+}
+
+.not-found-actions {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 480px) {
+  .not-found-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .not-found-actions .ui-button {
+    width: 100%;
+  }
+}
