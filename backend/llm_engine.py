@@ -80,6 +80,8 @@ class LLMEngine:
     
     def _detect_provider(self, model_name: str) -> str:
         """Detect LLM provider based on model name"""
+        if model_name is None:
+            return "openai"  # Default when model_name is not configured
         if "gpt" in model_name.lower():
             return "openai"
         elif "claude" in model_name.lower():
