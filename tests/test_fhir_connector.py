@@ -53,7 +53,7 @@ def test_get_patient_with_mocked_http(monkeypatch):
 
     connector = FHIRConnector(server_url="http://fake.fhir")
 
-    def fake_get(url, params=None):
+    async def fake_get(url, params=None):
         # Simple routing by path
         if url.endswith(f"/Patient/{patient.get('id')}") or "/Patient/" in url:
             return FakeResponse(patient)
@@ -67,8 +67,17 @@ def test_get_patient_with_mocked_http(monkeypatch):
             return FakeResponse(enc_bundle)
         return FakeResponse({})
 
-    # Patch the connector's session.get
-    monkeypatch.setattr(connector, "session", type("S", (), {"get": staticmethod(fake_get)})())
+    class FakeSession:
+        async def get(self, url, params=None):
+            return await fake_get(url, params=params)
+
+        async def aclose(self):
+            return None
+
+    # Close the real async client to avoid unclosed resource warnings
+    asyncio.run(connector.aclose())
+    # Patch the connector's session with the fake async session
+    monkeypatch.setattr(connector, "session", FakeSession())
 
     # Call the async get_patient via asyncio.run
     result = asyncio.run(connector.get_patient(patient.get("id")))

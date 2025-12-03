@@ -101,10 +101,11 @@ async def lifespan(app: FastAPI):
         raise
     
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Healthcare AI Assistant...")
-    # Add cleanup code here if needed
+    if fhir_connector:
+        await fhir_connector.aclose()
     logger.info("Shutdown complete")
 
 
