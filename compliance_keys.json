@@ -1,0 +1,22 @@
+{
+  "token:eyJhbGci...": "LaNGZdf3oxrZpqJKGwh8txgI1ngeZxetT8vOXYgAuSs=",
+  "testuser": "75alQEOYkqEebGWF801hodOyZUJzR1a_VPbXG3XGkTM=",
+  "user1": "oPCg6wRe98ry7xglkI-QdH8rsJVbx8zv63BJwp2q_Ok=",
+  "user2": "tD10XiIvtlty7CEcYsvIfiRDk2iPrLaKSlUclJdlbHE=",
+  "anonymous": "fvHyzODjop0y5zN-P7iCreTpnH11fHkh6YAA8Du2k7g=",
+  "token:token...": "ENBx8QFGQia_Sx_igMdzHgUmrQzVTTR4r-Aj_cDFkHU=",
+  "dashboard": "4FQsXMYNp-AuTUW0-mLw4dZ8GiQ5Wqg0XKylOmhiicY=",
+  "test-patient": "egS6-Hu5jMK6YIM4JYh6XzfK1ugXw-LlsCcYutJn-AA=",
+  "patient-123": "FFqvLEgqWcp51-eQ4t7xeRjYt8TwBW60xQ3F9UuEIHY=",
+  "compare-graphs": "hrsKzEGUscVM7_ekPZBjDwA7XCiY8MMZpkEkT7C2LkI=",
+  "p-100": "hZSHiFQ8lafMEicOLWQ2vaAq0tVFCSnTEaY7tnoI1H4=",
+  "p-200": "rzUwZaNEp3jSDRwcPOas8C8SZH2F6YkbRO5qzo9HhLU=",
+  "token:invalid-...": "pJYn-iJuucHrJkqyYbHk_X9s3ycrRqk5yiV_Y84AF-U=",
+  "token:test-tok...": "5TYbjzDxmrRxhF1lTLCMBh-XFW5yciLyQnlHdA1Ngvc=",
+  "UNAUTHORIZED_PATIENT_ID": "-imYGZKa8ICXuMAyDEY6eJLxcp3xkRAVCzrgHaociDM=",
+  "123": "DV1JDULoxCqvDk2Ll2oLvbFol-kdgWnAmUcqgsvEifs=",
+  "1; DROP TABLE patients;--": "H0BgUGdVi0hfAL5bBQYd9XYZ9-eM5JPXbvtJcRKnTk8=",
+  "1' OR '1'='1": "V46L8nPqiHZOnGuRrMgARWngjG9fR85MBJWm11eOGac=",
+  "1 UNION SELECT * FROM users--": "tU89AhnffG4XGGmdupL0tSOxyxjHrtlu4PFidfOap6Q=",
+  "'; DELETE FROM patients WHERE ''='": "sHMbJmPzvZf75FonOFwAwouNGn2b6EBeaox3rzIRIXc="
+}

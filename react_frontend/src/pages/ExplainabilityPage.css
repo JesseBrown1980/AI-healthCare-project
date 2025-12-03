@@ -1,0 +1,214 @@
+/**
+ * Explainability Page Styles
+ */
+
+.explainability-page {
+  padding: var(--spacing-lg);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Header */
+.explainability-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-xl);
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.explainability-page__header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+}
+
+.explainability-page__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+  margin: 0;
+}
+
+.explainability-page__subtitle {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+  margin: var(--spacing-xs) 0 0;
+}
+
+/* Loading */
+.explainability-page__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  text-align: center;
+}
+
+.explainability-page__loading p {
+  margin: var(--spacing-md) 0 0;
+  color: var(--color-gray-600);
+}
+
+/* Content */
+.explainability-page__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* Overview Cards */
+.explainability-page__overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+}
+
+.overview-card__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.overview-card__label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.overview-card__value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin-top: var(--spacing-xs);
+}
+
+.overview-card__value--large {
+  font-size: 1.75rem;
+}
+
+/* Chart */
+.explainability-page__chart {
+  /* Full width */
+}
+
+/* Features */
+.explainability-page__features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-lg);
+}
+
+.feature-list__icon {
+  margin-right: var(--spacing-xs);
+}
+
+.feature-list__items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.feature-list__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.feature-list__item:last-child {
+  border-bottom: none;
+}
+
+.feature-list__name {
+  font-size: 0.875rem;
+  color: var(--color-gray-700);
+}
+
+.feature-list__empty {
+  font-size: 0.875rem;
+  color: var(--color-gray-400);
+  font-style: italic;
+  text-align: center;
+  padding: var(--spacing-md);
+}
+
+.feature-list--negative .feature-list__item {
+  border-left: 3px solid transparent;
+  padding-left: var(--spacing-sm);
+}
+
+.feature-list--negative .feature-list__item:hover {
+  border-left-color: var(--color-critical);
+  background-color: var(--color-critical-bg);
+}
+
+.feature-list--positive .feature-list__item {
+  border-left: 3px solid transparent;
+  padding-left: var(--spacing-sm);
+}
+
+.feature-list--positive .feature-list__item:hover {
+  border-left-color: var(--color-success);
+  background-color: var(--color-success-bg);
+}
+
+/* Interpretation Guide */
+.interpretation-guide {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-lg);
+}
+
+.interpretation-guide__item h4 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.interpretation-guide__item p {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .explainability-page__overview {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .explainability-page__features {
+    grid-template-columns: 1fr;
+  }
+
+  .interpretation-guide {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .explainability-page {
+    padding: var(--spacing-md);
+  }
+
+  .explainability-page__header {
+    flex-direction: column;
+  }
+
+  .explainability-page__header-left {
+    flex-direction: column;
+  }
+
+  .explainability-page__overview {
+    grid-template-columns: 1fr 1fr;
+  }
+}

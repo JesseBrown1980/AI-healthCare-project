@@ -1,0 +1,129 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.venv_new/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+healthcare_ai.db
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Cursor IDE
+.cursor/
+
+.cursorrules
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Alembic
+alembic.ini.bak
+
+# Temporary files
+*.tmp
+*.bak
+nul
+updates/
+
+# System/Setup scripts (exclude system-specific setup files)
+setup_*.ps1
+setup_*.bat
+setup_*.cmd
+disable_*.ps1
+verify_*.ps1
+*.exe
+*.msi
+*.dmg
+
+# Note: Project utility scripts (like cleanup_remote_branches.ps1) should be tracked
+
+# Chat/Conversation files - NEVER commit these!
+*chat*.txt
+*conversation*.txt
+*.chat
+*.conversation
+*chat*.md
+*conversation*.md
+*chat*.json
+*conversation*.json
+# Protocol buffer files (often used for chat/conversation storage)
+*.pb
+*.protobuf
+# Cursor/IDE chat history
+.cursor/chats/
+.cursor/conversations/
+*.cursor-chat
+
+# AI Conversation Artifacts - Internal notes, NOT for public repo!
+# These are AI session summaries and planning documents, not project docs
+*SESSION*.md
+*COMPLETION*.md
+*NEXT_STEPS*.md
+*NEXT_STEPS_SUMMARY*.md
+*FINAL_STATUS*.md
+*PROJECT_STATUS*.md
+*PHASE*_COMPLETION*.md
+*BRANCH_STATUS*.md
+# Improvement summaries (AI-generated reports)
+*IMPROVEMENTS*.md
+*IMPROVEMENT*.md
+# But keep legitimate documentation
+!README*.md
+!CONTRIBUTING*.md
+!GETTING_STARTED*.md
+!INSTALL*.md
+!QUICK_REFERENCE*.md
+!DATABASE_SETUP*.md
+!DATABASE_MIGRATION*.md
+!TESTING*.md
+
+# Claude/Setup files (temporary)
+setup_claude_auth.ps1
+docs/CLAUDE_*.md
+docs/SETUP_COMPLETE.md
+docs/WORKFLOW_STUDIO_*.md
