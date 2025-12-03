@@ -4,9 +4,10 @@ Handles integration with FHIR-compliant EHR systems
 Implements OAuth2 authentication and FHIR resource parsing
 """
 
+import asyncio
 import httpx
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List
 from datetime import datetime
 import json
 
@@ -33,10 +34,9 @@ class FHIRConnector:
         self.api_key = api_key
         self.username = username
         self.password = password
-        self.session = None
-        self._initialize_session()
+        self.session = self._initialize_session()
         
-    def _initialize_session(self):
+    def _initialize_session(self) -> httpx.AsyncClient:
         """Initialize HTTP session with appropriate authentication"""
         headers = {"Accept": "application/fhir+json"}
         
@@ -47,12 +47,12 @@ class FHIRConnector:
         if self.username and self.password:
             auth = (self.username, self.password)
         
-        self.session = httpx.Client(
+        logger.info(f"FHIR connector initialized for {self.server_url}")
+        return httpx.AsyncClient(
             headers=headers,
             auth=auth,
             timeout=30.0
         )
-        logger.info(f"FHIR connector initialized for {self.server_url}")
     
     async def get_patient(self, patient_id: str) -> Dict[str, Any]:
         """
@@ -66,7 +66,7 @@ class FHIRConnector:
         """
         try:
             # Fetch Patient resource
-            patient_response = self.session.get(
+            patient_response = await self.session.get(
                 f"{self.server_url}/Patient/{patient_id}"
             )
             patient_response.raise_for_status()
@@ -94,7 +94,7 @@ class FHIRConnector:
     async def _get_patient_conditions(self, patient_id: str) -> List[Dict]:
         """Fetch patient's active conditions (diagnoses)"""
         try:
-            response = self.session.get(
+            response = await self.session.get(
                 f"{self.server_url}/Condition",
                 params={
                     "patient": patient_id,
@@ -118,7 +118,7 @@ class FHIRConnector:
         """Fetch patient's active medications"""
         try:
             # First get MedicationRequest resources
-            response = self.session.get(
+            response = await self.session.get(
                 f"{self.server_url}/MedicationRequest",
                 params={
                     "patient": patient_id,
@@ -141,7 +141,7 @@ class FHIRConnector:
     async def _get_patient_observations(self, patient_id: str, limit: int = 50) -> List[Dict]:
         """Fetch patient's lab results and vital signs"""
         try:
-            response = self.session.get(
+            response = await self.session.get(
                 f"{self.server_url}/Observation",
                 params={
                     "patient": patient_id,
@@ -165,7 +165,7 @@ class FHIRConnector:
     async def _get_patient_encounters(self, patient_id: str, limit: int = 20) -> List[Dict]:
         """Fetch patient's recent encounters (visits)"""
         try:
-            response = self.session.get(
+            response = await self.session.get(
                 f"{self.server_url}/Encounter",
                 params={
                     "patient": patient_id,
@@ -274,8 +274,28 @@ class FHIRConnector:
             "authenticated": bool(self.api_key or self.username),
             "status": "connected"
         }
-    
-    def __del__(self):
-        """Cleanup session"""
+
+    async def aclose(self) -> None:
+        """Cleanup session asynchronously"""
         if self.session:
-            self.session.close()
+            await self.session.aclose()
+
+    def __del__(self):
+        """Attempt best-effort cleanup of the async session"""
+        if self.session:
+            try:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop and loop.is_running():
+                    loop.create_task(self.session.aclose())
+                else:
+                    loop = loop or asyncio.new_event_loop()
+                    try:
+                        loop.run_until_complete(self.session.aclose())
+                    finally:
+                        loop.close()
+            except Exception:
+                pass

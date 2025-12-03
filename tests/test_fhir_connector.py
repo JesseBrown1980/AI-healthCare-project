@@ -53,7 +53,7 @@ def test_get_patient_with_mocked_http(monkeypatch):
 
     connector = FHIRConnector(server_url="http://fake.fhir")
 
-    def fake_get(url, params=None):
+    async def fake_get(url, params=None):
         # Simple routing by path
         if url.endswith(f"/Patient/{patient.get('id')}") or "/Patient/" in url:
             return FakeResponse(patient)
@@ -67,8 +67,11 @@ def test_get_patient_with_mocked_http(monkeypatch):
             return FakeResponse(enc_bundle)
         return FakeResponse({})
 
+    class FakeSession:
+        get = staticmethod(fake_get)
+
     # Patch the connector's session.get
-    monkeypatch.setattr(connector, "session", type("S", (), {"get": staticmethod(fake_get)})())
+    monkeypatch.setattr(connector, "session", FakeSession())
 
     # Call the async get_patient via asyncio.run
     result = asyncio.run(connector.get_patient(patient.get("id")))
