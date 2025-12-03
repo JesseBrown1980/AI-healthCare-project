@@ -21,6 +21,19 @@ from .log_sanitizer import (
     configure_secure_logging,
 )
 
+from .session_manager import (
+    Session,
+    SessionManager,
+    get_session_manager,
+)
+
+from .data_retention import (
+    RetentionPolicy,
+    DataRetentionService,
+    get_retention_service,
+    run_scheduled_cleanup,
+)
+
 __all__ = [
     # PHI Filter
     "PHIFilter",
@@ -36,4 +49,14 @@ __all__ = [
     "sanitize_dict",
     "log_sanitized",
     "configure_secure_logging",
+    # Session Manager
+    "Session",
+    "SessionManager",
+    "get_session_manager",
+    # Data Retention
+    "RetentionPolicy",
+    "DataRetentionService",
+    "get_retention_service",
+    "run_scheduled_cleanup",
 ]
+

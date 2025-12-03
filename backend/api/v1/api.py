@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .endpoints import auth, patients, clinical, system, documents, graph_visualization, calendar, oauth, hl7, consent
+from .endpoints import auth, patients, clinical, system, documents, graph_visualization, calendar, oauth, hl7, consent, security_metrics
 
 api_router = APIRouter()
 
@@ -16,3 +16,4 @@ api_router.include_router(graph_visualization.router, tags=["Graph Visualization
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar Integration"])
 api_router.include_router(hl7.router, tags=["HL7 v2.x Integration"])
 api_router.include_router(consent.router, prefix="/consent", tags=["Consent Management"])
+api_router.include_router(security_metrics.router, tags=["Security Metrics"])
