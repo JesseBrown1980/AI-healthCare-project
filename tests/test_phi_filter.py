@@ -4,7 +4,7 @@ Tests for PHI detection and redaction functionality.
 """
 
 import pytest
-from backend.security.phi_filter import (
+from backend.security_utils.phi_filter import (
     PHIFilter,
     PHIType,
     PHIMatch,

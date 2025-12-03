@@ -202,7 +202,7 @@ class DataRetentionService:
             Number of sessions cleaned up
         """
         try:
-            from backend.security.session_manager import get_session_manager
+            from backend.security_utils.session_manager import get_session_manager
             
             manager = get_session_manager()
             # The session manager handles its own cleanup
