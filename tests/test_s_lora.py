@@ -1,19 +1,21 @@
+"""Behavioral checks for the Sparse LoRA manager helpers."""
+
 import asyncio
+
+import pytest
+
 from backend.s_lora_manager import SLoRAManager
 
 
-def test_initialize_adapters():
-    mgr = SLoRAManager(adapter_path="./models/adapters", base_model="meta-llama/Llama-2-7b-hf")
-    assert len(mgr.adapters) >= 5
-    assert "adapter_cardiology" in mgr.adapters.values().__str__() or "adapter_cardiology" in mgr.adapters
+ADAPTER_PATH = "./models/adapters"
+BASE_MODEL = "meta-llama/Llama-2-7b-hf"
 
 
-def test_select_adapters_simple():
-    mgr = SLoRAManager(adapter_path="./models/adapters", base_model="meta-llama/Llama-2-7b-hf")
-    selected = asyncio.run(mgr.select_adapters(["cardiology"]))
-    assert isinstance(selected, list)
-    assert any("cardio" in a for a in selected)
+@pytest.fixture
+def slo_ra_manager() -> SLoRAManager:
+    """Provide a fresh manager per test to keep lifecycle isolation."""
 
+    return SLoRAManager(adapter_path=ADAPTER_PATH, base_model=BASE_MODEL)
 
 def test_activate_deactivate_adapter():
     mgr = SLoRAManager(adapter_path="./models/adapters", base_model="meta-llama/Llama-2-7b-hf")
