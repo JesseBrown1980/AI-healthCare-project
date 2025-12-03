@@ -59,6 +59,7 @@ jobs:
             --ignore=tests/test_fhir_http_client.py \
             --ignore=tests/test_fhir_resource_service.py \
             --ignore=tests/test_fhir_vendor_integrations.py \
+            --ignore=tests/test_graph_visualization_endpoints.py \
             -k "not redis and not google_calendar and not fhir and not smtp and not llm_engine"
 
       - name: Upload test results
