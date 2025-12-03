@@ -40,14 +40,24 @@ def test_patient_analyzer_e2e_with_mocks(monkeypatch):
         aot_reasoner=aot,
         mlc_learning=mlc
     )
-    
+
     # Mock FHIR connector's get_patient to return sample data
     patient = _load_patient()
+    normalized_patient = fhir._normalize_patient(patient)
     mock_patient_data = {
-        "patient": patient,
-        "conditions": [{"code": "Hypertension", "severity": "mild"}],
-        "medications": [{"medication": "Lisinopril", "status": "active"}],
-        "observations": [{"code": "Blood Pressure", "value": "140/90"}],
+        "patient": normalized_patient,
+        "conditions": [
+            {"code": "Hypertension", "severity": "mild"},
+            {"code": "Diabetes", "severity": "moderate"},
+        ],
+        "medications": [
+            {"medication": "Lisinopril", "status": "active"},
+            {"medication": "Metformin", "status": "active"},
+        ],
+        "observations": [
+            {"code": "Blood Pressure", "value": "140/90"},
+            {"code": "Hemoglobin A1C", "value": "7.2"},
+        ],
         "encounters": [],
         "fetched_at": "2023-01-01T00:00:00"
     }
@@ -56,9 +66,9 @@ def test_patient_analyzer_e2e_with_mocks(monkeypatch):
         return mock_patient_data
     
     monkeypatch.setattr(fhir, "get_patient", mock_get_patient)
-    
+
     # Mock S-LoRA adapter selection to return adapter IDs that exist in the manager
-    async def mock_select_adapters(specialties=None, patient_data=None):
+    async def mock_select_adapters(specialties, patient_data=None):
         # Return real adapter keys from the manager's initialized adapters
         return list(slora.adapters.keys())[:2]
     

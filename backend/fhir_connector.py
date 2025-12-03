@@ -18,6 +18,7 @@ class FHIRConnector:
     """
     Connects to FHIR-compliant healthcare systems
     Handles authentication, data fetching, and resource normalization
+    Allows optional use of environment-configured proxies for compatibility
     """
     
     def __init__(
@@ -30,12 +31,13 @@ class FHIRConnector:
     ):
         """
         Initialize FHIR connector
-        
+
         Args:
             server_url: FHIR server base URL
             api_key: API key for authentication
             username: Username for basic auth
             password: Password for basic auth
+            use_proxies: Whether to honor proxy settings from environment variables
         """
         self.server_url = server_url.rstrip("/")
         self.api_key = api_key
@@ -78,7 +80,7 @@ class FHIRConnector:
                 timeout=30.0,
                 trust_env=False,
             )
-    
+
     async def get_patient(self, patient_id: str) -> Dict[str, Any]:
         """
         Fetch patient resource from FHIR server
@@ -308,11 +310,11 @@ class FHIRConnector:
 
     def __del__(self):
         """Attempt best-effort cleanup of the async session"""
-        session = getattr(self, "session", None)
-        if not session:
-            return
-
         try:
+            session = getattr(self, "session", None)
+            if not session:
+                return
+
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
