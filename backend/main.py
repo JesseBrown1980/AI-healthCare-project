@@ -44,6 +44,7 @@ from backend.middleware import (
     InputValidationMiddleware,
     HTTPSEnforcementMiddleware,
 )
+from backend.audit import AuditMiddleware
 from backend.anomaly_detector.api import router as anomaly_router
 from backend.anomaly_detector.service import anomaly_service
 # python-jose implementation used for JWT encoding/decoding
@@ -267,6 +268,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add Audit Logging Middleware (SOC 2 compliance)
+app.add_middleware(
+    AuditMiddleware,
+    enabled=os.getenv("AUDIT_LOGGING_ENABLED", "true").lower() == "true",
+    log_all_requests=os.getenv("AUDIT_LOG_ALL_REQUESTS", "false").lower() == "true",
 )
 
 
