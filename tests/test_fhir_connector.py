@@ -1,6 +1,7 @@
+import asyncio
 import json
 from pathlib import Path
-import asyncio
+from urllib.parse import parse_qs, urlparse
 
 from backend.fhir_connector import FHIRConnector
 
@@ -9,6 +10,8 @@ class FakeResponse:
     def __init__(self, data, status_code=200):
         self._data = data
         self.status_code = status_code
+        self.content = json.dumps(data).encode()
+        self.text = json.dumps(data)
 
     def json(self):
         return self._data
@@ -83,3 +86,111 @@ def test_get_patient_with_mocked_http(monkeypatch):
     assert isinstance(result.get("medications"), list)
     assert isinstance(result.get("observations"), list)
     assert isinstance(result.get("encounters"), list)
+
+
+def test_build_authorization_url_includes_pkce_and_context():
+    connector = FHIRConnector(
+        server_url="http://example.local",
+        client_id="client-123",
+        auth_url="https://auth.local/authorize",
+        token_url="https://auth.local/token",
+    )
+
+    redirect_uri = "https://app.example/callback"
+    url, state = connector.build_authorization_url(
+        redirect_uri,
+        patient="patient-1",
+        user="user-7",
+    )
+
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+
+    assert params["response_type"] == ["code"]
+    assert params["client_id"] == ["client-123"]
+    assert params["redirect_uri"] == [redirect_uri]
+    assert params["patient"] == ["patient-1"]
+    assert params["user"] == ["user-7"]
+    assert params["state"] == [state]
+    assert connector.code_verifier
+    assert connector.code_challenge
+
+
+def test_complete_authorization_persists_context(monkeypatch):
+    connector = FHIRConnector(
+        server_url="http://example.local",
+        client_id="client-123",
+        auth_url="https://auth.local/authorize",
+        token_url="https://auth.local/token",
+    )
+
+    connector.code_verifier = "verifier"
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, data=None, auth=None):
+            assert data["code_verifier"] == "verifier"
+            return FakeResponse(
+                {
+                    "access_token": "new-access",
+                    "refresh_token": "new-refresh",
+                    "scope": "patient/*.read user/*.read",
+                    "patient": "pat-123",
+                    "user": "dr-9",
+                    "expires_in": 120,
+                }
+            )
+
+    monkeypatch.setattr("backend.fhir_connector.httpx.AsyncClient", FakeAsyncClient)
+
+    token_data = asyncio.run(
+        connector.complete_authorization("code-abc", "https://app.example/callback")
+    )
+
+    assert token_data["access_token"] == connector.access_token
+    assert connector.refresh_token == "new-refresh"
+    assert connector.patient_context == "pat-123"
+    assert connector.user_context == "dr-9"
+    assert "patient/*.read" in connector.granted_scopes
+
+
+def test_refresh_access_token_falls_back_to_client_credentials(monkeypatch):
+    connector = FHIRConnector(
+        server_url="http://example.local",
+        client_id="client-123",
+        token_url="https://auth.local/token",
+    )
+    connector.refresh_token = "expired-refresh"
+
+    calls = {"client_credentials": 0}
+
+    async def fake_request_token():
+        calls["client_credentials"] += 1
+
+    class RefreshFailingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return FakeResponse({"error_description": "expired"}, status_code=400)
+
+    monkeypatch.setattr(connector, "_request_token", fake_request_token)
+    monkeypatch.setattr("backend.fhir_connector.httpx.AsyncClient", RefreshFailingClient)
+
+    asyncio.run(connector._refresh_access_token())
+
+    assert calls["client_credentials"] == 1
