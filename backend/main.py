@@ -52,7 +52,16 @@ async def lifespan(app: FastAPI):
         logger.info("Loading FHIR Connector...")
         fhir_connector = FHIRConnector(
             server_url=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir"),
-            api_key=os.getenv("FHIR_API_KEY", "")
+            client_id=os.getenv("SMART_CLIENT_ID", ""),
+            client_secret=os.getenv("SMART_CLIENT_SECRET", ""),
+            scope=os.getenv(
+                "SMART_SCOPE", "system/*.read patient/*.read user/*.read"
+            ),
+            auth_url=os.getenv("SMART_AUTH_URL") or None,
+            token_url=os.getenv("SMART_TOKEN_URL") or None,
+            well_known_url=os.getenv("SMART_WELL_KNOWN") or None,
+            audience=os.getenv("SMART_AUDIENCE") or None,
+            refresh_token=os.getenv("SMART_REFRESH_TOKEN") or None,
         )
         
         logger.info("Loading LLM Engine...")

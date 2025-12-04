@@ -134,7 +134,14 @@ OPENAI_API_KEY=sk-...
 
 ### Optional
 ```env
-FHIR_API_KEY=your-key
+SMART_CLIENT_ID=your-smart-client-id
+SMART_CLIENT_SECRET=your-smart-client-secret
+SMART_SCOPE="system/*.read patient/*.read user/*.read"
+# SMART_AUTH_URL=https://ehr-authorize.example.com
+# SMART_TOKEN_URL=https://ehr-token.example.com
+# SMART_WELL_KNOWN=http://localhost:8080/fhir/.well-known/smart-configuration
+# SMART_AUDIENCE=http://localhost:8080/fhir
+# SMART_REFRESH_TOKEN=provided-refresh-token
 ANTHROPIC_API_KEY=sk-ant-...
 DEBUG=False
 LOG_LEVEL=INFO

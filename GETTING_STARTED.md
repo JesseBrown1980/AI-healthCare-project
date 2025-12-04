@@ -126,11 +126,19 @@ ollama pull llama2
 
 ### 2. Connect to FHIR Data Source
 
-Configure your EHR connection in `.env`:
+Configure your EHR connection in `.env` using SMART-on-FHIR credentials:
 
 ```env
 FHIR_SERVER_URL=https://your-hospital-fhir.com/fhir
-FHIR_API_KEY=your-api-key
+SMART_CLIENT_ID=your-smart-client-id
+SMART_CLIENT_SECRET=super-secret
+SMART_SCOPE="system/*.read patient/*.read user/*.read"
+# Optional overrides if discovery is not available
+# SMART_AUTH_URL=https://ehr-authorize.example.com
+# SMART_TOKEN_URL=https://ehr-token.example.com
+# SMART_WELL_KNOWN=https://your-hospital-fhir.com/fhir/.well-known/smart-configuration
+# SMART_AUDIENCE=https://your-hospital-fhir.com/fhir
+# SMART_REFRESH_TOKEN=provided-refresh-token
 ```
 
 Or use test FHIR server (included with docker-compose):

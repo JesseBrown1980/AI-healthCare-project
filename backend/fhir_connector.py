@@ -8,8 +8,8 @@ import asyncio
 import logging
 import random
 import httpx
-from typing import Any, Dict, List, Optional
-from datetime import datetime
+from typing import Any, Dict, List, Optional, Set
+from datetime import datetime, timedelta
 import json
 
 try:
@@ -42,9 +42,15 @@ class FHIRConnector:
     def __init__(
         self,
         server_url: str,
-        api_key: str = "",
-        username: str = "",
-        password: str = "",
+        *,
+        client_id: str = "",
+        client_secret: str = "",
+        scope: str = "system/*.read patient/*.read user/*.read",
+        auth_url: Optional[str] = None,
+        token_url: Optional[str] = None,
+        well_known_url: Optional[str] = None,
+        audience: Optional[str] = None,
+        refresh_token: Optional[str] = None,
         use_proxies: bool = True,
     ):
         """
@@ -52,17 +58,38 @@ class FHIRConnector:
 
         Args:
             server_url: FHIR server base URL
-            api_key: API key for authentication
-            username: Username for basic auth
-            password: Password for basic auth
+            client_id: SMART-on-FHIR client ID for OAuth 2.0
+            client_secret: Confidential client secret for token exchange
+            scope: Space-delimited SMART scopes to request
+            auth_url: Authorization endpoint (overrides discovery)
+            token_url: Token endpoint (overrides discovery)
+            well_known_url: Explicit SMART configuration URL (optional)
+            audience: Optional token audience/`aud` parameter
+            refresh_token: Previously issued refresh token
             use_proxies: Whether to honor proxy settings from environment variables
         """
         self.server_url = server_url.rstrip("/")
-        self.api_key = api_key
-        self.username = username
-        self.password = password
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.scope = scope
+        self.audience = audience
+        self.refresh_token = refresh_token
         self.use_proxies = use_proxies
         self.session: Optional[httpx.AsyncClient] = None
+        self.discovery_document: Dict[str, Any] = {}
+        self.auth_url = auth_url
+        self.token_url = token_url
+        self.access_token: Optional[str] = None
+        self.granted_scopes: Set[str] = set()
+        self.token_expires_at: Optional[datetime] = None
+        self.default_headers = {"Accept": "application/fhir+json"}
+
+        self.well_known_url = (
+            well_known_url
+            or f"{self.server_url}/.well-known/smart-configuration"
+        )
+
+        self._configure_from_well_known()
         self.session = self._initialize_session()
 
     async def _request_with_retry(
@@ -89,7 +116,20 @@ class FHIRConnector:
         attempt = 1
         while True:
             try:
-                response = await self.session.request(method, url, params=params)
+                await self._ensure_valid_token()
+                response = await self.session.request(
+                    method,
+                    url,
+                    params=params,
+                    headers=self._auth_headers(),
+                )
+                if response.status_code in {401, 403}:
+                    raise PermissionError(
+                        (
+                            f"FHIR request rejected with {response.status_code}. "
+                            "Confirm SMART authorization, patient consent, and granted scopes."
+                        )
+                    )
                 if response.status_code not in retryable_statuses:
                     return response
 
@@ -124,24 +164,37 @@ class FHIRConnector:
             attempt += 1
             await asyncio.sleep(sleep_time)
         
+    def _configure_from_well_known(self) -> None:
+        """Load SMART-on-FHIR metadata from the server's discovery document."""
+
+        try:
+            with httpx.Client(trust_env=self.use_proxies, timeout=10.0) as client:
+                response = client.get(self.well_known_url)
+                response.raise_for_status()
+                self.discovery_document = response.json()
+                self.auth_url = self.auth_url or self.discovery_document.get(
+                    "authorization_endpoint"
+                )
+                self.token_url = self.token_url or self.discovery_document.get(
+                    "token_endpoint"
+                )
+                if not self.scope:
+                    self.scope = self.discovery_document.get("scopes_supported", "")
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "SMART discovery failed at %s: %s", self.well_known_url, exc
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.error("Unexpected error during SMART discovery: %s", exc)
+
     def _initialize_session(self) -> httpx.AsyncClient:
-        """Initialize HTTP session with appropriate authentication"""
-        headers = {"Accept": "application/fhir+json"}
-        
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        
-        auth = None
-        if self.username and self.password:
-            auth = (self.username, self.password)
-        
+        """Initialize HTTP session for FHIR interactions using SMART auth"""
+
         logger.info(f"FHIR connector initialized for {self.server_url}")
 
         trust_env = self.use_proxies
         try:
             return httpx.AsyncClient(
-                headers=headers,
-                auth=auth,
                 timeout=30.0,
                 trust_env=trust_env,
             )
@@ -152,11 +205,129 @@ class FHIRConnector:
                 exc,
             )
             return httpx.AsyncClient(
-                headers=headers,
-                auth=auth,
                 timeout=30.0,
                 trust_env=False,
             )
+
+    def _require_scopes(self, resource_type: str) -> None:
+        """Ensure the SMART access token covers the requested resource type."""
+
+        if not self.client_id:
+            # Skip enforcement if SMART isn't configured
+            return
+
+        if not self.granted_scopes:
+            raise PermissionError(
+                "No SMART scopes granted. Ensure authorization was completed and consent allows data sharing."
+            )
+
+        allowed_scopes = {
+            f"patient/{resource_type}.read",
+            "patient/*.read",
+            f"user/{resource_type}.read",
+            "user/*.read",
+            f"system/{resource_type}.read",
+            "system/*.read",
+        }
+
+        if not self.granted_scopes.intersection(allowed_scopes):
+            raise PermissionError(
+                (
+                    f"Missing required SMART scopes for {resource_type}.read. "
+                    f"Requested scopes: {self.scope}; granted: {' '.join(sorted(self.granted_scopes)) or 'none'}. "
+                    "Ask the user to authorize the appropriate patient/user access."
+                )
+            )
+
+    def _auth_headers(self) -> Dict[str, str]:
+        if not self.access_token:
+            return self.default_headers.copy()
+
+        headers = self.default_headers.copy()
+        headers["Authorization"] = f"Bearer {self.access_token}"
+        return headers
+
+    async def _request_token(self) -> None:
+        if not self.token_url:
+            raise RuntimeError("Token endpoint is not configured for SMART authentication")
+
+        data = {
+            "grant_type": "client_credentials",
+            "scope": self.scope,
+        }
+        if self.audience:
+            data["aud"] = self.audience
+
+        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
+            response = await client.post(
+                self.token_url,
+                data=data,
+                auth=(self.client_id, self.client_secret) if self.client_secret else None,
+            )
+
+        if response.status_code >= 400:
+            detail = response.json().get("error_description") if response.content else response.text
+            raise PermissionError(
+                f"SMART token exchange failed ({response.status_code}): {detail or 'consent or credentials invalid'}"
+            )
+
+        token_data = response.json()
+        self.access_token = token_data.get("access_token")
+        self.refresh_token = token_data.get("refresh_token", self.refresh_token)
+        expires_in = token_data.get("expires_in")
+        self.token_expires_at = (
+            datetime.utcnow() + timedelta(seconds=expires_in)
+            if expires_in
+            else None
+        )
+        scopes_from_token = token_data.get("scope") or self.scope
+        self.granted_scopes = set(scopes_from_token.split()) if scopes_from_token else set()
+
+    async def _refresh_access_token(self) -> None:
+        if not self.refresh_token:
+            await self._request_token()
+            return
+
+        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
+            response = await client.post(
+                self.token_url,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": self.refresh_token,
+                    "scope": self.scope,
+                },
+                auth=(self.client_id, self.client_secret) if self.client_secret else None,
+            )
+
+        if response.status_code >= 400:
+            detail = response.json().get("error_description") if response.content else response.text
+            raise PermissionError(
+                f"SMART token refresh failed ({response.status_code}): {detail or 'authorization revoked or consent missing'}"
+            )
+
+        token_data = response.json()
+        self.access_token = token_data.get("access_token")
+        self.refresh_token = token_data.get("refresh_token", self.refresh_token)
+        expires_in = token_data.get("expires_in")
+        self.token_expires_at = (
+            datetime.utcnow() + timedelta(seconds=expires_in)
+            if expires_in
+            else None
+        )
+        scopes_from_token = token_data.get("scope") or self.scope
+        self.granted_scopes = set(scopes_from_token.split()) if scopes_from_token else set()
+
+    async def _ensure_valid_token(self) -> None:
+        if not self.client_id:
+            return
+
+        needs_token = not self.access_token
+        is_expired = self.token_expires_at and datetime.utcnow() >= self.token_expires_at - timedelta(seconds=60)
+
+        if needs_token:
+            await self._request_token()
+        elif is_expired:
+            await self._refresh_access_token()
 
     async def get_patient(self, patient_id: str) -> Dict[str, Any]:
         """
@@ -169,6 +340,8 @@ class FHIRConnector:
             Parsed patient data including demographics, active conditions, medications
         """
         try:
+            await self._ensure_valid_token()
+            self._require_scopes("Patient")
             # Fetch Patient resource
             patient_response = await self._request_with_retry(
                 "GET",
@@ -216,6 +389,8 @@ class FHIRConnector:
     async def _get_patient_conditions(self, patient_id: str) -> List[Dict]:
         """Fetch patient's active conditions (diagnoses)"""
         try:
+            await self._ensure_valid_token()
+            self._require_scopes("Condition")
             response = await self._request_with_retry(
                 "GET",
                 f"{self.server_url}/Condition",
@@ -241,6 +416,8 @@ class FHIRConnector:
     async def _get_patient_medications(self, patient_id: str) -> List[Dict]:
         """Fetch patient's active medications"""
         try:
+            await self._ensure_valid_token()
+            self._require_scopes("MedicationRequest")
             # First get MedicationRequest resources
             response = await self._request_with_retry(
                 "GET",
@@ -267,6 +444,8 @@ class FHIRConnector:
     async def _get_patient_observations(self, patient_id: str, limit: int = 50) -> List[Dict]:
         """Fetch patient's lab results and vital signs"""
         try:
+            await self._ensure_valid_token()
+            self._require_scopes("Observation")
             response = await self._request_with_retry(
                 "GET",
                 f"{self.server_url}/Observation",
@@ -293,6 +472,8 @@ class FHIRConnector:
     async def _get_patient_encounters(self, patient_id: str, limit: int = 20) -> List[Dict]:
         """Fetch patient's recent encounters (visits)"""
         try:
+            await self._ensure_valid_token()
+            self._require_scopes("Encounter")
             response = await self._request_with_retry(
                 "GET",
                 f"{self.server_url}/Encounter",
@@ -401,7 +582,7 @@ class FHIRConnector:
         """Get connector statistics"""
         return {
             "server": self.server_url,
-            "authenticated": bool(self.api_key or self.username),
+            "authenticated": bool(self.access_token or self.granted_scopes),
             "status": "connected"
         }
 
