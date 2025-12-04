@@ -6,7 +6,7 @@ Combines FHIR data, LLM intelligence, RAG knowledge, S-LoRA adaptation, MLC lear
 
 import logging
 from typing import Dict, Optional, Any, List
-from datetime import datetime
+from datetime import datetime, date
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +225,15 @@ class PatientAnalyzer:
     async def _calculate_risk_scores(self, patient_data: Dict) -> Dict:
         """Calculate various clinical risk scores"""
         risk_scores = {}
+
+        patient_info = patient_data.get("patient", {})
+        birth_date = patient_info.get("birthDate")
+        age_years: Optional[int] = None
+        if birth_date:
+            try:
+                age_years = (date.today() - date.fromisoformat(birth_date)).days // 365
+            except Exception:
+                age_years = None
         
         # Cardiovascular risk (simplified)
         cv_risk = 0.2  # Base
@@ -235,9 +244,11 @@ class PatientAnalyzer:
             cv_risk += 0.20
         if any("smoke" in c for c in conditions):
             cv_risk += 0.25
-        
-        risk_scores["cardiovascular_risk"] = min(0.95, cv_risk)
-        
+        if age_years and age_years >= 65:
+            cv_risk += 0.1
+
+        risk_scores["cardiovascular_risk"] = round(min(0.95, cv_risk), 3)
+
         # Hospital readmission risk
         recent_encounters = len([e for e in patient_data.get("encounters", []) 
                                  if e.get("status") in ["finished", "completed"]])
@@ -247,7 +258,10 @@ class PatientAnalyzer:
         # Medication adherence risk
         med_complexity = len(patient_data.get("medications", []))
         adherence_risk = min(0.7, 0.1 + (med_complexity * 0.05))
-        risk_scores["medication_non_adherence_risk"] = adherence_risk
+        if age_years and age_years >= 65:
+            adherence_risk = min(0.95, adherence_risk + 0.05)
+        risk_scores["polypharmacy"] = med_complexity >= 10
+        risk_scores["medication_non_adherence_risk"] = round(adherence_risk, 3)
         
         return risk_scores
     

@@ -59,6 +59,7 @@ class FHIRConnector:
         audience: Optional[str] = None,
         refresh_token: Optional[str] = None,
         use_proxies: bool = True,
+        cache_ttl_seconds: int = 300,
     ):
         """
         Initialize FHIR connector
@@ -98,6 +99,8 @@ class FHIRConnector:
         self.code_verifier: Optional[str] = None
         self.code_challenge: Optional[str] = None
         self.code_challenge_method: str = "S256"
+        self.cache_ttl = timedelta(seconds=cache_ttl_seconds)
+        self._patient_cache: Dict[str, Dict[str, Any]] = {}
 
         self.well_known_url = (
             well_known_url
@@ -295,6 +298,40 @@ class FHIRConnector:
             return url
 
         return urllib.parse.urljoin(f"{self.server_url}/", url.lstrip("/"))
+
+    def invalidate_patient_cache(self, patient_id: Optional[str] = None) -> None:
+        """Invalidate cached patient data.
+
+        Args:
+            patient_id: Specific patient ID to invalidate. If omitted, clears all caches.
+        """
+
+        if patient_id:
+            self._patient_cache.pop(patient_id, None)
+            return
+
+        self._patient_cache.clear()
+
+    def _get_cached_patient(self, patient_id: str) -> Optional[Dict[str, Any]]:
+        """Return cached patient data if still valid."""
+
+        cached = self._patient_cache.get(patient_id)
+        if not cached:
+            return None
+
+        if cached["expires_at"] < datetime.now(timezone.utc):
+            self._patient_cache.pop(patient_id, None)
+            return None
+
+        return cached["data"]
+
+    def _cache_patient(self, patient_id: str, data: Dict[str, Any]) -> None:
+        """Persist patient data with an expiry."""
+
+        self._patient_cache[patient_id] = {
+            "data": data,
+            "expires_at": datetime.now(timezone.utc) + self.cache_ttl,
+        }
 
     def _generate_pkce_pair(self) -> Tuple[str, str]:
         """Generate a PKCE code_verifier and corresponding code_challenge."""
@@ -579,6 +616,10 @@ class FHIRConnector:
             Parsed patient data including demographics, active conditions, medications
         """
         try:
+            cached = self._get_cached_patient(patient_id)
+            if cached:
+                return cached
+
             await self._ensure_valid_token()
             self._require_scopes("Patient")
             # Fetch Patient resource
@@ -603,7 +644,7 @@ class FHIRConnector:
                 self._get_patient_encounters(patient_id),
             )
 
-            return {
+            result = {
                 "patient": self._normalize_patient(patient),
                 "conditions": conditions,
                 "medications": medications,
@@ -611,7 +652,11 @@ class FHIRConnector:
                 "encounters": encounters,
                 "fetched_at": datetime.now().isoformat()
             }
-            
+
+            self._cache_patient(patient_id, result)
+
+            return result
+
         except httpx.HTTPError as e:
             logger.error(f"Error fetching patient {patient_id}: {str(e)}")
             raise
@@ -652,11 +697,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     conditions.append(self._normalize_condition(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return conditions
@@ -692,11 +733,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     medications.append(self._normalize_medication(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return medications
@@ -732,11 +769,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     observations.append(self._normalize_observation(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return observations
@@ -772,11 +805,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     encounters.append(self._normalize_encounter(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return encounters
