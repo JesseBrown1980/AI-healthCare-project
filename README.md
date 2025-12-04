@@ -141,6 +141,10 @@ docker-compose up -d
 
 ## 📚 Module Guide
 
+## Backend Components
+- The `FHIRConnector` validates incoming FHIR Patient resources using `fhir.resources` when available; if the optional dependency isn't installed, it transparently falls back to a no-op validator.
+- Configure the connector's `use_proxies` parameter to `False` in environments without SOCKS proxy support to avoid initialization warnings.
+
 ### Backend Modules
 
 #### `/backend/fhir_connector.py`

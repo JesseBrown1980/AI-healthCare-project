@@ -10,7 +10,23 @@ import httpx
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import json
-from fhir.resources.patient import Patient
+
+try:
+    from fhir.resources.patient import Patient
+except ImportError:  # Optional dependency for schema validation
+    class Patient:
+        """Fallback Patient model when fhir.resources is unavailable."""
+
+        @staticmethod
+        def model_validate(fhir_patient):
+            class _Validated:
+                def __init__(self, payload):
+                    self.payload = payload
+
+                def model_dump(self, mode=None):
+                    return self.payload
+
+            return _Validated(fhir_patient)
 
 logger = logging.getLogger(__name__)
 
