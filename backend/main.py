@@ -11,6 +11,7 @@ from typing import Optional
 import uvicorn
 import os
 from dotenv import load_dotenv
+from security import TokenContext, auth_dependency
 
 # Load environment variables
 load_dotenv()
@@ -138,7 +139,9 @@ app.add_middleware(
 # ==================== API ENDPOINTS ====================
 
 @app.get("/api/v1/health")
-async def health_check():
+async def health_check(
+    auth: TokenContext = Depends(auth_dependency())
+):
     """
     Health check endpoint
     """
@@ -153,7 +156,10 @@ async def health_check():
 async def analyze_patient(
     fhir_patient_id: str,
     include_recommendations: bool = True,
-    specialty: Optional[str] = None
+    specialty: Optional[str] = None,
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    ),
 ):
     """
     Analyze a patient's FHIR records and generate insights
@@ -169,11 +175,20 @@ async def analyze_patient(
         
         logger.info(f"Analyzing patient: {fhir_patient_id}")
         
-        result = await patient_analyzer.analyze(
-            patient_id=fhir_patient_id,
-            include_recommendations=include_recommendations,
-            specialty=specialty
-        )
+        if auth.patient and auth.patient != fhir_patient_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Token is scoped to a different patient context",
+            )
+
+        async with fhir_connector.request_context(
+            auth.access_token, auth.scopes, auth.patient
+        ):
+            result = await patient_analyzer.analyze(
+                patient_id=fhir_patient_id,
+                include_recommendations=include_recommendations,
+                specialty=specialty
+            )
         
         return result
         
@@ -183,7 +198,12 @@ async def analyze_patient(
 
 
 @app.get("/api/v1/patient/{patient_id}/fhir")
-async def get_patient_fhir(patient_id: str):
+async def get_patient_fhir(
+    patient_id: str,
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    ),
+):
     """
     Fetch patient's FHIR data from connected EHR
     """
@@ -191,7 +211,16 @@ async def get_patient_fhir(patient_id: str):
         if not fhir_connector:
             raise HTTPException(status_code=503, detail="FHIR connector not initialized")
         
-        patient_data = await fhir_connector.get_patient(patient_id)
+        if auth.patient and auth.patient != patient_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Token is scoped to a different patient context",
+            )
+
+        async with fhir_connector.request_context(
+            auth.access_token, auth.scopes, auth.patient
+        ):
+            patient_data = await fhir_connector.get_patient(patient_id)
         
         return {
             "status": "success",

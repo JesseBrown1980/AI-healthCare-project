@@ -8,8 +8,10 @@ import asyncio
 import logging
 import random
 import httpx
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 import json
 
 try:
@@ -83,6 +85,9 @@ class FHIRConnector:
         self.granted_scopes: Set[str] = set()
         self.token_expires_at: Optional[datetime] = None
         self.default_headers = {"Accept": "application/fhir+json"}
+        self._request_context: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
+            "fhir_request_context", default=None
+        )
 
         self.well_known_url = (
             well_known_url
@@ -91,6 +96,45 @@ class FHIRConnector:
 
         self._configure_from_well_known()
         self.session = self._initialize_session()
+
+    @asynccontextmanager
+    async def request_context(
+        self,
+        access_token: str,
+        scopes: Set[str],
+        patient_id: Optional[str] = None,
+    ):
+        """
+        Temporarily override the connector's token and scopes for a specific request.
+
+        This allows the connector to forward caller-provided SMART access tokens so
+        downstream FHIR requests enforce the original scopes and patient context.
+        """
+
+        previous_context = self._request_context.get()
+        self._request_context.set(
+            {
+                "access_token": access_token,
+                "scopes": set(scopes or []),
+                "patient": patient_id,
+            }
+        )
+        try:
+            yield
+        finally:
+            self._request_context.set(previous_context)
+
+    def _effective_context(self) -> Tuple[Optional[str], Set[str], Optional[str]]:
+        """Return the active access token, scopes, and patient context."""
+
+        context = self._request_context.get()
+        if context:
+            return (
+                context.get("access_token"),
+                set(context.get("scopes") or set()),
+                context.get("patient"),
+            )
+        return self.access_token, self.granted_scopes, None
 
     async def _request_with_retry(
         self,
@@ -216,7 +260,8 @@ class FHIRConnector:
             # Skip enforcement if SMART isn't configured
             return
 
-        if not self.granted_scopes:
+        _, scopes, _ = self._effective_context()
+        if not scopes:
             raise PermissionError(
                 "No SMART scopes granted. Ensure authorization was completed and consent allows data sharing."
             )
@@ -230,21 +275,22 @@ class FHIRConnector:
             "system/*.read",
         }
 
-        if not self.granted_scopes.intersection(allowed_scopes):
+        if not scopes.intersection(allowed_scopes):
             raise PermissionError(
                 (
                     f"Missing required SMART scopes for {resource_type}.read. "
-                    f"Requested scopes: {self.scope}; granted: {' '.join(sorted(self.granted_scopes)) or 'none'}. "
+                    f"Requested scopes: {self.scope}; granted: {' '.join(sorted(scopes)) or 'none'}. "
                     "Ask the user to authorize the appropriate patient/user access."
                 )
             )
 
     def _auth_headers(self) -> Dict[str, str]:
-        if not self.access_token:
+        access_token, _, _ = self._effective_context()
+        if not access_token:
             return self.default_headers.copy()
 
         headers = self.default_headers.copy()
-        headers["Authorization"] = f"Bearer {self.access_token}"
+        headers["Authorization"] = f"Bearer {access_token}"
         return headers
 
     async def _request_token(self) -> None:
@@ -318,6 +364,11 @@ class FHIRConnector:
         self.granted_scopes = set(scopes_from_token.split()) if scopes_from_token else set()
 
     async def _ensure_valid_token(self) -> None:
+        context = self._request_context.get()
+        if context and context.get("access_token"):
+            # Caller-provided token is already validated upstream
+            return
+
         if not self.client_id:
             return
 
