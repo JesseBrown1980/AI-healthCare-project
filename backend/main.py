@@ -178,9 +178,8 @@ def _structured_error(
     if status_code in {401, 403}:
         payload["hint"] = "Please re-authenticate and try again."
 
-    combined_headers = {"X-Correlation-ID": correlation_id}
-    if headers:
-        combined_headers.update(headers)
+    combined_headers = dict(headers or {})
+    combined_headers["X-Correlation-ID"] = correlation_id
 
     return JSONResponse(
         status_code=status_code,
