@@ -8,6 +8,8 @@ import logging
 from typing import Dict, Optional, Any, List
 from datetime import datetime
 
+from .fhir_connector import FHIRConnectorError
+
 logger = logging.getLogger(__name__)
 
 
@@ -148,6 +150,18 @@ class PatientAnalyzer:
             
             return result
         
+        except FHIRConnectorError as e:
+            logger.error(
+                "FHIR connector error analyzing patient %s: %s", patient_id, str(e)
+            )
+            return {
+                "patient_id": patient_id,
+                "status": "error",
+                "error_type": "FHIRConnectorError",
+                "message": e.message,
+                "correlation_id": e.correlation_id,
+                "timestamp": datetime.now().isoformat(),
+            }
         except Exception as e:
             logger.error(f"Error analyzing patient {patient_id}: {str(e)}")
             return {
