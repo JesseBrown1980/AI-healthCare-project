@@ -12,6 +12,7 @@ import uvicorn
 import os
 from dotenv import load_dotenv
 from security import TokenContext, auth_dependency
+from audit_service import AuditService
 
 # Load environment variables
 load_dotenv()
@@ -37,6 +38,7 @@ s_lora_manager = None
 mlc_learning = None
 aot_reasoner = None
 patient_analyzer = None
+audit_service = None
 
 
 @asynccontextmanager
@@ -48,6 +50,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Healthcare AI Assistant...")
     try:
         global fhir_connector, llm_engine, rag_fusion, s_lora_manager, mlc_learning, aot_reasoner, patient_analyzer
+        global audit_service
         
         # Initialize core components
         logger.info("Loading FHIR Connector...")
@@ -103,6 +106,9 @@ async def lifespan(app: FastAPI):
             aot_reasoner=aot_reasoner,
             mlc_learning=mlc_learning
         )
+
+        logger.info("Initializing Audit Service...")
+        audit_service = AuditService(fhir_connector=fhir_connector)
         
         logger.info("✓ Healthcare AI Assistant initialized successfully")
         
@@ -169,12 +175,14 @@ async def analyze_patient(
     - include_recommendations: Include clinical decision support
     - specialty: Target medical specialty for analysis
     """
+    correlation_id = audit_service.new_correlation_id() if audit_service else ""
+
     try:
         if not patient_analyzer:
             raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
-        
+
         logger.info(f"Analyzing patient: {fhir_patient_id}")
-        
+
         if auth.patient and auth.patient != fhir_patient_id:
             raise HTTPException(
                 status_code=403,
@@ -189,11 +197,46 @@ async def analyze_patient(
                 include_recommendations=include_recommendations,
                 specialty=specialty
             )
-        
+
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=fhir_patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="0",
+                outcome_desc="Patient analysis completed",
+                event_type="analyze",
+                include_provenance=True,
+                provenance_activity="patient-analysis",
+            )
+
         return result
-        
+
+    except HTTPException as exc:
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=fhir_patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(exc.detail),
+                event_type="analyze",
+            )
+        raise
     except Exception as e:
         logger.error(f"Error analyzing patient: {str(e)}")
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=fhir_patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(e),
+                event_type="analyze",
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -207,10 +250,12 @@ async def get_patient_fhir(
     """
     Fetch patient's FHIR data from connected EHR
     """
+    correlation_id = audit_service.new_correlation_id() if audit_service else ""
+
     try:
         if not fhir_connector:
             raise HTTPException(status_code=503, detail="FHIR connector not initialized")
-        
+
         if auth.patient and auth.patient != patient_id:
             raise HTTPException(
                 status_code=403,
@@ -221,15 +266,48 @@ async def get_patient_fhir(
             auth.access_token, auth.scopes, auth.patient
         ):
             patient_data = await fhir_connector.get_patient(patient_id)
-        
+
+        if audit_service:
+            await audit_service.record_event(
+                action="R",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="0",
+                outcome_desc="FHIR patient read",
+                event_type="read",
+            )
+
         return {
             "status": "success",
             "patient_id": patient_id,
             "data": patient_data
         }
-        
+
+    except HTTPException as exc:
+        if audit_service:
+            await audit_service.record_event(
+                action="R",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(exc.detail),
+                event_type="read",
+            )
+        raise
     except Exception as e:
         logger.error(f"Error fetching patient FHIR data: {str(e)}")
+        if audit_service:
+            await audit_service.record_event(
+                action="R",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(e),
+                event_type="read",
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -242,6 +320,8 @@ async def medical_query(
     """
     Query the AI for medical insights and recommendations
     """
+    correlation_id = audit_service.new_correlation_id() if audit_service else ""
+
     try:
         if not llm_engine or not rag_fusion:
             raise HTTPException(status_code=503, detail="AI engine not initialized")
@@ -262,7 +342,7 @@ async def medical_query(
             include_reasoning=include_reasoning
         )
         
-        return {
+        result = {
             "status": "success",
             "question": question,
             "answer": response.get("answer"),
@@ -270,9 +350,44 @@ async def medical_query(
             "sources": response.get("sources"),
             "confidence": response.get("confidence")
         }
-        
+
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=patient_id,
+                user_context=None,
+                correlation_id=correlation_id,
+                outcome="0",
+                outcome_desc="Medical query processed",
+                event_type="question",
+            )
+
+        return result
+
+    except HTTPException as exc:
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=patient_id,
+                user_context=None,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(exc.detail),
+                event_type="question",
+            )
+        raise
     except Exception as e:
         logger.error(f"Error processing query: {str(e)}")
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=patient_id,
+                user_context=None,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(e),
+                event_type="question",
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 
