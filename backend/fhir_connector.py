@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 import json
+import urllib.parse
 
 try:
     from fhir.resources.patient import Patient
@@ -275,6 +276,25 @@ class FHIRConnector:
                 timeout=30.0,
                 trust_env=False,
             )
+
+    def _resolve_next_link(self, bundle: Dict[str, Any]) -> Optional[str]:
+        """Return an absolute URL for the bundle's next link if present."""
+
+        next_link = next(
+            (link for link in bundle.get("link", []) if link.get("relation") == "next"),
+            None,
+        )
+        if not next_link:
+            return None
+
+        url = next_link.get("url")
+        if not url:
+            return None
+
+        if url.startswith(("http://", "https://")):
+            return url
+
+        return urllib.parse.urljoin(f"{self.server_url}/", url.lstrip("/"))
 
     def _generate_pkce_pair(self) -> Tuple[str, str]:
         """Generate a PKCE code_verifier and corresponding code_challenge."""
@@ -610,23 +630,31 @@ class FHIRConnector:
         try:
             await self._ensure_valid_token()
             self._require_scopes("Condition")
-            response = await self._request_with_retry(
-                "GET",
-                f"{self.server_url}/Condition",
-                params={
-                    "patient": patient_id,
-                    "clinical-status": "active"
-                },
-                correlation_context=f"patient_id={patient_id}",
-            )
-            response.raise_for_status()
-            bundle = response.json()
-            
+            bundle_url = f"{self.server_url}/Condition"
+            request_params = {
+                "patient": patient_id,
+                "clinical-status": "active",
+            }
+            correlation_context = f"patient_id={patient_id}"
+
             conditions = []
-            for entry in bundle.get("entry", []):
-                resource = entry.get("resource", {})
-                conditions.append(self._normalize_condition(resource))
-            
+            while bundle_url:
+                response = await self._request_with_retry(
+                    "GET",
+                    bundle_url,
+                    params=request_params,
+                    correlation_context=correlation_context,
+                )
+                response.raise_for_status()
+                bundle = response.json()
+
+                for entry in bundle.get("entry", []):
+                    resource = entry.get("resource", {})
+                    conditions.append(self._normalize_condition(resource))
+
+                bundle_url = self._resolve_next_link(bundle)
+                request_params = None
+
             return conditions
         except Exception as e:
             logger.warning(f"Error fetching conditions for {patient_id}: {str(e)}")
@@ -638,79 +666,103 @@ class FHIRConnector:
             await self._ensure_valid_token()
             self._require_scopes("MedicationRequest")
             # First get MedicationRequest resources
-            response = await self._request_with_retry(
-                "GET",
-                f"{self.server_url}/MedicationRequest",
-                params={
-                    "patient": patient_id,
-                    "status": "active"
-                },
-                correlation_context=f"patient_id={patient_id}",
-            )
-            response.raise_for_status()
-            bundle = response.json()
-            
+            bundle_url = f"{self.server_url}/MedicationRequest"
+            request_params = {
+                "patient": patient_id,
+                "status": "active",
+            }
+            correlation_context = f"patient_id={patient_id}"
+
             medications = []
-            for entry in bundle.get("entry", []):
-                resource = entry.get("resource", {})
-                medications.append(self._normalize_medication(resource))
-            
+            while bundle_url:
+                response = await self._request_with_retry(
+                    "GET",
+                    bundle_url,
+                    params=request_params,
+                    correlation_context=correlation_context,
+                )
+                response.raise_for_status()
+                bundle = response.json()
+
+                for entry in bundle.get("entry", []):
+                    resource = entry.get("resource", {})
+                    medications.append(self._normalize_medication(resource))
+
+                bundle_url = self._resolve_next_link(bundle)
+                request_params = None
+
             return medications
         except Exception as e:
             logger.warning(f"Error fetching medications for {patient_id}: {str(e)}")
             return []
-    
+
     async def _get_patient_observations(self, patient_id: str, limit: int = 50) -> List[Dict]:
         """Fetch patient's lab results and vital signs"""
         try:
             await self._ensure_valid_token()
             self._require_scopes("Observation")
-            response = await self._request_with_retry(
-                "GET",
-                f"{self.server_url}/Observation",
-                params={
-                    "patient": patient_id,
-                    "_sort": "-date",
-                    "_count": limit
-                },
-                correlation_context=f"patient_id={patient_id}",
-            )
-            response.raise_for_status()
-            bundle = response.json()
-            
+            bundle_url = f"{self.server_url}/Observation"
+            request_params = {
+                "patient": patient_id,
+                "_sort": "-date",
+                "_count": limit,
+            }
+            correlation_context = f"patient_id={patient_id}"
+
             observations = []
-            for entry in bundle.get("entry", []):
-                resource = entry.get("resource", {})
-                observations.append(self._normalize_observation(resource))
-            
+            while bundle_url:
+                response = await self._request_with_retry(
+                    "GET",
+                    bundle_url,
+                    params=request_params,
+                    correlation_context=correlation_context,
+                )
+                response.raise_for_status()
+                bundle = response.json()
+
+                for entry in bundle.get("entry", []):
+                    resource = entry.get("resource", {})
+                    observations.append(self._normalize_observation(resource))
+
+                bundle_url = self._resolve_next_link(bundle)
+                request_params = None
+
             return observations
         except Exception as e:
             logger.warning(f"Error fetching observations for {patient_id}: {str(e)}")
             return []
-    
+
     async def _get_patient_encounters(self, patient_id: str, limit: int = 20) -> List[Dict]:
         """Fetch patient's recent encounters (visits)"""
         try:
             await self._ensure_valid_token()
             self._require_scopes("Encounter")
-            response = await self._request_with_retry(
-                "GET",
-                f"{self.server_url}/Encounter",
-                params={
-                    "patient": patient_id,
-                    "_sort": "-date",
-                    "_count": limit
-                },
-                correlation_context=f"patient_id={patient_id}",
-            )
-            response.raise_for_status()
-            bundle = response.json()
-            
+            bundle_url = f"{self.server_url}/Encounter"
+            request_params = {
+                "patient": patient_id,
+                "_sort": "-date",
+                "_count": limit,
+            }
+            correlation_context = f"patient_id={patient_id}"
+
             encounters = []
-            for entry in bundle.get("entry", []):
-                resource = entry.get("resource", {})
-                encounters.append(self._normalize_encounter(resource))
-            
+            while bundle_url:
+                response = await self._request_with_retry(
+                    "GET",
+                    bundle_url,
+                    params=request_params,
+                    correlation_context=correlation_context,
+                )
+                response.raise_for_status()
+                bundle = response.json()
+
+                for entry in bundle.get("entry", []):
+                    resource = entry.get("resource", {})
+                    encounters.append(self._normalize_encounter(resource))
+
+                bundle_url = self._resolve_next_link(bundle)
+                request_params = None
+
             return encounters
         except Exception as e:
             logger.warning(f"Error fetching encounters for {patient_id}: {str(e)}")
