@@ -1,8 +1,10 @@
 import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from backend.fhir_connector import FHIRConnector
 
 
@@ -194,3 +196,128 @@ def test_refresh_access_token_falls_back_to_client_credentials(monkeypatch):
     asyncio.run(connector._refresh_access_token())
 
     assert calls["client_credentials"] == 1
+
+
+@pytest.mark.anyio
+async def test_get_patient_paginates_and_concatenates(monkeypatch):
+    patient_id = "pat-1"
+    connector = FHIRConnector(server_url="http://fake.fhir")
+
+    patient_payload = {"id": patient_id, "name": [{"given": ["Jane"], "family": "Doe"}]}
+
+    condition_bundles = [
+        {
+            "entry": [
+                {"resource": {"id": "c1", "code": {"coding": [{"display": "Cond1"}]}}},
+                {"resource": {"id": "c2", "code": {"coding": [{"display": "Cond2"}]}}},
+            ],
+            "link": [{"relation": "next", "url": "/Condition?page=2"}],
+        },
+        {"entry": [{"resource": {"id": "c3", "code": {"coding": [{"display": "Cond3"}]}}}]},
+    ]
+
+    medication_bundles = [
+        {
+            "entry": [
+                {"resource": {"id": "m1", "medicationCodeableConcept": {"coding": [{"display": "Med1"}]}}},
+            ],
+            "link": [{"relation": "next", "url": "http://fake.fhir/MedicationRequest?page=2"}],
+        },
+        {
+            "entry": [
+                {"resource": {"id": "m2", "medicationCodeableConcept": {"coding": [{"display": "Med2"}]}}},
+            ]
+        },
+    ]
+
+    observation_bundles = [
+        {
+            "entry": [
+                {"resource": {"id": "o1", "code": {"coding": [{"display": "Obs1"}]}}},
+            ],
+            "link": [{"relation": "next", "url": "Observation?page=2"}],
+        },
+        {"entry": [{"resource": {"id": "o2", "code": {"coding": [{"display": "Obs2"}]}}}]},
+    ]
+
+    encounter_bundles = [
+        {
+            "entry": [
+                {"resource": {"id": "e1", "type": [{"coding": [{"display": "Visit"}]}]}},
+            ],
+            "link": [{"relation": "next", "url": "Encounter?page=2"}],
+        },
+        {
+            "entry": [
+                {"resource": {"id": "e2", "type": [{"coding": [{"display": "Followup"}]}]}},
+            ]
+        },
+    ]
+
+    counters = {"Condition": 0, "MedicationRequest": 0, "Observation": 0, "Encounter": 0}
+
+    async def fake_request(method, url, params=None, headers=None, correlation_context=None):
+        if f"/Patient/{patient_id}" in url:
+            return FakeResponse(patient_payload)
+
+        for resource, bundles in [
+            ("Condition", condition_bundles),
+            ("MedicationRequest", medication_bundles),
+            ("Observation", observation_bundles),
+            ("Encounter", encounter_bundles),
+        ]:
+            if resource in url:
+                idx = counters[resource]
+                counters[resource] += 1
+                return FakeResponse(bundles[idx])
+
+        raise AssertionError(f"Unexpected URL {url}")
+
+    monkeypatch.setattr(connector, "_request_with_retry", fake_request)
+
+    result = await connector.get_patient(patient_id)
+
+    assert len(result["conditions"]) == 3
+    assert len(result["medications"]) == 2
+    assert len(result["observations"]) == 2
+    assert len(result["encounters"]) == 2
+
+
+@pytest.mark.anyio
+async def test_get_patient_cache_invalidation_and_expiry(monkeypatch):
+    patient_id = "cache-1"
+    connector = FHIRConnector(server_url="http://fake.fhir", cache_ttl_seconds=120)
+
+    patient_payloads = [
+        {"id": patient_id, "gender": "male", "name": [{"given": ["Alex"], "family": "Cache"}]},
+        {"id": patient_id, "gender": "female", "name": [{"given": ["Alex"], "family": "Cache"}]},
+    ]
+
+    call_counts = {"patient": 0}
+
+    async def fake_request(method, url, params=None, headers=None, correlation_context=None):
+        if f"/Patient/{patient_id}" in url:
+            idx = min(call_counts["patient"], len(patient_payloads) - 1)
+            call_counts["patient"] += 1
+            return FakeResponse(patient_payloads[idx])
+        return FakeResponse({"entry": []})
+
+    monkeypatch.setattr(connector, "_request_with_retry", fake_request)
+
+    first = await connector.get_patient(patient_id)
+    assert first["patient"]["gender"] == "male"
+    assert call_counts["patient"] == 1
+
+    second = await connector.get_patient(patient_id)
+    assert second["patient"]["gender"] == "male"
+    assert call_counts["patient"] == 1
+
+    connector.invalidate_patient_cache(patient_id)
+    third = await connector.get_patient(patient_id)
+    assert third["patient"]["gender"] == "female"
+    assert call_counts["patient"] == 2
+
+    connector._patient_cache[patient_id]["expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+    fourth = await connector.get_patient(patient_id)
+    assert fourth["patient"]["gender"] == "female"
+    assert call_counts["patient"] == 3

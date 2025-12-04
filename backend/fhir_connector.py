@@ -302,6 +302,40 @@ class FHIRConnector:
 
         return urllib.parse.urljoin(f"{self.server_url}/", url.lstrip("/"))
 
+    def invalidate_patient_cache(self, patient_id: Optional[str] = None) -> None:
+        """Invalidate cached patient data.
+
+        Args:
+            patient_id: Specific patient ID to invalidate. If omitted, clears all caches.
+        """
+
+        if patient_id:
+            self._patient_cache.pop(patient_id, None)
+            return
+
+        self._patient_cache.clear()
+
+    def _get_cached_patient(self, patient_id: str) -> Optional[Dict[str, Any]]:
+        """Return cached patient data if still valid."""
+
+        cached = self._patient_cache.get(patient_id)
+        if not cached:
+            return None
+
+        if cached["expires_at"] < datetime.now(timezone.utc):
+            self._patient_cache.pop(patient_id, None)
+            return None
+
+        return cached["data"]
+
+    def _cache_patient(self, patient_id: str, data: Dict[str, Any]) -> None:
+        """Persist patient data with an expiry."""
+
+        self._patient_cache[patient_id] = {
+            "data": data,
+            "expires_at": datetime.now(timezone.utc) + self.cache_ttl,
+        }
+
     def _generate_pkce_pair(self) -> Tuple[str, str]:
         """Generate a PKCE code_verifier and corresponding code_challenge."""
 
@@ -684,11 +718,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     conditions.append(self._normalize_condition(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return conditions
@@ -724,11 +754,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     medications.append(self._normalize_medication(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return medications
@@ -764,11 +790,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     observations.append(self._normalize_observation(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return observations
@@ -804,11 +826,7 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     encounters.append(self._normalize_encounter(resource))
 
-                next_link = next(
-                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
-                    None,
-                )
-                bundle_url = next_link.get("url") if next_link else None
+                bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
             return encounters
