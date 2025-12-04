@@ -512,6 +512,42 @@ class FHIRConnector:
         elif is_expired:
             await self._refresh_access_token()
 
+    async def submit_resource(
+        self,
+        resource_type: str,
+        resource: Dict[str, Any],
+        *,
+        correlation_context: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Submit a FHIR resource to the configured server.
+
+        Args:
+            resource_type: FHIR resource type (e.g., "AuditEvent").
+            resource: JSON payload to send.
+            correlation_context: Identifier to correlate audit logs when retries occur.
+        """
+
+        await self._ensure_valid_token()
+        url = f"{self.server_url}/{resource_type}"
+        response = await self.session.post(
+            url, json=resource, headers=self._auth_headers()
+        )
+
+        if response.status_code >= 400:
+            logger.warning(
+                "Failed to submit %s (status=%s, correlation=%s): %s",
+                resource_type,
+                response.status_code,
+                correlation_context,
+                response.text,
+            )
+            return None
+
+        try:
+            return response.json()
+        except ValueError:
+            return {}
+
     async def get_patient(self, patient_id: str) -> Dict[str, Any]:
         """
         Fetch patient resource from FHIR server
