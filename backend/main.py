@@ -159,7 +159,11 @@ async def add_correlation_id(request: Request, call_next):
 
 
 def _correlation_id_from_request(request: Request) -> str:
-    return getattr(request.state, "correlation_id", uuid.uuid4().hex)
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if correlation_id:
+        return correlation_id
+
+    return audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
 
 
 def _structured_error(
