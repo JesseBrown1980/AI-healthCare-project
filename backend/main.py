@@ -163,7 +163,11 @@ def _correlation_id_from_request(request: Request) -> str:
 
 
 def _structured_error(
-    *, status_code: int, message: str, correlation_id: str
+    *,
+    status_code: int,
+    message: str,
+    correlation_id: str,
+    headers: Optional[dict] = None,
 ) -> JSONResponse:
     payload = {
         "status": "error",
@@ -174,10 +178,14 @@ def _structured_error(
     if status_code in {401, 403}:
         payload["hint"] = "Please re-authenticate and try again."
 
+    combined_headers = {"X-Correlation-ID": correlation_id}
+    if headers:
+        combined_headers.update(headers)
+
     return JSONResponse(
         status_code=status_code,
         content=payload,
-        headers={"X-Correlation-ID": correlation_id},
+        headers=combined_headers,
     )
 
 
@@ -591,6 +599,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code,
         message=message or "Request failed",
         correlation_id=correlation_id,
+        headers=exc.headers,
     )
 
 
