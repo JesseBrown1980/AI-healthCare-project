@@ -3,11 +3,15 @@ Healthcare AI Assistant - Main Application Entry Point
 Integrates FHIR data with advanced AI techniques (S-LoRA, MLC, RAG, AoT)
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 from typing import Optional
+from datetime import datetime, timezone
+import uuid
 import uvicorn
 import os
 from dotenv import load_dotenv
@@ -142,6 +146,55 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def add_correlation_id(request: Request, call_next):
+    correlation_id = request.headers.get("X-Correlation-ID") or (
+        audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
+    )
+    request.state.correlation_id = correlation_id
+
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+
+def _correlation_id_from_request(request: Request) -> str:
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if not correlation_id:
+        correlation_id = (
+            audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
+        )
+        request.state.correlation_id = correlation_id
+
+    return correlation_id
+
+
+def _structured_error(
+    *,
+    status_code: int,
+    message: str,
+    correlation_id: str,
+    headers: Optional[dict] = None,
+) -> JSONResponse:
+    payload = {
+        "status": "error",
+        "message": message,
+        "correlation_id": correlation_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if status_code in {401, 403}:
+        payload["hint"] = "Please re-authenticate and try again."
+
+    combined_headers = dict(headers or {})
+    combined_headers["X-Correlation-ID"] = correlation_id
+
+    return JSONResponse(
+        status_code=status_code,
+        content=payload,
+        headers=combined_headers,
+    )
+
+
 # ==================== API ENDPOINTS ====================
 
 @app.get("/api/v1/health")
@@ -160,6 +213,7 @@ async def health_check(
 
 @app.post("/api/v1/analyze-patient")
 async def analyze_patient(
+    request: Request,
     fhir_patient_id: str,
     include_recommendations: bool = True,
     specialty: Optional[str] = None,
@@ -175,7 +229,9 @@ async def analyze_patient(
     - include_recommendations: Include clinical decision support
     - specialty: Target medical specialty for analysis
     """
-    correlation_id = audit_service.new_correlation_id() if audit_service else ""
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
 
     try:
         if not patient_analyzer:
@@ -226,7 +282,7 @@ async def analyze_patient(
             )
         raise
     except Exception as e:
-        logger.error(f"Error analyzing patient: {str(e)}")
+        logger.error(f"Error analyzing patient [%s]: %s", correlation_id, str(e))
         if audit_service:
             await audit_service.record_event(
                 action="E",
@@ -242,6 +298,7 @@ async def analyze_patient(
 
 @app.get("/api/v1/patient/{patient_id}/fhir")
 async def get_patient_fhir(
+    request: Request,
     patient_id: str,
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
@@ -250,7 +307,9 @@ async def get_patient_fhir(
     """
     Fetch patient's FHIR data from connected EHR
     """
-    correlation_id = audit_service.new_correlation_id() if audit_service else ""
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
 
     try:
         if not fhir_connector:
@@ -297,7 +356,9 @@ async def get_patient_fhir(
             )
         raise
     except Exception as e:
-        logger.error(f"Error fetching patient FHIR data: {str(e)}")
+        logger.error(
+            "Error fetching patient FHIR data [%s]: %s", correlation_id, str(e)
+        )
         if audit_service:
             await audit_service.record_event(
                 action="R",
@@ -313,6 +374,7 @@ async def get_patient_fhir(
 
 @app.post("/api/v1/query")
 async def medical_query(
+    request: Request,
     question: str,
     patient_id: Optional[str] = None,
     include_reasoning: bool = True
@@ -320,7 +382,9 @@ async def medical_query(
     """
     Query the AI for medical insights and recommendations
     """
-    correlation_id = audit_service.new_correlation_id() if audit_service else ""
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
 
     try:
         if not llm_engine or not rag_fusion:
@@ -377,7 +441,7 @@ async def medical_query(
             )
         raise
     except Exception as e:
-        logger.error(f"Error processing query: {str(e)}")
+        logger.error("Error processing query [%s]: %s", correlation_id, str(e))
         if audit_service:
             await audit_service.record_event(
                 action="E",
@@ -393,6 +457,7 @@ async def medical_query(
 
 @app.post("/api/v1/feedback")
 async def provide_feedback(
+    request: Request,
     query_id: str,
     feedback_type: str,  # "positive", "negative", "correction"
     corrected_text: Optional[str] = None
@@ -400,6 +465,10 @@ async def provide_feedback(
     """
     Provide feedback for MLC (Meta-Learning for Compositionality) adaptation
     """
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
     try:
         if not mlc_learning:
             raise HTTPException(status_code=503, detail="MLC learning system not initialized")
@@ -419,15 +488,19 @@ async def provide_feedback(
         }
         
     except Exception as e:
-        logger.error(f"Error processing feedback: {str(e)}")
+        logger.error("Error processing feedback [%s]: %s", correlation_id, str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/v1/adapters")
-async def get_adapters_status():
+async def get_adapters_status(request: Request):
     """
     Get S-LoRA adapter status and memory usage
     """
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
     try:
         if not s_lora_manager:
             raise HTTPException(status_code=503, detail="S-LoRA manager not initialized")
@@ -443,15 +516,21 @@ async def get_adapters_status():
         }
         
     except Exception as e:
-        logger.error(f"Error fetching adapter status: {str(e)}")
+        logger.error("Error fetching adapter status [%s]: %s", correlation_id, str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/v1/adapters/activate")
-async def activate_adapter(adapter_name: str, specialty: Optional[str] = None):
+async def activate_adapter(
+    request: Request, adapter_name: str, specialty: Optional[str] = None
+):
     """
     Activate a specific LoRA adapter for a specialty
     """
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
     try:
         if not s_lora_manager:
             raise HTTPException(status_code=503, detail="S-LoRA manager not initialized")
@@ -465,15 +544,19 @@ async def activate_adapter(adapter_name: str, specialty: Optional[str] = None):
         }
         
     except Exception as e:
-        logger.error(f"Error activating adapter: {str(e)}")
+        logger.error("Error activating adapter [%s]: %s", correlation_id, str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/v1/stats")
-async def get_system_stats():
+async def get_system_stats(request: Request):
     """
     Get system statistics and performance metrics
     """
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
     try:
         stats = {
             "llm": llm_engine.get_stats() if llm_engine else None,
@@ -489,23 +572,57 @@ async def get_system_stats():
         }
         
     except Exception as e:
-        logger.error(f"Error fetching stats: {str(e)}")
+        logger.error("Error fetching stats [%s]: %s", correlation_id, str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== ERROR HANDLERS ====================
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request, exc):
+async def general_exception_handler(request: Request, exc: Exception):
     """
     Global exception handler
     """
-    logger.error(f"Unhandled exception: {str(exc)}")
-    return {
-        "status": "error",
-        "detail": "An unexpected error occurred",
-        "timestamp": __import__("datetime").datetime.now().isoformat()
-    }
+    correlation_id = _correlation_id_from_request(request)
+    logger.error("Unhandled exception [%s]: %s", correlation_id, str(exc))
+
+    return _structured_error(
+        status_code=500,
+        message="An unexpected error occurred",
+        correlation_id=correlation_id,
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    correlation_id = _correlation_id_from_request(request)
+    message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    logger.error(
+        "HTTPException %s [%s]: %s", exc.status_code, correlation_id, message
+    )
+
+    return _structured_error(
+        status_code=exc.status_code,
+        message=message or "Request failed",
+        correlation_id=correlation_id,
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
+    correlation_id = _correlation_id_from_request(request)
+    logger.error(
+        "Validation error [%s]: %s", correlation_id, exc.errors()
+    )
+
+    return _structured_error(
+        status_code=422,
+        message="Request validation failed",
+        correlation_id=correlation_id,
+    )
 
 
 # ==================== MAIN ====================
