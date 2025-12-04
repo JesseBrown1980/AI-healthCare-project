@@ -652,7 +652,11 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     conditions.append(self._normalize_condition(resource))
 
-                bundle_url = self._resolve_next_link(bundle)
+                next_link = next(
+                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
+                    None,
+                )
+                bundle_url = next_link.get("url") if next_link else None
                 request_params = None
 
             return conditions
@@ -688,7 +692,11 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     medications.append(self._normalize_medication(resource))
 
-                bundle_url = self._resolve_next_link(bundle)
+                next_link = next(
+                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
+                    None,
+                )
+                bundle_url = next_link.get("url") if next_link else None
                 request_params = None
 
             return medications
@@ -724,7 +732,11 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     observations.append(self._normalize_observation(resource))
 
-                bundle_url = self._resolve_next_link(bundle)
+                next_link = next(
+                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
+                    None,
+                )
+                bundle_url = next_link.get("url") if next_link else None
                 request_params = None
 
             return observations
@@ -760,7 +772,11 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     encounters.append(self._normalize_encounter(resource))
 
-                bundle_url = self._resolve_next_link(bundle)
+                next_link = next(
+                    (link for link in bundle.get("link", []) if link.get("relation") == "next"),
+                    None,
+                )
+                bundle_url = next_link.get("url") if next_link else None
                 request_params = None
 
             return encounters
