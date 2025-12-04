@@ -39,6 +39,30 @@ except ImportError:  # Optional dependency for schema validation
 logger = logging.getLogger(__name__)
 
 
+class FHIRConnectorError(Exception):
+    """Custom error type for unrecoverable FHIR connector failures."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: Optional[int] = None,
+        correlation_id: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.correlation_id = correlation_id
+
+    def __str__(self) -> str:  # pragma: no cover - simple representation
+        parts = [self.message]
+        if self.status_code is not None:
+            parts.append(f"status={self.status_code}")
+        if self.correlation_id:
+            parts.append(f"correlation_id={self.correlation_id}")
+        return "; ".join(parts)
+
+
 class FHIRConnector:
     """
     Connects to FHIR-compliant healthcare systems
@@ -219,9 +243,12 @@ class FHIRConnector:
                     correlation_context,
                     reason,
                 )
-                if response is not None:
-                    return response
-                raise
+                status_code = response.status_code if response is not None else None
+                raise FHIRConnectorError(
+                    f"Request to {url} failed after {max_attempts} attempts: {reason}",
+                    status_code=status_code,
+                    correlation_id=correlation_context,
+                )
 
             backoff = 0.5 * (2 ** (attempt - 1))
             sleep_time = backoff + random.uniform(0, backoff / 2)
@@ -671,7 +698,12 @@ class FHIRConnector:
 
         except httpx.HTTPError as e:
             logger.error(f"Error fetching patient {patient_id}: {str(e)}")
-            raise
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            raise FHIRConnectorError(
+                f"Error fetching patient {patient_id}: {str(e)}",
+                status_code=status_code,
+                correlation_id=patient_id,
+            ) from e
 
     def invalidate_cache(self, patient_id: Optional[str] = None) -> None:
         """Invalidate cached patient data."""
@@ -723,8 +755,15 @@ class FHIRConnector:
 
             return conditions
         except Exception as e:
+            if isinstance(e, FHIRConnectorError):
+                raise
             logger.warning(f"Error fetching conditions for {patient_id}: {str(e)}")
-            return []
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            raise FHIRConnectorError(
+                f"Failed to fetch conditions for {patient_id}: {str(e)}",
+                status_code=status_code,
+                correlation_id=patient_id,
+            ) from e
     
     async def _get_patient_medications(self, patient_id: str) -> List[Dict]:
         """Fetch patient's active medications"""
@@ -759,8 +798,15 @@ class FHIRConnector:
 
             return medications
         except Exception as e:
+            if isinstance(e, FHIRConnectorError):
+                raise
             logger.warning(f"Error fetching medications for {patient_id}: {str(e)}")
-            return []
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            raise FHIRConnectorError(
+                f"Failed to fetch medications for {patient_id}: {str(e)}",
+                status_code=status_code,
+                correlation_id=patient_id,
+            ) from e
 
     async def _get_patient_observations(self, patient_id: str, limit: int = 50) -> List[Dict]:
         """Fetch patient's lab results and vital signs"""
@@ -795,8 +841,15 @@ class FHIRConnector:
 
             return observations
         except Exception as e:
+            if isinstance(e, FHIRConnectorError):
+                raise
             logger.warning(f"Error fetching observations for {patient_id}: {str(e)}")
-            return []
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            raise FHIRConnectorError(
+                f"Failed to fetch observations for {patient_id}: {str(e)}",
+                status_code=status_code,
+                correlation_id=patient_id,
+            ) from e
 
     async def _get_patient_encounters(self, patient_id: str, limit: int = 20) -> List[Dict]:
         """Fetch patient's recent encounters (visits)"""
@@ -831,8 +884,15 @@ class FHIRConnector:
 
             return encounters
         except Exception as e:
+            if isinstance(e, FHIRConnectorError):
+                raise
             logger.warning(f"Error fetching encounters for {patient_id}: {str(e)}")
-            return []
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            raise FHIRConnectorError(
+                f"Failed to fetch encounters for {patient_id}: {str(e)}",
+                status_code=status_code,
+                correlation_id=patient_id,
+            ) from e
     
     # ==================== NORMALIZATION METHODS ====================
     
