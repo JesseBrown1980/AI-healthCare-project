@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 import json
+import urllib.parse
 
 try:
     from fhir.resources.patient import Patient
@@ -275,6 +276,25 @@ class FHIRConnector:
                 timeout=30.0,
                 trust_env=False,
             )
+
+    def _resolve_next_link(self, bundle: Dict[str, Any]) -> Optional[str]:
+        """Return an absolute URL for the bundle's next link if present."""
+
+        next_link = next(
+            (link for link in bundle.get("link", []) if link.get("relation") == "next"),
+            None,
+        )
+        if not next_link:
+            return None
+
+        url = next_link.get("url")
+        if not url:
+            return None
+
+        if url.startswith(("http://", "https://")):
+            return url
+
+        return urllib.parse.urljoin(f"{self.server_url}/", url.lstrip("/"))
 
     def _generate_pkce_pair(self) -> Tuple[str, str]:
         """Generate a PKCE code_verifier and corresponding code_challenge."""
