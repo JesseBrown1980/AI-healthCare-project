@@ -5,11 +5,15 @@ Implements OAuth2 authentication and FHIR resource parsing
 """
 
 import asyncio
+import base64
+import hashlib
 import logging
 import random
+import secrets
+import urllib.parse
 import httpx
 from typing import Any, Dict, List, Optional, Set, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 import json
@@ -88,6 +92,11 @@ class FHIRConnector:
         self._request_context: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
             "fhir_request_context", default=None
         )
+        self.patient_context: Optional[str] = None
+        self.user_context: Optional[str] = None
+        self.code_verifier: Optional[str] = None
+        self.code_challenge: Optional[str] = None
+        self.code_challenge_method: str = "S256"
 
         self.well_known_url = (
             well_known_url
@@ -103,6 +112,7 @@ class FHIRConnector:
         access_token: str,
         scopes: Set[str],
         patient_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ):
         """
         Temporarily override the connector's token and scopes for a specific request.
@@ -116,7 +126,8 @@ class FHIRConnector:
             {
                 "access_token": access_token,
                 "scopes": set(scopes or []),
-                "patient": patient_id,
+                "patient": patient_id if patient_id is not None else self.patient_context,
+                "user": user_id if user_id is not None else self.user_context,
             }
         )
         try:
@@ -124,17 +135,24 @@ class FHIRConnector:
         finally:
             self._request_context.set(previous_context)
 
-    def _effective_context(self) -> Tuple[Optional[str], Set[str], Optional[str]]:
-        """Return the active access token, scopes, and patient context."""
+    def _effective_context(
+        self,
+    ) -> Tuple[Optional[str], Set[str], Optional[str], Optional[str]]:
+        """Return the active access token, scopes, patient, and user context."""
 
         context = self._request_context.get()
         if context:
             return (
                 context.get("access_token"),
                 set(context.get("scopes") or set()),
-                context.get("patient"),
+                context.get("patient")
+                if context.get("patient") is not None
+                else self.patient_context,
+                context.get("user")
+                if context.get("user") is not None
+                else self.user_context,
             )
-        return self.access_token, self.granted_scopes, None
+        return self.access_token, self.granted_scopes, self.patient_context, self.user_context
 
     async def _request_with_retry(
         self,
@@ -168,12 +186,17 @@ class FHIRConnector:
                     headers=self._auth_headers(),
                 )
                 if response.status_code in {401, 403}:
-                    raise PermissionError(
-                        (
-                            f"FHIR request rejected with {response.status_code}. "
-                            "Confirm SMART authorization, patient consent, and granted scopes."
+                    await self._refresh_access_token()
+                    if attempt >= max_attempts:
+                        raise PermissionError(
+                            (
+                                f"FHIR request rejected with {response.status_code}. "
+                                "Confirm SMART authorization, patient consent, and granted scopes."
+                            )
                         )
-                    )
+                    reason = f"status {response.status_code}"
+                    attempt += 1
+                    continue
                 if response.status_code not in retryable_statuses:
                     return response
 
@@ -253,6 +276,131 @@ class FHIRConnector:
                 trust_env=False,
             )
 
+    def _generate_pkce_pair(self) -> Tuple[str, str]:
+        """Generate a PKCE code_verifier and corresponding code_challenge."""
+
+        verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).decode()
+        verifier = verifier.rstrip("=")
+        challenge = hashlib.sha256(verifier.encode()).digest()
+        challenge_b64 = base64.urlsafe_b64encode(challenge).decode().rstrip("=")
+        return verifier, challenge_b64
+
+    def build_authorization_url(
+        self,
+        redirect_uri: str,
+        *,
+        state: Optional[str] = None,
+        audience: Optional[str] = None,
+        launch: Optional[str] = None,
+        patient: Optional[str] = None,
+        user: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """
+        Prepare a SMART-on-FHIR authorization URL using the authorization-code + PKCE flow.
+
+        Returns the redirect URL and the state value that should be validated by callers
+        when handling the authorization response.
+        """
+
+        if not self.auth_url:
+            raise RuntimeError(
+                "Authorization endpoint is not configured for SMART authentication"
+            )
+
+        self.code_verifier, self.code_challenge = self._generate_pkce_pair()
+        state = state or secrets.token_urlsafe(24)
+        audience = audience or self.audience or self.server_url
+
+        params = {
+            "response_type": "code",
+            "client_id": self.client_id,
+            "redirect_uri": redirect_uri,
+            "scope": self.scope,
+            "state": state,
+            "code_challenge": self.code_challenge,
+            "code_challenge_method": self.code_challenge_method,
+        }
+
+        if audience:
+            params["aud"] = audience
+        if launch:
+            params["launch"] = launch
+        if patient:
+            params["patient"] = patient
+        if user:
+            params["user"] = user
+
+        query = urllib.parse.urlencode(params)
+        return f"{self.auth_url}?{query}", state
+
+    async def complete_authorization(
+        self,
+        code: str,
+        redirect_uri: str,
+        *,
+        code_verifier: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Exchange an authorization code for SMART access and refresh tokens."""
+
+        if not self.token_url:
+            raise RuntimeError("Token endpoint is not configured for SMART authentication")
+
+        verifier = code_verifier or self.code_verifier
+        if not verifier:
+            raise ValueError("code_verifier is required to complete the PKCE flow")
+
+        data: Dict[str, Any] = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": self.client_id,
+            "code_verifier": verifier,
+        }
+        if self.audience:
+            data["aud"] = self.audience
+
+        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
+            response = await client.post(
+                self.token_url,
+                data=data,
+                auth=(self.client_id, self.client_secret) if self.client_secret else None,
+            )
+
+        if response.status_code >= 400:
+            detail = response.json().get("error_description") if response.content else response.text
+            raise PermissionError(
+                f"SMART authorization code exchange failed ({response.status_code}): {detail or 'authorization denied'}"
+            )
+
+        token_data = response.json()
+        self._persist_token_data(token_data)
+        return token_data
+
+    def _persist_token_data(self, token_data: Dict[str, Any]) -> None:
+        """Persist access/refresh tokens, scope grants, and SMART context."""
+
+        self.access_token = token_data.get("access_token")
+        self.refresh_token = token_data.get("refresh_token", self.refresh_token)
+        expires_in = token_data.get("expires_in")
+        self.token_expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+            if expires_in
+            else None
+        )
+        scopes_from_token = token_data.get("scope") or self.scope
+        self.granted_scopes = set(scopes_from_token.split()) if scopes_from_token else set()
+        self.patient_context = (
+            token_data.get("patient")
+            or token_data.get("launch_patient")
+            or self.patient_context
+        )
+        self.user_context = (
+            token_data.get("user")
+            or token_data.get("username")
+            or token_data.get("profile")
+            or self.user_context
+        )
+
     def _require_scopes(self, resource_type: str) -> None:
         """Ensure the SMART access token covers the requested resource type."""
 
@@ -260,7 +408,7 @@ class FHIRConnector:
             # Skip enforcement if SMART isn't configured
             return
 
-        _, scopes, _ = self._effective_context()
+        _, scopes, _, _ = self._effective_context()
         if not scopes:
             raise PermissionError(
                 "No SMART scopes granted. Ensure authorization was completed and consent allows data sharing."
@@ -285,7 +433,7 @@ class FHIRConnector:
             )
 
     def _auth_headers(self) -> Dict[str, str]:
-        access_token, _, _ = self._effective_context()
+        access_token, _, _, _ = self._effective_context()
         if not access_token:
             return self.default_headers.copy()
 
@@ -318,16 +466,7 @@ class FHIRConnector:
             )
 
         token_data = response.json()
-        self.access_token = token_data.get("access_token")
-        self.refresh_token = token_data.get("refresh_token", self.refresh_token)
-        expires_in = token_data.get("expires_in")
-        self.token_expires_at = (
-            datetime.utcnow() + timedelta(seconds=expires_in)
-            if expires_in
-            else None
-        )
-        scopes_from_token = token_data.get("scope") or self.scope
-        self.granted_scopes = set(scopes_from_token.split()) if scopes_from_token else set()
+        self._persist_token_data(token_data)
 
     async def _refresh_access_token(self) -> None:
         if not self.refresh_token:
@@ -347,21 +486,14 @@ class FHIRConnector:
 
         if response.status_code >= 400:
             detail = response.json().get("error_description") if response.content else response.text
-            raise PermissionError(
-                f"SMART token refresh failed ({response.status_code}): {detail or 'authorization revoked or consent missing'}"
+            logger.warning(
+                "SMART token refresh failed (%s): %s", response.status_code, detail
             )
+            await self._request_token()
+            return
 
         token_data = response.json()
-        self.access_token = token_data.get("access_token")
-        self.refresh_token = token_data.get("refresh_token", self.refresh_token)
-        expires_in = token_data.get("expires_in")
-        self.token_expires_at = (
-            datetime.utcnow() + timedelta(seconds=expires_in)
-            if expires_in
-            else None
-        )
-        scopes_from_token = token_data.get("scope") or self.scope
-        self.granted_scopes = set(scopes_from_token.split()) if scopes_from_token else set()
+        self._persist_token_data(token_data)
 
     async def _ensure_valid_token(self) -> None:
         context = self._request_context.get()
@@ -373,7 +505,7 @@ class FHIRConnector:
             return
 
         needs_token = not self.access_token
-        is_expired = self.token_expires_at and datetime.utcnow() >= self.token_expires_at - timedelta(seconds=60)
+        is_expired = self.token_expires_at and datetime.now(timezone.utc) >= self.token_expires_at - timedelta(seconds=60)
 
         if needs_token:
             await self._request_token()
