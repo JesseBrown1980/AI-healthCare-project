@@ -59,7 +59,7 @@ class FHIRConnector:
         audience: Optional[str] = None,
         refresh_token: Optional[str] = None,
         use_proxies: bool = True,
-        cache_ttl_seconds: int = 300,
+        cache_ttl: Optional[int] = 300,
     ):
         """
         Initialize FHIR connector
@@ -75,6 +75,7 @@ class FHIRConnector:
             audience: Optional token audience/`aud` parameter
             refresh_token: Previously issued refresh token
             use_proxies: Whether to honor proxy settings from environment variables
+            cache_ttl: Cache time-to-live for patient data in seconds (None disables expiration)
         """
         self.server_url = server_url.rstrip("/")
         self.client_id = client_id
@@ -99,8 +100,10 @@ class FHIRConnector:
         self.code_verifier: Optional[str] = None
         self.code_challenge: Optional[str] = None
         self.code_challenge_method: str = "S256"
-        self.cache_ttl = timedelta(seconds=cache_ttl_seconds)
-        self._patient_cache: Dict[str, Dict[str, Any]] = {}
+        self.cache_ttl: Optional[timedelta] = (
+            timedelta(seconds=cache_ttl) if cache_ttl is not None else None
+        )
+        self._cache: Dict[str, Dict[str, Any]] = {}
 
         self.well_known_url = (
             well_known_url
@@ -616,9 +619,14 @@ class FHIRConnector:
             Parsed patient data including demographics, active conditions, medications
         """
         try:
-            cached = self._get_cached_patient(patient_id)
+            cached = self._cache.get(patient_id)
             if cached:
-                return cached
+                if self.cache_ttl is None:
+                    return cached["data"]
+
+                age = datetime.now(timezone.utc) - cached["fetched_at"]
+                if age <= self.cache_ttl:
+                    return cached["data"]
 
             await self._ensure_valid_token()
             self._require_scopes("Patient")
@@ -644,22 +652,35 @@ class FHIRConnector:
                 self._get_patient_encounters(patient_id),
             )
 
-            result = {
+            fetched_at = datetime.now(timezone.utc)
+            patient_data = {
                 "patient": self._normalize_patient(patient),
                 "conditions": conditions,
                 "medications": medications,
                 "observations": observations,
                 "encounters": encounters,
-                "fetched_at": datetime.now().isoformat()
+                "fetched_at": fetched_at.isoformat(),
             }
 
-            self._cache_patient(patient_id, result)
+            self._cache[patient_id] = {
+                "data": patient_data,
+                "fetched_at": fetched_at,
+            }
 
-            return result
+            return patient_data
 
         except httpx.HTTPError as e:
             logger.error(f"Error fetching patient {patient_id}: {str(e)}")
             raise
+
+    def invalidate_cache(self, patient_id: Optional[str] = None) -> None:
+        """Invalidate cached patient data."""
+
+        if patient_id is None:
+            self._cache.clear()
+            return
+
+        self._cache.pop(patient_id, None)
 
     def _validate_patient_resource(self, fhir_patient: Dict[str, Any]) -> Dict[str, Any]:
         """Validate incoming patient resource using FHIR resource models."""

@@ -113,7 +113,8 @@ class PatientAnalyzer:
             logger.info("Step 5: Calculating risk scores...")
             risk_scores = await self._calculate_risk_scores(patient_data)
             result["risk_scores"] = risk_scores
-            
+            result["polypharmacy_risk"] = risk_scores.get("polypharmacy_risk", False)
+
             # 6. MEDICATION REVIEW
             logger.info("Step 6: Reviewing medications...")
             medication_review = await self._medication_review(patient_data)
@@ -160,18 +161,20 @@ class PatientAnalyzer:
     async def _generate_summary(self, patient_data: Dict) -> Dict:
         """Generate concise patient summary"""
         patient_info = patient_data.get("patient", {})
-        
+        age = self._calculate_age(patient_info.get("birthDate"))
+
         summary = {
             "patient_name": patient_info.get("name"),
-            "age_gender": f"{patient_info.get('gender', 'Unknown')}",
+            "age_gender": f"{age if age is not None else 'Unknown'} / {patient_info.get('gender', 'Unknown')}",
+            "age": age,
             "active_conditions_count": len(patient_data.get("conditions", [])),
             "current_medications_count": len(patient_data.get("medications", [])),
             "recent_visits": len(patient_data.get("encounters", [])),
             "key_conditions": [c.get("code") for c in patient_data.get("conditions", [])[:3]],
             "key_medications": [m.get("medication") for m in patient_data.get("medications", [])[:3]],
-            "narrative_summary": f"Patient {patient_info.get('name')} has {len(patient_data.get('conditions', []))} active conditions and is on {len(patient_data.get('medications', []))} medications."
+            "narrative_summary": f"Patient {patient_info.get('name')} (age {age if age is not None else 'Unknown'}) has {len(patient_data.get('conditions', []))} active conditions and is on {len(patient_data.get('medications', []))} medications."
         }
-        
+
         return summary
     
     async def _identify_alerts(self, patient_data: Dict) -> List[Dict]:
@@ -226,43 +229,48 @@ class PatientAnalyzer:
         """Calculate various clinical risk scores"""
         risk_scores = {}
 
-        patient_info = patient_data.get("patient", {})
-        birth_date = patient_info.get("birthDate")
-        age_years: Optional[int] = None
-        if birth_date:
-            try:
-                age_years = (date.today() - date.fromisoformat(birth_date)).days // 365
-            except Exception:
-                age_years = None
-        
         # Cardiovascular risk (simplified)
         cv_risk = 0.2  # Base
         conditions = [c.get("code", "").lower() for c in patient_data.get("conditions", [])]
+        medication_count = len(patient_data.get("medications", []))
+        polypharmacy = medication_count > 10
+        med_burden_factor = min(0.1, medication_count * 0.01)
+
         if any("hypertension" in c for c in conditions):
             cv_risk += 0.15
         if any("diabetes" in c for c in conditions):
             cv_risk += 0.20
         if any("smoke" in c for c in conditions):
             cv_risk += 0.25
-        if age_years and age_years >= 65:
+
+        cv_risk += med_burden_factor
+        if polypharmacy:
             cv_risk += 0.1
 
-        risk_scores["cardiovascular_risk"] = round(min(0.95, cv_risk), 3)
+        risk_scores["cardiovascular_risk"] = min(0.95, cv_risk)
 
         # Hospital readmission risk
-        recent_encounters = len([e for e in patient_data.get("encounters", []) 
+        recent_encounters = len([e for e in patient_data.get("encounters", [])
                                  if e.get("status") in ["finished", "completed"]])
-        readmit_risk = min(0.8, 0.1 + (recent_encounters * 0.05))
+        readmit_risk = 0.1 + (recent_encounters * 0.05)
+        readmit_risk += min(0.15, medication_count * 0.015)
+        if polypharmacy:
+            readmit_risk += 0.1
+
+        readmit_risk = min(0.9, readmit_risk)
         risk_scores["readmission_risk"] = readmit_risk
-        
+
         # Medication adherence risk
-        med_complexity = len(patient_data.get("medications", []))
-        adherence_risk = min(0.7, 0.1 + (med_complexity * 0.05))
-        if age_years and age_years >= 65:
-            adherence_risk = min(0.95, adherence_risk + 0.05)
-        risk_scores["polypharmacy"] = med_complexity >= 10
-        risk_scores["medication_non_adherence_risk"] = round(adherence_risk, 3)
-        
+        med_complexity = medication_count
+        adherence_risk = 0.1 + (med_complexity * 0.05)
+        if polypharmacy:
+            adherence_risk += 0.1
+
+        adherence_risk = min(0.9, adherence_risk)
+        risk_scores["medication_non_adherence_risk"] = adherence_risk
+
+        risk_scores["polypharmacy_risk"] = polypharmacy
+
         return risk_scores
     
     async def _medication_review(self, patient_data: Dict) -> Dict:
@@ -383,3 +391,22 @@ class PatientAnalyzer:
                 a.get("analysis_duration_seconds", 0) for a in self.analysis_history
             ) / max(len(self.analysis_history), 1)
         }
+
+    @staticmethod
+    def _calculate_age(birth_date_str: Optional[str]) -> Optional[int]:
+        """Calculate age in years from a birth date string."""
+
+        if not birth_date_str:
+            return None
+
+        try:
+            birth_date = date.fromisoformat(birth_date_str[:10])
+        except ValueError:
+            return None
+
+        today = date.today()
+        return (
+            today.year
+            - birth_date.year
+            - ((today.month, today.day) < (birth_date.month, birth_date.day))
+        )
