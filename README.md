@@ -144,6 +144,7 @@ docker-compose up -d
 ## Backend Components
 - The `FHIRConnector` validates incoming FHIR Patient resources using `fhir.resources` when available; if the optional dependency isn't installed, it transparently falls back to a no-op validator.
 - Configure the connector's `use_proxies` parameter to `False` in environments without SOCKS proxy support to avoid initialization warnings.
+- The connector streams through paginated FHIR bundles by following `link["next"]` URLs until exhaustion, preserving the initial query parameters for the first page and then reusing the server-provided continuation links for subsequent requests. Use the cache time-to-live (TTL) setting in your environment configuration to control how long fetched bundle pages are retained before refresh.
 
 ### Backend Modules
 
@@ -186,7 +187,7 @@ docker-compose up -d
 #### `/backend/patient_analyzer.py`
 - Core analysis engine combining all components
 - Patient data interpretation
-- Risk score calculation
+- Risk score calculation that weights age, high-risk conditions (e.g., hypertension, diabetes, smoking status), and medication burden—including polypharmacy thresholds that surface deprescribing opportunities
 - Decision support generation
 
 ### Data Models (`/models/`)
