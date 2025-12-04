@@ -115,13 +115,20 @@ class FHIRConnector:
             )
             patient_response.raise_for_status()
             patient = self._validate_patient_resource(patient_response.json())
-            
-            # Fetch related resources
-            conditions = await self._get_patient_conditions(patient_id)
-            medications = await self._get_patient_medications(patient_id)
-            observations = await self._get_patient_observations(patient_id)
-            encounters = await self._get_patient_encounters(patient_id)
-            
+
+            # Fetch related resources concurrently after patient existence is confirmed
+            (
+                conditions,
+                medications,
+                observations,
+                encounters,
+            ) = await asyncio.gather(
+                self._get_patient_conditions(patient_id),
+                self._get_patient_medications(patient_id),
+                self._get_patient_observations(patient_id),
+                self._get_patient_encounters(patient_id),
+            )
+
             return {
                 "patient": self._normalize_patient(patient),
                 "conditions": conditions,
