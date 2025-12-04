@@ -140,9 +140,15 @@ cp .env.example .env
 ```env
 # FHIR Server Configuration
 FHIR_SERVER_URL=https://fhir.example.com/fhir
-FHIR_API_KEY=your-fhir-api-key
-FHIR_USERNAME=username
-FHIR_PASSWORD=password
+SMART_CLIENT_ID=your-smart-client-id
+SMART_CLIENT_SECRET=your-smart-client-secret
+SMART_SCOPE="system/*.read patient/*.read user/*.read"
+# Optional SMART overrides
+# SMART_AUTH_URL=https://ehr-authorize.example.com
+# SMART_TOKEN_URL=https://ehr-token.example.com
+# SMART_WELL_KNOWN=https://fhir.example.com/fhir/.well-known/smart-configuration
+# SMART_AUDIENCE=https://fhir.example.com/fhir
+# SMART_REFRESH_TOKEN=provided-refresh-token
 
 # LLM Configuration
 LLM_MODEL=gpt-4

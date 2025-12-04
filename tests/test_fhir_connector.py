@@ -6,8 +6,9 @@ from backend.fhir_connector import FHIRConnector
 
 
 class FakeResponse:
-    def __init__(self, data):
+    def __init__(self, data, status_code=200):
         self._data = data
+        self.status_code = status_code
 
     def json(self):
         return self._data
@@ -53,7 +54,7 @@ def test_get_patient_with_mocked_http(monkeypatch):
 
     connector = FHIRConnector(server_url="http://fake.fhir")
 
-    async def fake_get(url, params=None):
+    async def fake_get(url, params=None, headers=None):
         # Simple routing by path
         if url.endswith(f"/Patient/{patient.get('id')}") or "/Patient/" in url:
             return FakeResponse(patient)
@@ -68,7 +69,7 @@ def test_get_patient_with_mocked_http(monkeypatch):
         return FakeResponse({})
 
     class FakeSession:
-        get = staticmethod(fake_get)
+        request = staticmethod(lambda method, url, params=None, headers=None: fake_get(url, params=params, headers=headers))
 
     # Patch the connector's session.get
     monkeypatch.setattr(connector, "session", FakeSession())
