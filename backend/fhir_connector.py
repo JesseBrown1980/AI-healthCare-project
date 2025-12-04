@@ -6,6 +6,7 @@ Implements OAuth2 authentication and FHIR resource parsing
 
 import asyncio
 import logging
+import random
 import httpx
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -63,6 +64,65 @@ class FHIRConnector:
         self.use_proxies = use_proxies
         self.session: Optional[httpx.AsyncClient] = None
         self.session = self._initialize_session()
+
+    async def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        max_attempts: int = 4,
+        correlation_context: str = "",
+    ) -> httpx.Response:
+        """
+        Send an HTTP request with exponential backoff retries for transient failures.
+
+        Args:
+            method: HTTP method to use.
+            url: Full request URL.
+            params: Optional query parameters.
+            max_attempts: Maximum attempts to avoid thundering-herd issues.
+            correlation_context: Additional context for log correlation.
+        """
+
+        retryable_statuses = {429, 500, 502, 503, 504}
+        attempt = 1
+        while True:
+            try:
+                response = await self.session.request(method, url, params=params)
+                if response.status_code not in retryable_statuses:
+                    return response
+
+                reason = f"status {response.status_code}"
+            except (httpx.TimeoutException, httpx.RequestError) as exc:
+                response = None
+                reason = f"exception: {exc}"
+
+            if attempt >= max_attempts:
+                logger.warning(
+                    "Max attempts reached for %s (correlation=%s); last reason: %s",
+                    url,
+                    correlation_context,
+                    reason,
+                )
+                if response is not None:
+                    return response
+                raise
+
+            backoff = 0.5 * (2 ** (attempt - 1))
+            sleep_time = backoff + random.uniform(0, backoff / 2)
+            logger.info(
+                "Retrying %s %s (attempt %s/%s, correlation=%s) after %.2fs due to %s",
+                method,
+                url,
+                attempt + 1,
+                max_attempts,
+                correlation_context,
+                sleep_time,
+                reason,
+            )
+            attempt += 1
+            await asyncio.sleep(sleep_time)
         
     def _initialize_session(self) -> httpx.AsyncClient:
         """Initialize HTTP session with appropriate authentication"""
@@ -110,8 +170,10 @@ class FHIRConnector:
         """
         try:
             # Fetch Patient resource
-            patient_response = await self.session.get(
-                f"{self.server_url}/Patient/{patient_id}"
+            patient_response = await self._request_with_retry(
+                "GET",
+                f"{self.server_url}/Patient/{patient_id}",
+                correlation_context=f"patient_id={patient_id}",
             )
             patient_response.raise_for_status()
             patient = self._validate_patient_resource(patient_response.json())
@@ -154,12 +216,14 @@ class FHIRConnector:
     async def _get_patient_conditions(self, patient_id: str) -> List[Dict]:
         """Fetch patient's active conditions (diagnoses)"""
         try:
-            response = await self.session.get(
+            response = await self._request_with_retry(
+                "GET",
                 f"{self.server_url}/Condition",
                 params={
                     "patient": patient_id,
                     "clinical-status": "active"
-                }
+                },
+                correlation_context=f"patient_id={patient_id}",
             )
             response.raise_for_status()
             bundle = response.json()
@@ -178,12 +242,14 @@ class FHIRConnector:
         """Fetch patient's active medications"""
         try:
             # First get MedicationRequest resources
-            response = await self.session.get(
+            response = await self._request_with_retry(
+                "GET",
                 f"{self.server_url}/MedicationRequest",
                 params={
                     "patient": patient_id,
                     "status": "active"
-                }
+                },
+                correlation_context=f"patient_id={patient_id}",
             )
             response.raise_for_status()
             bundle = response.json()
@@ -201,13 +267,15 @@ class FHIRConnector:
     async def _get_patient_observations(self, patient_id: str, limit: int = 50) -> List[Dict]:
         """Fetch patient's lab results and vital signs"""
         try:
-            response = await self.session.get(
+            response = await self._request_with_retry(
+                "GET",
                 f"{self.server_url}/Observation",
                 params={
                     "patient": patient_id,
                     "_sort": "-date",
                     "_count": limit
-                }
+                },
+                correlation_context=f"patient_id={patient_id}",
             )
             response.raise_for_status()
             bundle = response.json()
@@ -225,13 +293,15 @@ class FHIRConnector:
     async def _get_patient_encounters(self, patient_id: str, limit: int = 20) -> List[Dict]:
         """Fetch patient's recent encounters (visits)"""
         try:
-            response = await self.session.get(
+            response = await self._request_with_retry(
+                "GET",
                 f"{self.server_url}/Encounter",
                 params={
                     "patient": patient_id,
                     "_sort": "-date",
                     "_count": limit
-                }
+                },
+                correlation_context=f"patient_id={patient_id}",
             )
             response.raise_for_status()
             bundle = response.json()
