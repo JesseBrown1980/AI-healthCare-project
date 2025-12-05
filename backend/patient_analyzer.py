@@ -283,6 +283,8 @@ class PatientAnalyzer:
         adherence_risk = min(0.9, adherence_risk)
         risk_scores["medication_non_adherence_risk"] = adherence_risk
 
+        # Explicit flag for downstream consumers that expect a boolean polypharmacy field
+        risk_scores["polypharmacy"] = polypharmacy
         risk_scores["polypharmacy_risk"] = polypharmacy
 
         return risk_scores
