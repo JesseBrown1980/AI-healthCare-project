@@ -15,7 +15,7 @@ import plotly.express as px
 API_URL = "http://localhost:8000/api/v1"
 st.set_page_config(
     page_title="Healthcare AI Assistant",
-    page_icon="🏥",
+    page_icon="🩺",  # Update to a base64 data URI for custom PNG if desired
     layout="wide",
     initial_sidebar_state="expanded"
 )
