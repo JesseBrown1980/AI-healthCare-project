@@ -25,13 +25,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import core modules (to be implemented)
-from fhir_connector import FHIRConnector
+from fhir_connector import FHIRConnector, FHIRConnectorError
 from llm_engine import LLMEngine
 from rag_fusion import RAGFusion
 from s_lora_manager import SLoRAManager
 from mlc_learning import MLCLearning
 from aot_reasoner import AoTReasoner
 from patient_analyzer import PatientAnalyzer
+from notifier import Notifier
 
 # Global instances
 fhir_connector = None
@@ -41,6 +42,7 @@ s_lora_manager = None
 mlc_learning = None
 aot_reasoner = None
 patient_analyzer = None
+notifier = None
 audit_service = None
 
 
@@ -53,7 +55,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Healthcare AI Assistant...")
     try:
         global fhir_connector, llm_engine, rag_fusion, s_lora_manager, mlc_learning, aot_reasoner, patient_analyzer
-        global audit_service
+        global audit_service, notifier
         
         # Initialize core components
         logger.info("Loading FHIR Connector...")
@@ -109,6 +111,9 @@ async def lifespan(app: FastAPI):
             aot_reasoner=aot_reasoner,
             mlc_learning=mlc_learning
         )
+
+        logger.info("Loading Notifier...")
+        notifier = Notifier()
 
         logger.info("Initializing Audit Service...")
         audit_service = AuditService(fhir_connector=fhir_connector)
@@ -179,6 +184,7 @@ async def analyze_patient(
     fhir_patient_id: str,
     include_recommendations: bool = True,
     specialty: Optional[str] = None,
+    notify: bool = False,
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
@@ -216,6 +222,9 @@ async def analyze_patient(
                 specialty=specialty
             )
 
+        if notify and notifier:
+            await notifier.send(result, correlation_id=correlation_id)
+
         if audit_service:
             await audit_service.record_event(
                 action="E",
@@ -228,9 +237,29 @@ async def analyze_patient(
                 include_provenance=True,
                 provenance_activity="patient-analysis",
             )
-
         return result
 
+    except FHIRConnectorError as exc:
+        logger.error(
+            "FHIR connector error during analysis [%s]: %s", correlation_id, exc.message
+        )
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=fhir_patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=exc.message,
+                event_type="analyze",
+            )
+        error_payload = {
+            "status": "error",
+            "error_type": exc.error_type,
+            "message": exc.message,
+            "correlation_id": exc.correlation_id or correlation_id,
+        }
+        return JSONResponse(status_code=502, content=error_payload)
     except HTTPException as exc:
         if audit_service:
             await audit_service.record_event(
@@ -305,6 +334,27 @@ async def get_patient_fhir(
             "data": patient_data
         }
 
+    except FHIRConnectorError as exc:
+        logger.error(
+            "FHIR connector error fetching patient [%s]: %s", correlation_id, exc.message
+        )
+        if audit_service:
+            await audit_service.record_event(
+                action="R",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=exc.message,
+                event_type="read",
+            )
+        error_payload = {
+            "status": "error",
+            "error_type": exc.error_type,
+            "message": exc.message,
+            "correlation_id": exc.correlation_id or correlation_id,
+        }
+        return JSONResponse(status_code=502, content=error_payload)
     except HTTPException as exc:
         if audit_service:
             await audit_service.record_event(

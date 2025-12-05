@@ -125,6 +125,29 @@ helm install healthcare-ai ./k8s/healthcare-ai-chart \
   --values ./k8s/values.yaml
 ```
 
+### Method 4: Desktop Wrapper (PyWebview)
+
+Create a native-feeling desktop window that loads the Streamlit frontend served on `http://localhost:3000` and uses the healthcare icon at `desktop/icon.png` for native launchers.
+
+```bash
+# Install desktop dependencies
+pip install pywebview
+
+# Start the frontend (from the frontend/ directory)
+streamlit run app.py --server.port 3000
+
+# Launch the desktop shell
+python desktop/app.py
+
+# Bundle as an executable with the desktop icon
+pyinstaller --onefile --noconsole --icon desktop/icon.png desktop/app.py
+
+# Place a shortcut on the user's Desktop
+cp dist/app "$HOME/Desktop/HealthcareAI"
+```
+
+> Ensure the Streamlit frontend is running before launching or packaging the desktop wrapper so it can load the UI at startup.
+
 ---
 
 ## Configuration
@@ -160,6 +183,7 @@ HOST=0.0.0.0
 PORT=8000
 DEBUG=False
 LOG_LEVEL=INFO
+NOTIFICATION_URL=https://your-app.example.com/patient-callback
 
 # Database
 DATABASE_URL=sqlite:///./healthcare_ai.db
@@ -184,6 +208,10 @@ CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
 Contact your healthcare IT department for:
 - FHIR server URL
 - API credentials or OAuth2 configuration
+
+#### Cross-application notifications
+- Set `NOTIFICATION_URL` to an HTTPS endpoint that should receive patient analysis results via POST.
+- The backend will attach `X-Correlation-ID` headers for traceability.
 
 ---
 

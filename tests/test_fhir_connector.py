@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+
 from backend.fhir_connector import FHIRConnector
 
 
@@ -25,6 +26,68 @@ class FakeResponse:
 def _load(path_parts):
     p = Path(__file__).parent.joinpath(*path_parts)
     return json.loads(p.read_text())
+
+
+@pytest.mark.anyio
+async def test_paginated_observations(monkeypatch):
+    connector = FHIRConnector(server_url="http://fake.fhir")
+    first_bundle = {
+        "entry": [
+            {"resource": {"id": "o1", "code": {"coding": [{"display": "BP"}]}, "valueQuantity": {"value": 120}}}
+        ],
+        "link": [
+            {"relation": "next", "url": "http://fake.fhir/Observation?page=2"}
+        ],
+    }
+    second_bundle = {
+        "entry": [
+            {"resource": {"id": "o2", "code": {"coding": [{"display": "Pulse"}]}, "valueQuantity": {"value": 80}}}
+        ]
+    }
+    calls = {"count": 0}
+
+    async def fake_request(method, url, params=None, correlation_context=""):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return FakeResponse(first_bundle)
+        return FakeResponse(second_bundle)
+
+    monkeypatch.setattr(connector, "_request_with_retry", fake_request)
+    observations = await connector._get_patient_observations("p1", limit=1)
+
+    assert len(observations) == 2
+    assert {obs["id"] for obs in observations} == {"o1", "o2"}
+    assert calls["count"] == 2
+
+
+@pytest.mark.anyio
+async def test_patient_cache_and_invalidation(monkeypatch):
+    connector = FHIRConnector(server_url="http://fake.fhir", cache_ttl_seconds=60)
+    patient_resource = {"id": "p-cache", "name": [{"given": ["Pat"], "family": "Cache"}]}
+    calls = {"patient": 0}
+
+    async def fake_request(method, url, params=None, correlation_context=""):
+        if "Patient" in url:
+            calls["patient"] += 1
+            return FakeResponse(patient_resource)
+        return FakeResponse({"entry": []})
+
+    async def stubbed(*args, **kwargs):  # pragma: no cover - helper stub
+        return []
+
+    monkeypatch.setattr(connector, "_request_with_retry", fake_request)
+    monkeypatch.setattr(connector, "_get_patient_conditions", stubbed)
+    monkeypatch.setattr(connector, "_get_patient_medications", stubbed)
+    monkeypatch.setattr(connector, "_get_patient_observations", stubbed)
+    monkeypatch.setattr(connector, "_get_patient_encounters", stubbed)
+
+    await connector.get_patient("p-cache")
+    await connector.get_patient("p-cache")
+    assert calls["patient"] == 1
+
+    connector.invalidate_cache("p-cache")
+    await connector.get_patient("p-cache")
+    assert calls["patient"] == 2
 
 
 def test_normalize_patient_and_stats():
