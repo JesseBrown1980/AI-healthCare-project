@@ -46,16 +46,18 @@ class FHIRConnectorError(Exception):
         self,
         message: str,
         *,
+        error_type: str = "fhir_connector_error",
         status_code: Optional[int] = None,
         correlation_id: str = "",
     ) -> None:
         super().__init__(message)
         self.message = message
+        self.error_type = error_type
         self.status_code = status_code
         self.correlation_id = correlation_id
 
     def __str__(self) -> str:  # pragma: no cover - simple representation
-        parts = [self.message]
+        parts = [f"{self.error_type}: {self.message}"]
         if self.status_code is not None:
             parts.append(f"status={self.status_code}")
         if self.correlation_id:
@@ -249,6 +251,7 @@ class FHIRConnector:
                 status_code = response.status_code if response is not None else None
                 raise FHIRConnectorError(
                     f"Request to {url} failed after {max_attempts} attempts: {reason}",
+                    error_type="request_failed",
                     status_code=status_code,
                     correlation_id=correlation_context,
                 )
@@ -701,6 +704,7 @@ class FHIRConnector:
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             raise FHIRConnectorError(
                 f"Error fetching patient {patient_id}: {str(e)}",
+                error_type="patient_fetch_failed",
                 status_code=status_code,
                 correlation_id=patient_id,
             ) from e
@@ -756,6 +760,7 @@ class FHIRConnector:
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             raise FHIRConnectorError(
                 f"Failed to fetch conditions for {patient_id}: {str(e)}",
+                error_type="conditions_fetch_failed",
                 status_code=status_code,
                 correlation_id=patient_id,
             ) from e
@@ -799,6 +804,7 @@ class FHIRConnector:
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             raise FHIRConnectorError(
                 f"Failed to fetch medications for {patient_id}: {str(e)}",
+                error_type="medications_fetch_failed",
                 status_code=status_code,
                 correlation_id=patient_id,
             ) from e
@@ -842,6 +848,7 @@ class FHIRConnector:
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             raise FHIRConnectorError(
                 f"Failed to fetch observations for {patient_id}: {str(e)}",
+                error_type="observations_fetch_failed",
                 status_code=status_code,
                 correlation_id=patient_id,
             ) from e
@@ -885,6 +892,7 @@ class FHIRConnector:
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             raise FHIRConnectorError(
                 f"Failed to fetch encounters for {patient_id}: {str(e)}",
+                error_type="encounters_fetch_failed",
                 status_code=status_code,
                 correlation_id=patient_id,
             ) from e

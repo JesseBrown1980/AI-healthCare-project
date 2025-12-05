@@ -158,7 +158,7 @@ class PatientAnalyzer:
             return {
                 "patient_id": patient_id,
                 "status": "error",
-                "error_type": "FHIRConnectorError",
+                "error_type": e.error_type,
                 "message": e.message,
                 "correlation_id": e.correlation_id,
                 "timestamp": datetime.now().isoformat(),
@@ -243,45 +243,50 @@ class PatientAnalyzer:
         """Calculate various clinical risk scores"""
         risk_scores = {}
 
-        # Cardiovascular risk (simplified)
-        cv_risk = 0.2  # Base
+        def _normalize(score: float) -> float:
+            return max(0.0, min(1.0, score))
+
+        patient_info = patient_data.get("patient", {})
+        age = self._calculate_age(patient_info.get("birthDate"))
+        age_factor = _normalize((age or 0) / 100)
+
         conditions = [c.get("code", "").lower() for c in patient_data.get("conditions", [])]
         medication_count = len(patient_data.get("medications", []))
         polypharmacy = medication_count > 10
-        med_burden_factor = min(0.1, medication_count * 0.01)
+        med_burden_factor = min(0.2, medication_count * 0.02)
 
+        # Cardiovascular risk considers age, hypertension/diabetes/smoking, and medication load
+        cv_risk = 0.15 + (0.35 * age_factor)
         if any("hypertension" in c for c in conditions):
-            cv_risk += 0.15
+            cv_risk += 0.2
         if any("diabetes" in c for c in conditions):
-            cv_risk += 0.20
+            cv_risk += 0.2
         if any("smoke" in c for c in conditions):
-            cv_risk += 0.25
-
+            cv_risk += 0.2
         cv_risk += med_burden_factor
         if polypharmacy:
             cv_risk += 0.1
 
-        risk_scores["cardiovascular_risk"] = min(0.95, cv_risk)
+        risk_scores["cardiovascular_risk"] = _normalize(cv_risk)
 
-        # Hospital readmission risk
-        recent_encounters = len([e for e in patient_data.get("encounters", [])
-                                 if e.get("status") in ["finished", "completed"]])
-        readmit_risk = 0.1 + (recent_encounters * 0.05)
-        readmit_risk += min(0.15, medication_count * 0.015)
+        # Hospital readmission risk values are normalized and weight encounter history
+        recent_encounters = len(
+            [e for e in patient_data.get("encounters", []) if e.get("status") in ["finished", "completed"]]
+        )
+        readmit_risk = 0.12 + (0.25 * age_factor)
+        readmit_risk += min(0.25, recent_encounters * 0.05)
+        readmit_risk += min(0.25, medication_count * 0.02)
         if polypharmacy:
             readmit_risk += 0.1
 
-        readmit_risk = min(0.9, readmit_risk)
-        risk_scores["readmission_risk"] = readmit_risk
+        risk_scores["readmission_risk"] = _normalize(readmit_risk)
 
-        # Medication adherence risk
-        med_complexity = medication_count
-        adherence_risk = 0.1 + (med_complexity * 0.05)
+        # Medication adherence risk accounts for regimen complexity and age-related adherence challenges
+        adherence_risk = 0.1 + (0.3 * age_factor) + min(0.35, medication_count * 0.03)
         if polypharmacy:
-            adherence_risk += 0.1
+            adherence_risk += 0.15
 
-        adherence_risk = min(0.9, adherence_risk)
-        risk_scores["medication_non_adherence_risk"] = adherence_risk
+        risk_scores["medication_non_adherence_risk"] = _normalize(adherence_risk)
 
         # Explicit flag for downstream consumers that expect a boolean polypharmacy field
         risk_scores["polypharmacy"] = polypharmacy

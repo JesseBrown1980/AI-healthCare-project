@@ -8,6 +8,11 @@
 
 A state-of-the-art **AI-driven healthcare application** that intelligently bridges electronic health record (EHR) systems with clinical decision support. Built with cutting-edge techniques including S-LoRA adaptation, Meta-Learning for Compositionality (MLC), Retrieval-Augmented Generation (RAG-Fusion), and Algorithm of Thought (AoT) reasoning.
 
+### Latest Enhancements
+- Cross-application notifications: optional webhook delivery of patient-analysis results via `NOTIFICATION_URL`.
+- Refined risk scoring: age-aware, polypharmacy-sensitive normalization with explicit polypharmacy flags.
+- Desktop packaging: PyWebview wrapper with a healthcare desktop icon for a native launcher alongside Streamlit.
+
 ### Key Metrics
 - **Lines of Code**: ~4,500+
 - **Modules**: 10 core backend modules
