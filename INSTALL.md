@@ -63,6 +63,8 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
+We now depend on `httpx[socks]` and `python-socks` to enable SOCKS proxy handling. These packages will be installed automatically when running `pip install -r requirements.txt`. After pulling the latest changes, rerun `pip install -r requirements.txt` to ensure the new dependencies are present.
+
 # Setup frontend
 cd ../frontend
 python -m venv venv_frontend
