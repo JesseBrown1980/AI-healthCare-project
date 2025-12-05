@@ -148,6 +148,11 @@ cp dist/app "$HOME/Desktop/HealthcareAI"
 
 > Ensure the Streamlit frontend is running before launching or packaging the desktop wrapper so it can load the UI at startup.
 
+## Packaging
+
+- Upload your chosen icon file as `desktop/icon.png` **before** running PyInstaller so the desktop wrapper can include it in the executable. Codex cannot add binary assets, so perform this upload manually via the GitHub web UI or another Git client.
+- When invoking PyInstaller, point the `--icon` flag to `desktop/icon.png` to bundle your custom icon with the executable.
+
 ---
 
 ## Configuration
