@@ -84,6 +84,7 @@ class FHIRConnector:
         refresh_token: Optional[str] = None,
         use_proxies: bool = True,
         cache_ttl: Optional[int] = 300,
+        cache_ttl_seconds: Optional[int] = None,
     ):
         """
         Initialize FHIR connector
@@ -124,10 +125,12 @@ class FHIRConnector:
         self.code_verifier: Optional[str] = None
         self.code_challenge: Optional[str] = None
         self.code_challenge_method: str = "S256"
+        ttl_seconds = cache_ttl if cache_ttl_seconds is None else cache_ttl_seconds
         self.cache_ttl: Optional[timedelta] = (
-            timedelta(seconds=cache_ttl) if cache_ttl is not None else None
+            timedelta(seconds=ttl_seconds) if ttl_seconds is not None else None
         )
         self._cache: Dict[str, Dict[str, Any]] = {}
+        self._patient_cache: Dict[str, Dict[str, Any]] = {}
 
         self.well_known_url = (
             well_known_url
@@ -357,10 +360,15 @@ class FHIRConnector:
 
     def _cache_patient(self, patient_id: str, data: Dict[str, Any]) -> None:
         """Persist patient data with an expiry."""
+        expires_at = (
+            datetime.max.replace(tzinfo=timezone.utc)
+            if self.cache_ttl is None
+            else datetime.now(timezone.utc) + self.cache_ttl
+        )
 
         self._patient_cache[patient_id] = {
             "data": data,
-            "expires_at": datetime.now(timezone.utc) + self.cache_ttl,
+            "expires_at": expires_at,
         }
 
     def _generate_pkce_pair(self) -> Tuple[str, str]:
@@ -646,14 +654,9 @@ class FHIRConnector:
             Parsed patient data including demographics, active conditions, medications
         """
         try:
-            cached = self._cache.get(patient_id)
+            cached = self._get_cached_patient(patient_id)
             if cached:
-                if self.cache_ttl is None:
-                    return cached["data"]
-
-                age = datetime.now(timezone.utc) - cached["fetched_at"]
-                if age <= self.cache_ttl:
-                    return cached["data"]
+                return cached
 
             await self._ensure_valid_token()
             self._require_scopes("Patient")
@@ -689,10 +692,7 @@ class FHIRConnector:
                 "fetched_at": fetched_at.isoformat(),
             }
 
-            self._cache[patient_id] = {
-                "data": patient_data,
-                "fetched_at": fetched_at,
-            }
+            self._cache_patient(patient_id, patient_data)
 
             return patient_data
 
@@ -707,12 +707,7 @@ class FHIRConnector:
 
     def invalidate_cache(self, patient_id: Optional[str] = None) -> None:
         """Invalidate cached patient data."""
-
-        if patient_id is None:
-            self._cache.clear()
-            return
-
-        self._cache.pop(patient_id, None)
+        self.invalidate_patient_cache(patient_id)
 
     def _validate_patient_resource(self, fhir_patient: Dict[str, Any]) -> Dict[str, Any]:
         """Validate incoming patient resource using FHIR resource models."""
