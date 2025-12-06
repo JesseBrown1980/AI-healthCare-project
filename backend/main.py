@@ -3,7 +3,7 @@ Healthcare AI Assistant - Main Application Entry Point
 Integrates FHIR data with advanced AI techniques (S-LoRA, MLC, RAG, AoT)
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -61,6 +61,7 @@ async def lifespan(app: FastAPI):
         logger.info("Loading FHIR Connector...")
         fhir_connector = FHIRConnector(
             server_url=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir"),
+            vendor=os.getenv("EHR_VENDOR", "generic"),
             client_id=os.getenv("SMART_CLIENT_ID", ""),
             client_secret=os.getenv("SMART_CLIENT_SECRET", ""),
             scope=os.getenv(
@@ -164,17 +165,32 @@ async def add_correlation_id(request: Request, call_next):
 
 # ==================== API ENDPOINTS ====================
 
+def get_vendor_override(request: Request, default: str = "generic") -> str:
+    """Resolve vendor preference from query parameters or a default value."""
+
+    vendor_param = request.query_params.get("vendor")
+    if vendor_param:
+        return vendor_param.lower()
+    return default
+
+
 @app.get("/api/v1/health")
 async def health_check(
+    request: Request,
+    vendor: Optional[str] = Query(None, description="Target EHR vendor"),
     auth: TokenContext = Depends(auth_dependency())
 ):
     """
     Health check endpoint
     """
+    selected_vendor = get_vendor_override(
+        request, default=vendor or os.getenv("EHR_VENDOR", "generic")
+    )
     return {
         "status": "healthy",
         "service": "Healthcare AI Assistant",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "vendor": selected_vendor,
     }
 
 
