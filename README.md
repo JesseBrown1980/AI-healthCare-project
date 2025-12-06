@@ -113,6 +113,9 @@ Live knowledge integration ensures cutting-edge medical information:
    cp .env.example .env
    # Edit .env with your FHIR server URL, API keys, etc.
    ```
+   - **Epic USCDI sandbox**: Create a free developer account and register a SMART-on-FHIR app at the [Epic on FHIR](https://fhir.epic.com/Documentation?docId=sandbox) portal. Copy your `client_id`/`client_secret`, set `EPIC_FHIR_BASE_URL`/`EPIC_SMART_AUTH_URL`/`EPIC_SMART_TOKEN_URL` from the example defaults in `.env`, and use your app credentials for `SMART_CLIENT_ID`/`SMART_CLIENT_SECRET`.
+   - **Cerner sandbox**: Sign up for an account in the [Oracle Health (Cerner) code console](https://code.cerner.com/developer/smart-on-fhir/). Register a SMART app, capture your `client_id`/`client_secret`, and replace `YOUR_TENANT_ID` in the Cerner `CERNER_SMART_*` URLs in `.env` with the tenant ID assigned to your sandbox project.
+   - **General SMART overrides**: If your EHR provides a `.well-known/smart-configuration` endpoint, leave `SMART_AUTH_URL` and `SMART_TOKEN_URL` blank. The connector automatically discovers authorization/token URLs from `SMART_WELL_KNOWN` (or from `{FHIR_SERVER_URL}/.well-known/smart-configuration` and vendor presets) when explicit overrides are not provided.
 
 4. **Start the backend server**
    ```bash
