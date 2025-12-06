@@ -920,6 +920,7 @@ class FHIRConnector:
     
     def _normalize_patient(self, fhir_patient: Dict) -> Dict:
         """Normalize FHIR Patient resource"""
+        fhir_patient = self._normalize_vendor_extensions(fhir_patient)
         return {
             "id": fhir_patient.get("id"),
             "name": self._get_name(fhir_patient),
@@ -933,6 +934,7 @@ class FHIRConnector:
     
     def _normalize_condition(self, fhir_condition: Dict) -> Dict:
         """Normalize FHIR Condition resource"""
+        fhir_condition = self._normalize_vendor_extensions(fhir_condition)
         return {
             "id": fhir_condition.get("id"),
             "code": fhir_condition.get("code", {}).get("coding", [{}])[0].get("display"),
@@ -945,6 +947,7 @@ class FHIRConnector:
     
     def _normalize_medication(self, fhir_med_request: Dict) -> Dict:
         """Normalize FHIR MedicationRequest resource"""
+        fhir_med_request = self._normalize_vendor_extensions(fhir_med_request)
         return {
             "id": fhir_med_request.get("id"),
             "medication": fhir_med_request.get("medicationCodeableConcept", {}).get("coding", [{}])[0].get("display"),
@@ -957,8 +960,9 @@ class FHIRConnector:
     
     def _normalize_observation(self, fhir_observation: Dict) -> Dict:
         """Normalize FHIR Observation resource (labs, vitals)"""
+        fhir_observation = self._normalize_vendor_extensions(fhir_observation)
         value = fhir_observation.get("valueQuantity", {})
-        
+
         return {
             "id": fhir_observation.get("id"),
             "code": fhir_observation.get("code", {}).get("coding", [{}])[0].get("display"),
@@ -973,6 +977,7 @@ class FHIRConnector:
     
     def _normalize_encounter(self, fhir_encounter: Dict) -> Dict:
         """Normalize FHIR Encounter resource"""
+        fhir_encounter = self._normalize_vendor_extensions(fhir_encounter)
         period = fhir_encounter.get("period", {})
         return {
             "id": fhir_encounter.get("id"),
@@ -1004,6 +1009,76 @@ class FHIRConnector:
             "authenticated": bool(self.access_token or self.granted_scopes),
             "status": "connected"
         }
+
+    def _normalize_vendor_extensions(self, resource: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Strip vendor-specific extensions while retaining useful metadata.
+
+        Epic and Cerner sometimes include proprietary extension URLs that are not
+        portable. To avoid leaking those into our normalized payloads, this helper
+        removes vendor URLs from the public ``extension`` array and captures them in
+        a vendor-only ``_vendorExtensions`` field. The ``_vendorExtensions`` field is
+        *not* part of the FHIR spec; it is an internal dictionary so callers can
+        reference vendor metadata without coupling to proprietary URLs.
+        """
+
+        if not resource:
+            return resource
+
+        extensions = resource.get("extension") or []
+        if not extensions:
+            return resource
+
+        vendor_hosts = (
+            "open.epic.com",
+            "fhir.epic.com",
+            "fhir-ehr.cerner.com",
+            "fhir.cerner.com",
+        )
+
+        retained_extensions: List[Dict[str, Any]] = []
+        vendor_extensions: List[Dict[str, Any]] = []
+
+        for extension in extensions:
+            url = extension.get("url", "")
+            if any(host in url for host in vendor_hosts):
+                vendor_extensions.append(
+                    {
+                        "url": url,
+                        "vendor": "epic"
+                        if "epic" in url
+                        else "cerner"
+                        if "cerner" in url
+                        else "unknown",
+                        "value": self._extract_extension_value(extension),
+                    }
+                )
+                continue
+
+            retained_extensions.append(extension)
+
+        if not vendor_extensions:
+            return resource
+
+        normalized = dict(resource)
+        normalized["extension"] = retained_extensions
+        # _vendorExtensions is an internal field that surfaces vendor metadata
+        # without leaking proprietary URLs into the normalized resource payloads.
+        normalized["_vendorExtensions"] = vendor_extensions
+        return normalized
+
+    def _extract_extension_value(self, extension: Dict[str, Any]) -> Any:
+        """Return the most meaningful value from an extension structure."""
+
+        for key, value in extension.items():
+            if key.startswith("value") and key != "valueReference":
+                return value
+
+        nested_extensions = extension.get("extension") or []
+        if nested_extensions:
+            return [self._extract_extension_value(ext) for ext in nested_extensions]
+
+        return None
 
     async def aclose(self) -> None:
         """Cleanup session asynchronously"""
