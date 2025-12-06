@@ -8,6 +8,7 @@ import asyncio
 import base64
 import hashlib
 import logging
+import os
 import random
 import secrets
 import urllib.parse
@@ -76,6 +77,7 @@ class FHIRConnector:
         self,
         server_url: str,
         *,
+        vendor: Optional[str] = None,
         client_id: str = "",
         client_secret: str = "",
         scope: str = "system/*.read patient/*.read user/*.read",
@@ -93,6 +95,8 @@ class FHIRConnector:
 
         Args:
             server_url: FHIR server base URL
+            vendor: Optional vendor preset (e.g., "epic" or "cerner") to load
+                vendor-specific endpoints from environment variables
             client_id: SMART-on-FHIR client ID for OAuth 2.0
             client_secret: Confidential client secret for token exchange
             scope: Space-delimited SMART scopes to request
@@ -104,7 +108,22 @@ class FHIRConnector:
             use_proxies: Whether to honor proxy settings from environment variables
             cache_ttl: Cache time-to-live for patient data in seconds (None disables expiration)
         """
-        self.server_url = server_url.rstrip("/")
+        self.vendor = vendor.lower() if vendor else None
+
+        vendor_server_url = server_url
+        vendor_auth_url = auth_url
+        vendor_token_url = token_url
+
+        if self.vendor == "epic":
+            vendor_server_url = os.getenv("EPIC_FHIR_BASE_URL", vendor_server_url)
+            vendor_auth_url = os.getenv("EPIC_SMART_AUTH_URL", vendor_auth_url)
+            vendor_token_url = os.getenv("EPIC_SMART_TOKEN_URL", vendor_token_url)
+        elif self.vendor == "cerner":
+            vendor_server_url = os.getenv("CERNER_FHIR_BASE_URL", vendor_server_url)
+            vendor_auth_url = os.getenv("CERNER_SMART_AUTH_URL", vendor_auth_url)
+            vendor_token_url = os.getenv("CERNER_SMART_TOKEN_URL", vendor_token_url)
+
+        self.server_url = (vendor_server_url or server_url).rstrip("/")
         self.client_id = client_id
         self.client_secret = client_secret
         self.scope = scope
@@ -113,8 +132,8 @@ class FHIRConnector:
         self.use_proxies = use_proxies
         self.session: Optional[httpx.AsyncClient] = None
         self.discovery_document: Dict[str, Any] = {}
-        self.auth_url = auth_url
-        self.token_url = token_url
+        self.auth_url = vendor_auth_url
+        self.token_url = vendor_token_url
         self.access_token: Optional[str] = None
         self.granted_scopes: Set[str] = set()
         self.token_expires_at: Optional[datetime] = None
