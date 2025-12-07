@@ -768,6 +768,8 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     conditions.append(self._normalize_condition(resource))
 
+                # FHIR servers may return relative next links; _resolve_next_link makes
+                # them absolute before the next request.
                 bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
@@ -812,6 +814,8 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     medications.append(self._normalize_medication(resource))
 
+                # FHIR servers may return relative next links; _resolve_next_link makes
+                # them absolute before the next request.
                 bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
@@ -856,6 +860,8 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     observations.append(self._normalize_observation(resource))
 
+                # FHIR servers may return relative next links; _resolve_next_link makes
+                # them absolute before the next request.
                 bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
@@ -900,6 +906,8 @@ class FHIRConnector:
                     resource = entry.get("resource", {})
                     encounters.append(self._normalize_encounter(resource))
 
+                # FHIR servers may return relative next links; _resolve_next_link makes
+                # them absolute before the next request.
                 bundle_url = self._resolve_next_link(bundle)
                 request_params = None
 
