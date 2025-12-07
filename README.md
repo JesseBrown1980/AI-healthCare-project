@@ -131,6 +131,14 @@ Live knowledge integration ensures cutting-edge medical information:
    # UI available at http://localhost:3000
    ```
 
+6. **Run the mobile app**
+   ```bash
+   cd ../mobile
+   npm install
+   npm start
+   # Requires Node.js 16+; Metro server starts for the mobile client
+   ```
+
 ### Docker Deployment
 
 ```bash
@@ -139,6 +147,23 @@ docker-compose up -d
 
 # Access at http://localhost:3000
 ```
+
+---
+
+## 📲 Mobile Notifications and Device Registration
+
+- **Endpoint**: `POST /api/v1/register-device`
+  - Registers a mobile device token for push notifications.
+  - Request body (JSON):
+    - `device_token` (string): FCM device token provided by the mobile client.
+    - `platform` (string): Mobile platform identifier (e.g., `ios`, `android`).
+  - Response: `{ "status": "registered", "device": { ... } }` when the device is tracked for notifications.
+  - Requires authentication using the same token scheme as other protected API routes.
+- **Environment variables**:
+  - `FCM_SERVER_KEY`: Server key from Firebase Cloud Messaging used to authorize push notification delivery.
+  - `NOTIFICATION_URL`: Optional callback URL to receive notification payloads in parallel with FCM (left empty to disable).
+
+Set `FCM_SERVER_KEY` in the backend environment to enable delivery to registered devices; without it, the service will skip FCM sends and log that no destination is configured.
 
 ---
 
