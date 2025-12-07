@@ -275,8 +275,6 @@ async def analyze_patient(
             )
 
         if notify and notifier:
-            await notifier.send(result, correlation_id=correlation_id)
-
             alerts = result.get("alerts") or []
             alert_count = result.get("alert_count")
             if alert_count is None:
@@ -300,6 +298,23 @@ async def analyze_patient(
 
             push_body = f"Patient {fhir_patient_id}: {alert_count} alerts{risk_summary}"
             deep_link = f"healthcareai://patients/{fhir_patient_id}/analysis"
+
+            notification_payload = {
+                "patient_id": fhir_patient_id,
+                "alert_count": alert_count,
+                "risk_scores": risk_scores,
+                "top_risk": {
+                    "name": top_risk_name,
+                    "value": top_risk_value,
+                }
+                if top_risk_name is not None and top_risk_value is not None
+                else None,
+                "deep_link": deep_link,
+                "correlation_id": correlation_id,
+                "analysis": result,
+            }
+
+            await notifier.send(notification_payload, correlation_id=correlation_id)
 
             await notifier.send_push_notification(
                 title="Patient analysis ready",
