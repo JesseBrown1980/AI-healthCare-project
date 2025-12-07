@@ -356,6 +356,10 @@ pytest tests/integration/ -v
 
 # Run with coverage
 pytest --cov=backend tests/
+
+# Validate notification flows
+pytest tests/test_notifications.py -k analyze_patient_sends_notifications
+pytest tests/test_notifications.py -k register_device_stores_tokens
 ```
 
 ---
