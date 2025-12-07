@@ -5,10 +5,12 @@ Implements online learning strategies for personalization
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Hashable
 import json
 from datetime import datetime
 from collections import defaultdict
+
+from backend.rl_agent import MLCRLAgent
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +36,10 @@ class MLCLearning:
         self.learned_components: Dict[str, Dict] = {}
         self.query_outcomes: Dict[str, List[Dict]] = defaultdict(list)
         self.personalization_profiles: Dict[str, Dict] = {}
-        
+
         self._initialize_components()
-        
+        self._initialize_rl_agent()
+
         logger.info("MLC Learning system initialized")
     
     def _initialize_components(self):
@@ -99,7 +102,7 @@ class MLCLearning:
             Update summary
         """
         logger.info(f"Processing {feedback_type} feedback for query {query_id}")
-        
+
         try:
             feedback_record = {
                 "query_id": query_id,
@@ -109,15 +112,36 @@ class MLCLearning:
                 "timestamp": datetime.now().isoformat(),
                 "processed": False
             }
-            
+
             self.feedback_history.append(feedback_record)
-            
+
+            components_used = components_used or []
+            state = self._build_state_signature(components_used)
+            action = tuple(sorted(components_used))
+            reward = self._compute_reward(feedback_type)
+
             # Update component performance based on feedback
             update_summary = await self._update_component_performance(
-                components_used or [],
+                components_used,
                 feedback_type
             )
-            
+
+            next_state = self._build_state_signature(components_used)
+            self.rl_agent.update_policy(
+                state=state,
+                action=action,
+                reward=reward,
+                next_state=next_state,
+                done=False,
+            )
+            logger.info(
+                "RL update applied | state=%s | action=%s | reward=%.2f | next_state=%s",
+                state,
+                action,
+                reward,
+                next_state,
+            )
+
             # Generate personalization insights
             if components_used:
                 self.query_outcomes[components_used[0]].append({
@@ -326,7 +350,7 @@ class MLCLearning:
             insights["improvement_rate"] = positive_recent / 10
         
         return insights
-    
+
     def get_stats(self) -> Dict:
         """Get MLC system statistics"""
         return {
@@ -338,3 +362,39 @@ class MLCLearning:
             ) / max(len(self.learned_components), 1),
             "learning_rate": self.learning_rate
         }
+
+    def _initialize_rl_agent(self) -> None:
+        """Initialize the reinforcement learning agent for component composition."""
+        base_actions = [tuple([comp]) for comp in self.learned_components.keys()]
+        self.rl_agent = MLCRLAgent(actions=base_actions, learning_rate=0.1, discount_factor=0.9)
+        logger.info(
+            "Initialized RL agent with %d base actions for %d components",
+            len(base_actions),
+            len(self.learned_components),
+        )
+
+    def _build_state_signature(self, components: List[str]) -> Hashable:
+        """Create a hashable state representation for RL updates.
+
+        The state captures which components were involved and their average
+        performance prior to an update to provide context for the reward signal.
+        """
+        if not components:
+            return ("no_components", 0.0)
+
+        performances: List[float] = [
+            self.learned_components.get(comp, {}).get("performance", 0.0)
+            for comp in components
+        ]
+        avg_performance = sum(performances) / max(len(performances), 1)
+        return (tuple(sorted(components)), round(avg_performance, 4))
+
+    @staticmethod
+    def _compute_reward(feedback_type: str) -> float:
+        """Map feedback types to reinforcement learning rewards."""
+        reward_mapping = {
+            "positive": 1.0,
+            "negative": -1.0,
+            "correction": -0.5,
+        }
+        return reward_mapping.get(feedback_type, 0.0)
