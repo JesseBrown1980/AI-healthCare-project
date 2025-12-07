@@ -277,6 +277,37 @@ async def analyze_patient(
         if notify and notifier:
             await notifier.send(result, correlation_id=correlation_id)
 
+            alerts = result.get("alerts") or []
+            alert_count = result.get("alert_count")
+            if alert_count is None:
+                alert_count = len(alerts) if isinstance(alerts, list) else 0
+
+            risk_scores = result.get("risk_scores") or {}
+            top_risk_name = None
+            top_risk_value = None
+            for risk_name, risk_value in risk_scores.items():
+                if isinstance(risk_value, (int, float)) and (
+                    top_risk_value is None or risk_value > top_risk_value
+                ):
+                    top_risk_name = risk_name
+                    top_risk_value = risk_value
+
+            risk_summary = (
+                f", top risk {top_risk_name.replace('_', ' ')} {top_risk_value:.2f}"
+                if top_risk_name is not None and top_risk_value is not None
+                else ""
+            )
+
+            push_body = f"Patient {fhir_patient_id}: {alert_count} alerts{risk_summary}"
+            deep_link = f"healthcareai://patients/{fhir_patient_id}/analysis"
+
+            await notifier.send_push_notification(
+                title="Patient analysis ready",
+                body=push_body,
+                deep_link=deep_link,
+                correlation_id=correlation_id,
+            )
+
         if audit_service:
             await audit_service.record_event(
                 action="E",

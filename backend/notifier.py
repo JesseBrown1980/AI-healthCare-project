@@ -43,8 +43,11 @@ class Notifier:
             logger.warning("Notification delivery failed via callback: %s", exc)
             return None
 
-    async def _send_fcm(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        if not self.fcm_server_key:
+    async def _send_fcm(
+        self, payload: Dict[str, Any], data: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        if not self.fcm_server_key or not self.registered_devices:
+            logger.info("FCM notification skipped: no server key or registered devices")
             return None
 
         headers = {
@@ -55,6 +58,8 @@ class Notifier:
             "registration_ids": [device["device_token"] for device in self.registered_devices],
             "notification": payload,
         }
+        if data:
+            body["data"] = data
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -100,3 +105,24 @@ class Notifier:
                 results[task_name] = result
 
         return results or None
+
+    async def send_push_notification(
+        self,
+        title: str,
+        body: str,
+        deep_link: str,
+        correlation_id: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Send a concise push notification for mobile clients."""
+
+        notification_payload = {
+            "title": title,
+            "body": body,
+            "click_action": deep_link,
+            "deep_link": deep_link,
+        }
+
+        return await self._send_fcm(
+            notification_payload,
+            data={"deep_link": deep_link, "correlation_id": correlation_id} if deep_link else None,
+        )
