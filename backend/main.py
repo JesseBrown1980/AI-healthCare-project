@@ -16,6 +16,7 @@ import os
 from dotenv import load_dotenv
 from security import TokenContext, auth_dependency
 from audit_service import AuditService
+from pydantic import BaseModel, validator
 
 # Load environment variables
 load_dotenv()
@@ -44,6 +45,18 @@ aot_reasoner = None
 patient_analyzer = None
 notifier = None
 audit_service = None
+
+
+class DeviceRegistration(BaseModel):
+    device_token: str
+    platform: str
+
+    @validator("platform")
+    def validate_platform(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"ios", "android"}:
+            raise ValueError("platform must be iOS or Android")
+        return "iOS" if normalized == "ios" else "Android"
 
 
 @asynccontextmanager
@@ -192,6 +205,29 @@ async def health_check(
         "version": "1.0.0",
         "vendor": selected_vendor,
     }
+
+
+@app.post("/api/v1/register-device")
+async def register_device(
+    registration: DeviceRegistration,
+    request: Request,
+    auth: TokenContext = Depends(auth_dependency()),
+):
+    """Register a device token for push notifications."""
+
+    if not notifier:
+        raise HTTPException(status_code=503, detail="Notifier not initialized")
+
+    registered = notifier.register_device(
+        registration.device_token, registration.platform
+    )
+
+    correlation_id = getattr(request.state, "correlation_id", "")
+    logger.info(
+        "Registered device for notifications", extra={"correlation_id": correlation_id}
+    )
+
+    return {"status": "registered", "device": registered}
 
 
 @app.post("/api/v1/analyze-patient")
