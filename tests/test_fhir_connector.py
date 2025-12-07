@@ -60,6 +60,44 @@ async def test_paginated_observations(monkeypatch):
     assert calls["count"] == 2
 
 
+def test_resolve_next_link_with_relative_url():
+    connector = FHIRConnector(server_url="http://fake.fhir")
+    bundle = {"link": [{"relation": "next", "url": "/Condition?_page=2"}]}
+
+    resolved = connector._resolve_next_link(bundle)
+
+    assert resolved == "http://fake.fhir/Condition?_page=2"
+
+
+@pytest.mark.anyio
+async def test_get_patient_conditions_resolves_relative_next(monkeypatch):
+    connector = FHIRConnector(server_url="http://fake.fhir")
+    first_bundle = {
+        "entry": [{"resource": {"id": "c1", "code": {"coding": [{}]}}}],
+        "link": [{"relation": "next", "url": "/Condition?_page=2"}],
+    }
+    second_bundle = {
+        "entry": [{"resource": {"id": "c2", "code": {"coding": [{}]}}}]
+    }
+    requested_urls = []
+
+    async def fake_request(method, url, params=None, correlation_context=""):
+        requested_urls.append(url)
+        if len(requested_urls) == 1:
+            return FakeResponse(first_bundle)
+        return FakeResponse(second_bundle)
+
+    monkeypatch.setattr(connector, "_request_with_retry", fake_request)
+
+    conditions = await connector._get_patient_conditions("p1")
+
+    assert [condition["id"] for condition in conditions] == ["c1", "c2"]
+    assert requested_urls == [
+        "http://fake.fhir/Condition",
+        "http://fake.fhir/Condition?_page=2",
+    ]
+
+
 @pytest.mark.anyio
 async def test_patient_cache_and_invalidation(monkeypatch):
     connector = FHIRConnector(server_url="http://fake.fhir", cache_ttl_seconds=60)
