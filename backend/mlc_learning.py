@@ -119,6 +119,12 @@ class MLCLearning:
             state = self._build_state_signature(components_used)
             action = tuple(sorted(components_used))
             reward = self._compute_reward(feedback_type)
+            logger.info(
+                "Computed reward %.2f for feedback '%s' on components %s",
+                reward,
+                feedback_type,
+                action or "none",
+            )
 
             # Update component performance based on feedback
             update_summary = await self._update_component_performance(
@@ -382,12 +388,17 @@ class MLCLearning:
         if not components:
             return ("no_components", 0.0)
 
+        sorted_components = tuple(sorted(components))
         performances: List[float] = [
-            self.learned_components.get(comp, {}).get("performance", 0.0)
-            for comp in components
+            round(self.learned_components.get(comp, {}).get("performance", 0.0), 4)
+            for comp in sorted_components
         ]
         avg_performance = sum(performances) / max(len(performances), 1)
-        return (tuple(sorted(components)), round(avg_performance, 4))
+        return (
+            sorted_components,
+            tuple(zip(sorted_components, performances)),
+            round(avg_performance, 4),
+        )
 
     @staticmethod
     def _compute_reward(feedback_type: str) -> float:
