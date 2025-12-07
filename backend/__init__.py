@@ -11,5 +11,6 @@ __all__ = [
     "mlc_learning",
     "patient_analyzer",
     "rag_fusion",
+    "rl_agent",
     "s_lora_manager",
 ]
