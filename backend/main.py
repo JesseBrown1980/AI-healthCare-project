@@ -3,6 +3,7 @@ Healthcare AI Assistant - Main Application Entry Point
 Integrates FHIR data with advanced AI techniques (S-LoRA, MLC, RAG, AoT)
 """
 
+import asyncio
 from fastapi import FastAPI, HTTPException, Depends, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -314,14 +315,25 @@ async def analyze_patient(
                 "analysis": result,
             }
 
-            await notifier.send(notification_payload, correlation_id=correlation_id)
+            notification_tasks = []
 
-            await notifier.send_push_notification(
-                title="Patient analysis ready",
-                body=push_body,
-                deep_link=deep_link,
-                correlation_id=correlation_id,
+            if notifier.callback_url:
+                notification_tasks.append(
+                    notifier.send(
+                        notification_payload, correlation_id=correlation_id
+                    )
+                )
+
+            notification_tasks.append(
+                notifier.send_push_notification(
+                    title="Patient analysis ready",
+                    body=push_body,
+                    deep_link=deep_link,
+                    correlation_id=correlation_id,
+                )
             )
+
+            await asyncio.gather(*notification_tasks)
 
         if audit_service:
             await audit_service.record_event(
