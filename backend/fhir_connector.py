@@ -13,6 +13,7 @@ import random
 import secrets
 import urllib.parse
 import httpx
+import anyio
 from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
@@ -692,25 +693,45 @@ class FHIRConnector:
             patient = self._validate_patient_resource(patient_response.json())
 
             # Fetch related resources concurrently after patient existence is confirmed
-            (
-                conditions,
-                medications,
-                observations,
-                encounters,
-            ) = await asyncio.gather(
-                self._get_patient_conditions(patient_id),
-                self._get_patient_medications(patient_id),
-                self._get_patient_observations(patient_id),
-                self._get_patient_encounters(patient_id),
-            )
+            resources: Dict[str, Any] = {}
+
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(
+                    self._fetch_and_store,
+                    self._get_patient_conditions,
+                    patient_id,
+                    resources,
+                    "conditions",
+                )
+                tg.start_soon(
+                    self._fetch_and_store,
+                    self._get_patient_medications,
+                    patient_id,
+                    resources,
+                    "medications",
+                )
+                tg.start_soon(
+                    self._fetch_and_store,
+                    self._get_patient_observations,
+                    patient_id,
+                    resources,
+                    "observations",
+                )
+                tg.start_soon(
+                    self._fetch_and_store,
+                    self._get_patient_encounters,
+                    patient_id,
+                    resources,
+                    "encounters",
+                )
 
             fetched_at = datetime.now(timezone.utc)
             patient_data = {
                 "patient": self._normalize_patient(patient),
-                "conditions": conditions,
-                "medications": medications,
-                "observations": observations,
-                "encounters": encounters,
+                "conditions": resources.get("conditions", []),
+                "medications": resources.get("medications", []),
+                "observations": resources.get("observations", []),
+                "encounters": resources.get("encounters", []),
                 "fetched_at": fetched_at.isoformat(),
             }
 
@@ -727,6 +748,17 @@ class FHIRConnector:
                 status_code=status_code,
                 correlation_id=patient_id,
             ) from e
+
+    async def _fetch_and_store(
+        self,
+        fetcher,
+        patient_id: str,
+        store: Dict[str, Any],
+        key: str,
+    ) -> None:
+        """Run a fetch coroutine and save the result for later consolidation."""
+
+        store[key] = await fetcher(patient_id)
 
     def invalidate_cache(self, patient_id: Optional[str] = None) -> None:
         """Invalidate cached patient data."""

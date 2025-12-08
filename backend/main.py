@@ -334,7 +334,8 @@ async def analyze_patient(
                 )
             )
 
-            await asyncio.gather(*notification_tasks)
+            for task in notification_tasks:
+                await task
 
         if audit_service:
             await audit_service.record_event(

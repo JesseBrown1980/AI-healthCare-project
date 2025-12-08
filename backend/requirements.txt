@@ -4,6 +4,7 @@ pydantic==2.5.0
 python-dotenv==1.0.0
 httpx==0.25.0
 asyncio==3.4.3
+trio==0.22.2
 python-jose[cryptography]==3.3.0
 
 # LLM & AI
