@@ -35,6 +35,7 @@ from mlc_learning import MLCLearning
 from aot_reasoner import AoTReasoner
 from patient_analyzer import PatientAnalyzer
 from notifier import Notifier
+from explainability import compute_risk_shap
 
 # Global instances
 fhir_connector = None
@@ -490,6 +491,107 @@ async def get_patient_fhir(
                 outcome="8",
                 outcome_desc=str(e),
                 event_type="read",
+            )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/explain/{patient_id}")
+async def explain_patient(
+    request: Request,
+    patient_id: str,
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    ),
+):
+    """Generate SHAP explanations for patient risk scores."""
+
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
+    try:
+        if not fhir_connector:
+            raise HTTPException(status_code=503, detail="FHIR connector not initialized")
+
+        if auth.patient and auth.patient != patient_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Token is scoped to a different patient context",
+            )
+
+        async with fhir_connector.request_context(
+            auth.access_token, auth.scopes, auth.patient
+        ):
+            patient_data = await fhir_connector.get_patient(patient_id)
+            shap_values = compute_risk_shap(patient_data)
+
+        feature_names = list(next(iter(shap_values.values()), {}).keys())
+
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="0",
+                outcome_desc="Generated SHAP explanations",
+                event_type="explain",
+            )
+
+        return {
+            "status": "success",
+            "patient_id": patient_id,
+            "feature_names": feature_names,
+            "shap_values": shap_values,
+            "correlation_id": correlation_id,
+        }
+
+    except FHIRConnectorError as exc:
+        logger.error(
+            "FHIR connector error generating SHAP values [%s]: %s", correlation_id, exc.message
+        )
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=exc.message,
+                event_type="explain",
+            )
+        error_payload = {
+            "status": "error",
+            "error_type": exc.error_type,
+            "message": exc.message,
+            "correlation_id": exc.correlation_id or correlation_id,
+        }
+        return JSONResponse(status_code=502, content=error_payload)
+    except HTTPException as exc:
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(exc.detail),
+                event_type="explain",
+            )
+        raise
+    except Exception as e:
+        logger.error(
+            "Error generating SHAP explanations [%s]: %s", correlation_id, str(e)
+        )
+        if audit_service:
+            await audit_service.record_event(
+                action="E",
+                patient_id=patient_id,
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="8",
+                outcome_desc=str(e),
+                event_type="explain",
             )
         raise HTTPException(status_code=500, detail=str(e))
 
