@@ -113,6 +113,9 @@ Live knowledge integration ensures cutting-edge medical information:
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
+   > Tip: You can also install backend + test dependencies from the repo root with
+   > `pip install -r requirements.txt`, which pulls in FastAPI, uvicorn, and the
+   > supporting stack used by the backend APIs.
 
 3. **Configure environment variables**
    ```bash
