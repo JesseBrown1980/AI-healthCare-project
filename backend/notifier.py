@@ -1,4 +1,5 @@
 import asyncio
+import anyio
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -97,12 +98,16 @@ class Notifier:
             return None
 
         results: Dict[str, Any] = {}
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        for task_name, result in zip(task_names, responses):
-            if isinstance(result, Exception):
-                logger.warning("Notification delivery failed (%s): %s", task_name, result)
-            elif result is not None:
-                results[task_name] = result
+
+        async def _collect(name: str, coro):
+            try:
+                results[name] = await coro
+            except Exception as exc:  # pragma: no cover - logging only
+                logger.warning("Notification delivery failed (%s): %s", name, exc)
+
+        async with anyio.create_task_group() as tg:
+            for task_name, task in zip(task_names, tasks):
+                tg.start_soon(_collect, task_name, task)
 
         return results or None
 

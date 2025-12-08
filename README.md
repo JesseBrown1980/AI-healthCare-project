@@ -175,6 +175,19 @@ Set `FCM_SERVER_KEY` in the backend environment to enable delivery to registered
 
 ## 📚 Module Guide
 
+## 🔍 SHAP Explainability
+
+SHAP (SHapley Additive exPlanations) assigns each feature a contribution score for a specific prediction, helping you see how data points push a model’s output higher or lower. Explainability is critical in healthcare because clinicians need to verify that model-driven insights align with clinical reasoning, detect potential bias, and build trust before acting on recommendations.
+
+### How to read the SHAP plots
+- **Summary plots**: Each dot represents a patient example; color shows feature value (e.g., high vs. low lab results), and position on the x-axis shows whether the feature increased or decreased risk. Dense clusters highlight features that consistently matter.
+- **Force plots / decision plots**: Arrows pointing right increase the predicted risk or score; arrows pointing left decrease it. The baseline starts at the model’s expected value, and contributions accumulate to the final prediction.
+- **Dependence plots**: Show how a single feature’s value affects SHAP contribution, often colored by an interacting feature to reveal nonlinear effects.
+
+### Modeling notes
+- The current workflow uses a surrogate model for SHAP analysis to provide fast, stable explanations while the production model handles core predictions.
+- You can swap in more sophisticated models (e.g., gradient boosting, transformers, or calibrated classifiers) for either the primary predictor or the surrogate explainer as long as they expose the needed prediction interface for SHAP.
+
 ## Backend Components
 - The `FHIRConnector` validates incoming FHIR Patient resources using `fhir.resources` when available; if the optional dependency isn't installed, it transparently falls back to a no-op validator.
 - Configure the connector's `use_proxies` parameter to `False` in environments without SOCKS proxy support to avoid initialization warnings.
