@@ -37,6 +37,10 @@ class MLCLearning:
         self.learned_components: Dict[str, Dict] = {}
         self.query_outcomes: Dict[str, List[Dict]] = defaultdict(list)
         self.personalization_profiles: Dict[str, Dict] = {}
+        self._rl_metrics = {
+            "cumulative_reward": 0.0,
+            "last_update": None,
+        }
 
         self._initialize_components()
         self._initialize_rl_agent()
@@ -120,6 +124,8 @@ class MLCLearning:
             state = self._build_state_signature(components_used)
             action = tuple(sorted(components_used))
             reward = self._compute_reward(feedback_type)
+            self._rl_metrics["cumulative_reward"] += reward
+            self._rl_metrics["last_update"] = datetime.now().isoformat()
             logger.info(
                 "Computed reward %.2f for feedback '%s' on components %s",
                 reward,
@@ -367,7 +373,16 @@ class MLCLearning:
             "average_component_performance": sum(
                 c.get("performance", 0.8) for c in self.learned_components.values()
             ) / max(len(self.learned_components), 1),
-            "learning_rate": self.learning_rate
+            "learning_rate": self.learning_rate,
+            "rl": self.get_rl_stats(),
+        }
+
+    def get_rl_stats(self) -> Dict[str, Any]:
+        """Return reinforcement learning telemetry for monitoring."""
+        return {
+            "cumulative_reward": round(self._rl_metrics.get("cumulative_reward", 0.0), 4),
+            "exploration_rate": getattr(self.rl_agent, "epsilon", None),
+            "last_update": self._rl_metrics.get("last_update"),
         }
 
     def _initialize_rl_agent(self) -> None:
