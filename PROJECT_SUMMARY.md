@@ -13,6 +13,7 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 - Refined risk scoring: age-aware, polypharmacy-sensitive normalization with explicit polypharmacy flags.
 - Desktop packaging: PyWebview wrapper with a healthcare desktop icon for a native launcher alongside Streamlit.
 - Multi-patient dashboard: concurrent risk snapshots with alert severity and last-analyzed timestamps for multiple patients.
+- Explainability: baseline synthetic risk model with SHAP-based feature attributions and a dedicated Streamlit view.
 
 ### Key Metrics
 - **Lines of Code**: ~4,500+
@@ -37,6 +38,7 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 | `mlc_learning.py` | Continuous learning | Online learning, personalization, components |
 | `aot_reasoner.py` | Reasoning engine | Chain-of-thought, multi-path reasoning |
 | `patient_analyzer.py` | Orchestration | Combines all components for analysis |
+| `explainability.py` | Model explainability | Baseline logistic regression, SHAP attributions |
 
 ### Frontend Interface (`/frontend/`)
 - **Streamlit Web Dashboard**: Interactive interface with:
@@ -143,11 +145,17 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 | `/api/v1/health` | GET | System health check |
 | `/api/v1/analyze-patient` | POST | Comprehensive patient analysis |
 | `/api/v1/patient/{id}/fhir` | GET | Fetch FHIR patient data |
+| `/api/v1/patient/{id}/explain` | GET | SHAP attributions for baseline risk model |
 | `/api/v1/query` | POST | Medical query with reasoning |
 | `/api/v1/feedback` | POST | MLC learning feedback |
 | `/api/v1/adapters` | GET | S-LoRA adapter status |
 | `/api/v1/adapters/activate` | POST | Activate specific adapter |
 | `/api/v1/stats` | GET | System statistics |
+
+### Explainability Module
+- Baseline logistic regression trained on synthetic patient-like features (age, condition/medication counts, comorbidity flags).
+- SHAP-based feature attributions surfaced through `/api/v1/patient/{id}/explain` and a Streamlit page.
+- Limitation: synthetic training data means the risk scores and attributions are illustrative and **not** clinically calibrated.
 
 ---
 

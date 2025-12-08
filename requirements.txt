@@ -1,2 +1,7 @@
 # Consolidated dependencies for backend services and tests
 -r backend/requirements.txt
+
+# Explainability and modeling
+scikit-learn
+shap
+matplotlib

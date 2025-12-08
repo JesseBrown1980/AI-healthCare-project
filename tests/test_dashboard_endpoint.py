@@ -21,7 +21,13 @@ security_module = importlib.import_module("backend.security")
 sys.modules["security"] = security_module
 
 explainability_stub = types.ModuleType("explainability")
-explainability_stub.compute_risk_shap = lambda *_args, **_kwargs: {}
+explainability_stub.explain_risk = lambda *_args, **_kwargs: {
+    "feature_names": [],
+    "shap_values": [],
+    "risk_score": 0.0,
+    "base_value": 0.0,
+    "model_type": "logistic_regression",
+}
 sys.modules["explainability"] = explainability_stub
 
 for module_name in [

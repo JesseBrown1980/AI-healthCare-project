@@ -23,6 +23,7 @@ pandas==2.1.0
 numpy==1.24.0
 scikit-learn==1.3.0
 shap==0.44.1
+matplotlib==3.7.3
 
 # Database
 sqlalchemy==2.0.0

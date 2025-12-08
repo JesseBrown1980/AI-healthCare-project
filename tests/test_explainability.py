@@ -3,6 +3,8 @@ import types
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from typing import Any, Dict
+
 import numpy as np
 from fastapi.testclient import TestClient
 
@@ -22,19 +24,20 @@ class PatientAnalyzer:  # pragma: no cover - import stub
 patient_analyzer_stub.PatientAnalyzer = PatientAnalyzer
 sys.modules.setdefault("patient_analyzer", patient_analyzer_stub)
 
-from backend.explainability import compute_risk_shap
+from backend.explainability import explain_risk
 from backend.main import app
 from backend.security import TokenContext
 
 
 EXPECTED_FEATURES = [
     "age",
-    "medication_count",
-    "hypertension",
-    "diabetes",
-    "smoking",
-    "polypharmacy",
-    "recent_encounters",
+    "number_of_conditions",
+    "number_of_medications",
+    "number_of_observations",
+    "number_of_encounters",
+    "has_diabetes",
+    "has_hypertension",
+    "has_smoking_history",
 ]
 
 
@@ -44,7 +47,7 @@ def _synthetic_patient():
         "conditions": [
             {"code": "hypertension"},
             {"code": "diabetes"},
-            {"code": "smoker"},
+            {"code": "smoking history"},
         ],
         "medications": [{"id": f"med-{idx}"} for idx in range(12)],
         "encounters": [
@@ -52,38 +55,19 @@ def _synthetic_patient():
             {"status": "completed"},
             {"status": "planned"},
         ],
+        "observations": [{"code": "hbA1c", "value": 7.1}],
     }
 
 
-def test_compute_risk_shap_outputs_reasonable_values():
+def test_explain_risk_outputs_reasonable_values():
     patient_data = _synthetic_patient()
 
-    shap_values = compute_risk_shap(patient_data)
+    explanation = explain_risk({"patient_data": patient_data})
 
-    assert set(shap_values) == {
-        "cardiovascular_risk",
-        "readmission_risk",
-        "medication_non_adherence_risk",
-    }
-
-    for risk_name, contributions in shap_values.items():
-        assert set(contributions) == set(EXPECTED_FEATURES)
-        assert all(np.isfinite(value) for value in contributions.values())
-        assert contributions["age"] > 0.05, f"Age should increase {risk_name}"
-        assert contributions["medication_count"] > 0.05
-        assert contributions["polypharmacy"] > 0
-
-
-class _StubFHIRConnector:
-    def __init__(self, payload):
-        self.payload = payload
-
-    @asynccontextmanager
-    async def request_context(self, *_args, **_kwargs):
-        yield
-
-    async def get_patient(self, patient_id: str):
-        return {"id": patient_id, **self.payload}
+    assert explanation["feature_names"] == EXPECTED_FEATURES
+    assert len(explanation["shap_values"]) == len(EXPECTED_FEATURES)
+    assert all(np.isfinite(value) for value in explanation["shap_values"])
+    assert 0.0 <= explanation["risk_score"] <= 1.0
 
 
 def test_explain_endpoint_returns_success(monkeypatch):
@@ -103,21 +87,27 @@ def test_explain_endpoint_returns_success(monkeypatch):
     )
 
     explain_route = next(
-        route for route in app.routes if route.path == "/api/v1/explain/{patient_id}"
+        route for route in app.routes if route.path == "/api/v1/patient/{patient_id}/explain"
     )
     auth_dependency = explain_route.dependant.dependencies[0].call
     app.dependency_overrides[auth_dependency] = lambda: stub_token
 
-    monkeypatch.setattr(
-        "backend.main.fhir_connector",
-        _StubFHIRConnector(payload),
-        raising=False,
-    )
+    class _StubAnalyzer:
+        def __init__(self, data: Dict[str, Any]):
+            self.data = data
+            self.analysis_history = []
+
+        async def analyze(self, patient_id: str, *_, **__):
+            record = {"patient_id": patient_id, "patient_data": self.data}
+            self.analysis_history.append(record)
+            return record
+
+    monkeypatch.setattr("backend.main.patient_analyzer", _StubAnalyzer(payload), raising=False)
     monkeypatch.setattr("backend.main.audit_service", None, raising=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/v1/explain/test-patient",
+            "/api/v1/patient/test-patient/explain",
             headers={"Authorization": "Bearer token"},
         )
 
