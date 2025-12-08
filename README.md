@@ -372,9 +372,9 @@ kubectl apply -f k8s/deployment.yaml
 The dashboard now exposes two strategies for keeping patient cards fresh. **Polling is the default** to keep the implementation simple and firewall-friendly, while a WebSocket option is available for richer interactivity.
 
 ### Default: Polling
-- **Endpoint**: `GET /api/v1/dashboard-summary`
-- **Payload**: Each patient summary includes a `last_updated` timestamp to surface when the backend last refreshed the data.
-- **Frontend guidance**: Trigger a refresh every **15–30 seconds** (configurable per deployment) and display `last_updated` in the dashboard header or list items so clinicians know data freshness.
+- **Endpoint**: `GET /api/v1/patients/dashboard`
+- **Payload**: Each record includes `patient_id`, `name`, `latest_risk_score`, `highest_alert_severity`, and `last_analyzed_at`.
+- **Frontend guidance**: Trigger a refresh every **15–30 seconds** (configurable per deployment) and display `last_analyzed_at` in the dashboard header or list items so clinicians know data freshness. A ready-made Streamlit page lives at `frontend/pages/2_Multi_Patient_Dashboard.py` and auto-refreshes with `st_autorefresh`.
 
 ### Advanced: WebSockets
 - **Endpoint**: `ws://<backend-host>/ws/patient-updates`

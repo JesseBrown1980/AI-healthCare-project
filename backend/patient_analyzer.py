@@ -6,7 +6,7 @@ Combines FHIR data, LLM intelligence, RAG knowledge, S-LoRA adaptation, MLC lear
 
 import logging
 from typing import Dict, Optional, Any, List
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from .fhir_connector import FHIRConnectorError
 
@@ -70,13 +70,13 @@ class PatientAnalyzer:
             Comprehensive analysis including summary, alerts, recommendations
         """
         logger.info(f"Starting analysis for patient {patient_id}")
-        analysis_start = datetime.now()
+        analysis_start = datetime.now(timezone.utc)
         
         try:
             result = {
                 "patient_id": patient_id,
                 "analysis_timestamp": analysis_start.isoformat(),
-                "status": "in_progress"
+                "status": "in_progress",
             }
             
             # 1. FETCH PATIENT DATA (FHIR)
@@ -110,11 +110,13 @@ class PatientAnalyzer:
             alerts = await self._identify_alerts(patient_data)
             result["alerts"] = alerts
             result["alert_count"] = len(alerts)
+            result["highest_alert_severity"] = self._highest_alert_severity(alerts)
             
             # 5. CALCULATE RISK SCORES
             logger.info("Step 5: Calculating risk scores...")
             risk_scores = await self._calculate_risk_scores(patient_data)
             result["risk_scores"] = risk_scores
+            result["overall_risk_score"] = self._derive_overall_risk_score(risk_scores)
             result["polypharmacy_risk"] = risk_scores.get("polypharmacy_risk", False)
 
             # 6. MEDICATION REVIEW
@@ -140,8 +142,9 @@ class PatientAnalyzer:
             await self._record_for_learning(patient_id, result)
             
             # 9. COMPILE FINAL ANALYSIS
-            analysis_end = datetime.now()
+            analysis_end = datetime.now(timezone.utc)
             result["analysis_duration_seconds"] = (analysis_end - analysis_start).total_seconds()
+            result["last_analyzed_at"] = analysis_end.isoformat()
             result["status"] = "completed"
             
             # Store in history
@@ -169,8 +172,39 @@ class PatientAnalyzer:
                 "patient_id": patient_id,
                 "status": "error",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+
+    @staticmethod
+    def _derive_overall_risk_score(risk_scores: Dict[str, Any]) -> Optional[float]:
+        """Return the highest numeric risk score for quick comparison."""
+
+        numeric_scores = [
+            value
+            for value in risk_scores.values()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        ]
+
+        if not numeric_scores:
+            return None
+
+        return max(numeric_scores)
+
+    @staticmethod
+    def _highest_alert_severity(alerts: List[Dict[str, Any]]) -> str:
+        """Determine the most severe alert level present."""
+
+        severity_order = ["none", "low", "medium", "high", "critical"]
+        highest_index = 0
+
+        for alert in alerts:
+            severity = str(alert.get("severity", "none")).lower()
+            try:
+                highest_index = max(highest_index, severity_order.index(severity))
+            except ValueError:
+                continue
+
+        return severity_order[highest_index]
     
     async def _generate_summary(self, patient_data: Dict) -> Dict:
         """Generate concise patient summary"""

@@ -12,6 +12,7 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 - Cross-application notifications: optional webhook delivery of patient-analysis results via `NOTIFICATION_URL`.
 - Refined risk scoring: age-aware, polypharmacy-sensitive normalization with explicit polypharmacy flags.
 - Desktop packaging: PyWebview wrapper with a healthcare desktop icon for a native launcher alongside Streamlit.
+- Multi-patient dashboard: concurrent risk snapshots with alert severity and last-analyzed timestamps for multiple patients.
 
 ### Key Metrics
 - **Lines of Code**: ~4,500+
@@ -40,6 +41,7 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 ### Frontend Interface (`/frontend/`)
 - **Streamlit Web Dashboard**: Interactive interface with:
   - Patient Analysis view
+  - Multi-Patient Dashboard overview
   - Medical Query interface
   - Alert monitoring system
   - Recommendation display
