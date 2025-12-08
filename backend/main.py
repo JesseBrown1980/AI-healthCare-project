@@ -233,6 +233,60 @@ def _latest_analysis_for_patient(patient_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _dashboard_patient_list() -> List[Dict[str, Optional[str]]]:
+    """Return configured patient IDs (and optional labels) for the dashboard."""
+
+    env_value = os.getenv("DASHBOARD_PATIENT_IDS", "").strip()
+    patients: List[Dict[str, Optional[str]]] = []
+
+    if env_value:
+        for raw_value in env_value.split(","):
+            patient_id = raw_value.strip()
+            if not patient_id:
+                continue
+            patients.append({"patient_id": patient_id, "name": None})
+
+    if not patients:
+        patients = [
+            {"patient_id": "demo-patient-1", "name": "Alex Johnson"},
+            {"patient_id": "demo-patient-2", "name": "Priya Singh"},
+            {"patient_id": "demo-patient-3", "name": "Miguel Rodriguez"},
+        ]
+
+    return patients
+
+
+def _build_dashboard_entry(analysis: Dict[str, Any], fallback_name: Optional[str]) -> Dict[str, Any]:
+    """Extract dashboard-friendly fields from an analysis result."""
+
+    risk_scores = analysis.get("risk_scores") or {}
+    overall_risk_score = analysis.get("overall_risk_score")
+    if overall_risk_score is None and risk_scores:
+        overall_risk_score = PatientAnalyzer._derive_overall_risk_score(risk_scores)
+
+    alerts = analysis.get("alerts") or []
+    highest_alert_severity = analysis.get("highest_alert_severity") or PatientAnalyzer._highest_alert_severity(alerts)
+
+    summary = analysis.get("summary") or {}
+    patient_data = analysis.get("patient_data") or {}
+    patient_name = (
+        summary.get("patient_name")
+        or patient_data.get("patient", {}).get("name")
+        or fallback_name
+        or analysis.get("patient_id")
+    )
+
+    last_analyzed = analysis.get("last_analyzed_at") or analysis.get("analysis_timestamp")
+
+    return {
+        "patient_id": analysis.get("patient_id"),
+        "name": patient_name,
+        "latest_risk_score": overall_risk_score,
+        "highest_alert_severity": highest_alert_severity,
+        "last_analyzed_at": last_analyzed,
+    }
+
+
 def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
     """Build a dashboard summary payload from a patient analysis."""
 
@@ -371,6 +425,53 @@ async def register_device(
     )
 
     return {"status": "registered", "device": registered}
+
+
+@app.get("/api/v1/patients/dashboard")
+async def get_dashboard_patients(
+    request: Request,
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    ),
+):
+    """Return a list of patients with risk and alert summaries for the dashboard."""
+
+    if not patient_analyzer or not fhir_connector:
+        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+
+    patients = _dashboard_patient_list()
+    patient_ids = [patient["patient_id"] for patient in patients]
+
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
+    try:
+        async with fhir_connector.request_context(
+            auth.access_token, auth.scopes, auth.patient
+        ):
+            analysis_tasks = [
+                patient_analyzer.analyze(
+                    patient_id=patient_id,
+                    include_recommendations=False,
+                    analysis_focus="dashboard_overview",
+                )
+                for patient_id in patient_ids
+            ]
+
+            analyses = await asyncio.gather(*analysis_tasks)
+
+        dashboard_entries = [
+            _build_dashboard_entry(analysis, fallback_name=patient.get("name"))
+            for analysis, patient in zip(analyses, patients)
+        ]
+
+        return dashboard_entries
+    except Exception as exc:
+        logger.error(
+            "Error building dashboard overview [%s]: %s", correlation_id, str(exc)
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/v1/analyze-patient")
