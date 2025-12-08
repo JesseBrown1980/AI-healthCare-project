@@ -4,7 +4,15 @@ Integrates FHIR data with advanced AI techniques (S-LoRA, MLC, RAG, AoT)
 """
 
 import asyncio
-from fastapi import FastAPI, HTTPException, Depends, Request, Query
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -47,6 +55,9 @@ aot_reasoner = None
 patient_analyzer = None
 notifier = None
 audit_service = None
+analysis_update_queue: Optional[asyncio.Queue] = None
+active_websockets: "set[WebSocket]" = set()
+broadcast_task: Optional[asyncio.Task] = None
 
 # In-memory cache for patient dashboard summaries
 patient_summary_cache: Dict[str, Dict[str, Any]] = {}
@@ -136,6 +147,12 @@ async def lifespan(app: FastAPI):
 
         logger.info("Initializing Audit Service...")
         audit_service = AuditService(fhir_connector=fhir_connector)
+
+        # Initialize real-time update infrastructure
+        global analysis_update_queue, active_websockets, broadcast_task
+        analysis_update_queue = asyncio.Queue()
+        active_websockets = set()
+        broadcast_task = asyncio.create_task(_broadcast_analysis_updates())
         
         logger.info("✓ Healthcare AI Assistant initialized successfully")
         
@@ -148,6 +165,18 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Healthcare AI Assistant...")
     # Add cleanup code here if needed
+    if broadcast_task:
+        broadcast_task.cancel()
+        try:
+            await broadcast_task
+        except asyncio.CancelledError:
+            pass
+
+    for websocket in list(active_websockets):
+        try:
+            await websocket.close(code=1001)
+        except Exception:
+            pass
     logger.info("Shutdown complete")
 
 
@@ -215,6 +244,7 @@ def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
         or analysis.get("timestamp")
         or datetime.now(timezone.utc).isoformat()
     )
+    last_updated = datetime.now(timezone.utc).isoformat()
 
     return {
         "patient_id": analysis.get("patient_id"),
@@ -222,6 +252,7 @@ def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
         "cardiovascular_risk": risk_scores.get("cardiovascular_risk"),
         "readmission_risk": risk_scores.get("readmission_risk"),
         "last_analysis": last_analysis,
+        "last_updated": last_updated,
     }
 
 
@@ -260,6 +291,33 @@ async def _get_patient_summary(
         "summary": summary,
     }
     return summary
+
+
+async def _broadcast_analysis_updates():
+    """Broadcast queued analysis updates to all connected WebSocket clients."""
+
+    while True:
+        update = await analysis_update_queue.get()
+        stale_connections = []
+
+        for websocket in list(active_websockets):
+            try:
+                await websocket.send_json(update)
+            except Exception:
+                stale_connections.append(websocket)
+
+        for websocket in stale_connections:
+            try:
+                active_websockets.remove(websocket)
+            except KeyError:
+                pass
+
+
+async def _queue_analysis_update(summary: Dict[str, Any]) -> None:
+    """Enqueue a dashboard summary update for WebSocket broadcast."""
+
+    if analysis_update_queue:
+        await analysis_update_queue.put({"event": "dashboard_update", "data": summary})
 
 
 @app.get("/api/v1/health")
@@ -410,6 +468,14 @@ async def analyze_patient(
             for task in notification_tasks:
                 await task
 
+        # Cache and broadcast the latest dashboard summary for real-time updates
+        summary = _extract_summary_from_analysis(result)
+        patient_summary_cache[fhir_patient_id] = {
+            "analysis_timestamp": summary["last_analysis"],
+            "summary": summary,
+        }
+        await _queue_analysis_update(summary)
+
         if audit_service:
             await audit_service.record_event(
                 action="E",
@@ -470,6 +536,26 @@ async def analyze_patient(
                 event_type="analyze",
             )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.websocket("/ws/patient-updates")
+async def patient_updates(websocket: WebSocket):
+    """Provide real-time dashboard updates via WebSocket."""
+
+    await websocket.accept()
+    active_websockets.add(websocket)
+
+    try:
+        while True:
+            # Keep the connection alive by waiting for client messages
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        if websocket in active_websockets:
+            active_websockets.remove(websocket)
 
 
 @app.get("/api/v1/dashboard-summary")
