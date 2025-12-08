@@ -27,6 +27,12 @@ The system continuously learns and adapts through:
 - **Compositional Reasoning**: Breaks down complex queries into modular learned components
 - **Personalization**: Tailors responses to individual hospital protocols and user preferences
 
+### 2.1 **Reinforcement Learning for Adaptive Recommendations**
+- **Reward signals from feedback**: Clinician approvals, explicit positive/negative ratings, and corrected recommendations are converted into reward values that steer policy updates.
+- **Adaptive performance**: The agent prioritizes actions that historically improved safety, guideline adherence, and workflow fit, leading to more context-aware recommendations over time.
+- **Feedback-to-policy loop**: Rewards are aggregated with interaction metadata (specialty, acuity, contraindications) so the policy learns which actions perform best in comparable clinical scenarios.
+- **Clinical caution**: Reinforcement learning outputs must be carefully validated and monitored in clinical settings to avoid unsafe or biased behavior; keep human oversight in the loop.
+
 ### 3. **Sparse LoRA (S-LoRA) Efficiency** ⭐
 Our proprietary efficiency innovation optimizes fine-tuned models for healthcare:
 - **Multi-Specialty Adapters**: Maintain separate LoRA modules for cardiology, oncology, etc., swappable without GPU bloat
