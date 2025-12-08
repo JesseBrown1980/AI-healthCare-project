@@ -109,6 +109,36 @@ async def test_analyze_patient_sends_notifications(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_analyze_patient_sends_notifications_without_callback(monkeypatch):
+    notifier = DummyNotifier()
+    notifier.callback_url = None
+    monkeypatch.setattr(main, "notifier", notifier)
+    monkeypatch.setattr(main, "fhir_connector", FakeFHIRConnector())
+    monkeypatch.setattr(main, "patient_analyzer", FakeAnalyzer())
+
+    request = make_request_with_state("corr-789")
+    auth = TokenContext(access_token="token", scopes=set(), clinician_roles=set(), patient="p-2")
+
+    await main.analyze_patient(
+        request,
+        fhir_patient_id="p-2",
+        include_recommendations=True,
+        specialty=None,
+        notify=True,
+        auth=auth,
+    )
+
+    assert notifier.sent_payload is not None
+    assert notifier.sent_correlation_id == "corr-789"
+    assert notifier.push_notification == {
+        "title": "Patient analysis ready",
+        "body": "Patient p-2: 1 alerts, top risk sepsis 0.92",
+        "deep_link": "healthcareai://patients/p-2/analysis",
+    }
+    assert notifier.push_correlation_id == "corr-789"
+
+
+@pytest.mark.anyio
 async def test_register_device_stores_tokens(monkeypatch):
     notifier = Notifier()
     monkeypatch.setattr(main, "notifier", notifier)
