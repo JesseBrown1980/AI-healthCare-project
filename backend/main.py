@@ -442,14 +442,6 @@ async def get_dashboard_patients(
     patients = _dashboard_patient_list()
     patient_ids = [patient["patient_id"] for patient in patients]
 
-    if auth.patient:
-        unauthorized_ids = [pid for pid in patient_ids if pid != auth.patient]
-        if unauthorized_ids:
-            raise HTTPException(
-                status_code=403,
-                detail="Token is scoped to a different patient context",
-            )
-
     correlation_id = getattr(
         request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
     )
