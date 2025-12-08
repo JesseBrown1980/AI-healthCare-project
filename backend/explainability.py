@@ -1,154 +1,215 @@
-"""Explainability utilities using SHAP for patient risk scoring."""
+"""Explainability utilities for the baseline risk model.
+
+The module extracts structured features from normalized FHIR data, trains a
+lightweight baseline model on synthetic samples, and surfaces SHAP values for
+per-patient explanations. The synthetic dataset keeps the workflow
+demonstrative while avoiding coupling to clinical data.
+"""
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import shap
+from sklearn.linear_model import LogisticRegression
+
+FeatureVector = Tuple[np.ndarray, List[str]]
 
 
-FeatureVector = Tuple[np.ndarray, list[str]]
+_BASELINE_MODEL: LogisticRegression | None = None
+_MODEL_FEATURES: List[str] | None = None
+_BACKGROUND: np.ndarray | None = None
+_EXPLAINER: shap.Explainer | None = None
 
 
-def _calculate_age(birth_date) -> int:
+def _calculate_age(birth_date: Any) -> int:
     """Calculate patient age from an ISO birthdate string or date object."""
+
     if not birth_date:
         return 0
 
-    try:
-        if isinstance(birth_date, str):
+    if isinstance(birth_date, str):
+        try:
             birth = date.fromisoformat(birth_date)
-        elif isinstance(birth_date, date):
-            birth = birth_date
-        else:
+        except ValueError:
             return 0
-        today = date.today()
-        return today.year - birth.year - (
-            (today.month, today.day) < (birth.month, birth.day)
-        )
-    except Exception:
+    elif isinstance(birth_date, date):
+        birth = birth_date
+    else:
         return 0
 
+    today = date.today()
+    return today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
 
-def _extract_feature_vector(patient_data: Dict) -> FeatureVector:
-    """Construct the feature vector used for SHAP explanations."""
+
+def _normalize_patient_payload(patient_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the patient payload regardless of caller input shape."""
+
+    if "patient_data" in patient_analysis:
+        return patient_analysis.get("patient_data") or {}
+    return patient_analysis
+
+
+def extract_features(patient_analysis: Dict[str, Any]) -> FeatureVector:
+    """Extract numeric features for the baseline risk model.
+
+    The function is resilient to missing fields and defaults to zeros when
+    values are absent.
+    """
+
+    patient_data = _normalize_patient_payload(patient_analysis)
     patient_info = patient_data.get("patient", {})
-    age = _calculate_age(patient_info.get("birthDate"))
 
-    conditions = [c.get("code", "").lower() for c in patient_data.get("conditions", [])]
+    conditions = [str(c.get("code", "")).lower() for c in patient_data.get("conditions", [])]
     medications = patient_data.get("medications", [])
+    observations = patient_data.get("observations", [])
     encounters = patient_data.get("encounters", [])
 
-    medication_count = len(medications)
-    hypertension = any("hypertension" in c for c in conditions)
-    diabetes = any("diabetes" in c for c in conditions)
-    smoking = any("smoke" in c for c in conditions)
-    polypharmacy = medication_count > 10
-    recent_encounters = len(
-        [e for e in encounters if e.get("status") in {"finished", "completed"}]
-    )
+    age = float(_calculate_age(patient_info.get("birthDate")))
+    num_conditions = float(len(conditions))
+    num_medications = float(len(medications))
+    num_observations = float(len(observations))
+    num_encounters = float(len(encounters))
 
-    features = np.array(
-        [
-            float(age),
-            float(medication_count),
-            1.0 if hypertension else 0.0,
-            1.0 if diabetes else 0.0,
-            1.0 if smoking else 0.0,
-            1.0 if polypharmacy else 0.0,
-            float(recent_encounters),
-        ]
-    )
+    has_diabetes = float(any("diab" in code for code in conditions))
+    has_hypertension = float(any("hypertension" in code for code in conditions))
+    has_smoking_history = float(any("smok" in code for code in conditions))
 
     feature_names = [
         "age",
-        "medication_count",
-        "hypertension",
-        "diabetes",
-        "smoking",
-        "polypharmacy",
-        "recent_encounters",
+        "number_of_conditions",
+        "number_of_medications",
+        "number_of_observations",
+        "number_of_encounters",
+        "has_diabetes",
+        "has_hypertension",
+        "has_smoking_history",
     ]
+
+    features = np.array(
+        [
+            age,
+            num_conditions,
+            num_medications,
+            num_observations,
+            num_encounters,
+            has_diabetes,
+            has_hypertension,
+            has_smoking_history,
+        ],
+        dtype=float,
+    )
 
     return features, feature_names
 
 
-def _predict_linear(X: np.ndarray, coeffs: np.ndarray, intercept: float) -> np.ndarray:
-    """Vectorized linear prediction helper."""
-    return np.dot(X, coeffs) + intercept
+def _generate_synthetic_dataset(feature_names: List[str], n_samples: int = 400) -> Tuple[np.ndarray, np.ndarray]:
+    """Generate a synthetic dataset aligned with the expected feature order."""
 
+    rng = np.random.default_rng(seed=42)
+    X = np.zeros((n_samples, len(feature_names)), dtype=float)
+    y = np.zeros(n_samples, dtype=int)
 
-def compute_risk_shap(patient_data: Dict) -> Dict[str, Dict[str, float]]:
-    """Compute SHAP values for the supported risk scores.
+    for idx in range(n_samples):
+        age = rng.integers(20, 90)
+        num_conditions = max(rng.poisson(2), 0)
+        num_medications = max(rng.poisson(5), 0)
+        num_observations = max(rng.poisson(10), 0)
+        num_encounters = max(rng.poisson(3), 0)
 
-    Args:
-        patient_data: Patient record used in :class:`backend.patient_analyzer.PatientAnalyzer`.
+        has_diabetes = rng.random() < 0.25
+        has_hypertension = rng.random() < 0.35
+        has_smoking_history = rng.random() < 0.2
 
-    Returns:
-        Mapping of risk score name to per-feature SHAP contributions.
-    """
-
-    feature_vector, feature_names = _extract_feature_vector(patient_data)
-
-    # Surrogate linear models approximate the scoring logic in ``PatientAnalyzer._calculate_risk_scores``.
-    surrogate_models = {
-        "cardiovascular_risk": {
-            "coeffs": np.array([
-                0.0035,  # age factor scaled from 0.35 * (age / 100)
-                0.02,  # medication load contribution (capped in original logic)
-                0.2,  # hypertension bonus
-                0.2,  # diabetes bonus
-                0.2,  # smoking bonus
-                0.1,  # polypharmacy bonus
-                0.0,  # recent encounters not used in CV risk
-            ]),
-            "intercept": 0.15,
-        },
-        "readmission_risk": {
-            "coeffs": np.array([
-                0.0025,  # age factor scaled from 0.25 * (age / 100)
-                0.02,  # medication contribution
-                0.0,  # hypertension
-                0.0,  # diabetes
-                0.0,  # smoking
-                0.1,  # polypharmacy
-                0.05,  # encounter contribution
-            ]),
-            "intercept": 0.12,
-        },
-        "medication_non_adherence_risk": {
-            "coeffs": np.array([
-                0.003,  # age factor scaled from 0.3 * (age / 100)
-                0.03,  # medication complexity
-                0.0,  # hypertension
-                0.0,  # diabetes
-                0.0,  # smoking
-                0.15,  # polypharmacy
-                0.0,  # recent encounters
-            ]),
-            "intercept": 0.1,
-        },
-    }
-
-    shap_results: Dict[str, Dict[str, float]] = {}
-
-    background = np.zeros((1, len(feature_names)))
-
-    for risk_name, params in surrogate_models.items():
-        coeffs = params["coeffs"]
-        intercept = params["intercept"]
-        predict_fn = lambda X, c=coeffs, i=intercept: _predict_linear(X, c, i)
-
-        explainer = shap.KernelExplainer(predict_fn, background)
-        shap_values = explainer.shap_values(np.array([feature_vector]))[0]
-
-        shap_results[risk_name] = {
-            name: float(value) for name, value in zip(feature_names, shap_values)
+        feature_row = {
+            "age": float(age),
+            "number_of_conditions": float(num_conditions),
+            "number_of_medications": float(num_medications),
+            "number_of_observations": float(num_observations),
+            "number_of_encounters": float(num_encounters),
+            "has_diabetes": float(has_diabetes),
+            "has_hypertension": float(has_hypertension),
+            "has_smoking_history": float(has_smoking_history),
         }
 
-    return shap_results
+        logit = (
+            0.03 * age
+            + 0.06 * num_conditions
+            + 0.05 * num_medications
+            + 0.04 * num_observations
+            + 0.05 * num_encounters
+            + (0.6 if has_diabetes else 0.0)
+            + (0.5 if has_hypertension else 0.0)
+            + (0.4 if has_smoking_history else 0.0)
+            - 6.0
+        )
+
+        prob = 1.0 / (1.0 + np.exp(-logit))
+        label = rng.binomial(1, prob)
+
+        X[idx] = [feature_row[name] for name in feature_names]
+        y[idx] = label
+
+    return X, y
 
 
-__all__ = ["compute_risk_shap"]
+def _ensure_model(feature_names: List[str]) -> Tuple[LogisticRegression, shap.Explainer, np.ndarray]:
+    """Train or return a cached baseline model and SHAP explainer."""
+
+    global _BASELINE_MODEL, _MODEL_FEATURES, _BACKGROUND, _EXPLAINER
+
+    if _BASELINE_MODEL is not None and _MODEL_FEATURES == feature_names:
+        assert _EXPLAINER is not None
+        assert _BACKGROUND is not None
+        return _BASELINE_MODEL, _EXPLAINER, _BACKGROUND
+
+    X, y = _generate_synthetic_dataset(feature_names)
+    model = LogisticRegression(max_iter=500)
+    model.fit(X, y)
+
+    background = X[: min(len(X), 50)]
+    explainer = shap.Explainer(model, background, feature_names=feature_names)
+
+    _BASELINE_MODEL = model
+    _MODEL_FEATURES = list(feature_names)
+    _BACKGROUND = background
+    _EXPLAINER = explainer
+
+    return model, explainer, background
+
+
+def explain_risk(patient_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Compute SHAP explanations for the baseline risk model.
+
+    Returns a dictionary containing feature names, SHAP contributions, base
+    value, and the model's predicted probability for the positive class.
+    """
+
+    features, feature_names = extract_features(patient_analysis)
+    model, explainer, _background = _ensure_model(feature_names)
+
+    shap_result = explainer(np.array([features]))
+    contributions = [float(value) for value in shap_result.values[0]]
+    base_value = float(shap_result.base_values[0])
+    risk_score = float(model.predict_proba([features])[0][1])
+
+    return {
+        "feature_names": feature_names,
+        "shap_values": contributions,
+        "base_value": base_value,
+        "risk_score": risk_score,
+        "model_type": "logistic_regression",
+    }
+
+
+def compute_risk_shap(patient_data: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+    """Backward-compatible wrapper returning a mapping of SHAP contributions."""
+
+    explanation = explain_risk({"patient_data": patient_data})
+    shap_mapping = dict(zip(explanation["feature_names"], explanation["shap_values"]))
+    return {"baseline_risk": shap_mapping}
+
+
+__all__ = ["extract_features", "explain_risk", "compute_risk_shap"]
