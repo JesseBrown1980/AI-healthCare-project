@@ -4,6 +4,7 @@ Interactive dashboard for healthcare AI assistant
 """
 
 import streamlit as st
+from streamlit import st_autorefresh
 import requests
 import json
 from datetime import datetime
@@ -107,13 +108,87 @@ def display_recommendation(rec: Dict):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def fetch_multi_patient_data() -> list[Dict[str, Any]]:
+    """Retrieve multi-patient dashboard data, fallback to demo data."""
+    api_data = make_api_call("/patients/dashboard")
+    if api_data and isinstance(api_data, dict) and api_data.get("patients"):
+        return api_data["patients"]
+
+    now = datetime.utcnow()
+    return [
+        {
+            "id": "P-2043",
+            "name": "Avery Thompson",
+            "specialty": "Cardiology",
+            "severity": "High",
+            "cardio_risk": 0.78,
+            "readmission_risk": 0.42,
+            "active_alerts": 3,
+            "last_analysis": now.replace(hour=now.hour - 2, minute=now.minute - 10),
+        },
+        {
+            "id": "P-1987",
+            "name": "Riley Chen",
+            "specialty": "Endocrinology",
+            "severity": "Moderate",
+            "cardio_risk": 0.36,
+            "readmission_risk": 0.28,
+            "active_alerts": 1,
+            "last_analysis": now.replace(hour=now.hour - 5, minute=now.minute - 5),
+        },
+        {
+            "id": "P-1520",
+            "name": "Jordan Martinez",
+            "specialty": "Pulmonology",
+            "severity": "Critical",
+            "cardio_risk": 0.91,
+            "readmission_risk": 0.63,
+            "active_alerts": 5,
+            "last_analysis": now.replace(hour=now.hour - 1, minute=now.minute - 32),
+        },
+        {
+            "id": "P-2201",
+            "name": "Morgan Patel",
+            "specialty": "Neurology",
+            "severity": "Low",
+            "cardio_risk": 0.18,
+            "readmission_risk": 0.19,
+            "active_alerts": 0,
+            "last_analysis": now.replace(hour=now.hour - 7, minute=now.minute - 45),
+        },
+        {
+            "id": "P-1755",
+            "name": "Casey Nguyen",
+            "specialty": "Oncology",
+            "severity": "High",
+            "cardio_risk": 0.67,
+            "readmission_risk": 0.38,
+            "active_alerts": 2,
+            "last_analysis": now.replace(hour=now.hour - 3, minute=now.minute - 20),
+        },
+    ]
+
+
+def format_elapsed_time(timestamp: datetime) -> str:
+    """Format time since last analysis in human readable string."""
+    delta = datetime.utcnow() - timestamp
+    minutes = int(delta.total_seconds() // 60)
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours, mins = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours} hr {mins} min ago"
+    days, rem_hours = divmod(hours, 24)
+    return f"{days} d {rem_hours} hr ago"
+
+
 # ==================== PAGE SECTIONS ====================
 
 def page_home():
     """Home/Dashboard page"""
     st.title("🏥 Healthcare AI Assistant")
     st.markdown("*Intelligent Clinical Decision Support with FHIR Integration*")
-    
+
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -149,6 +224,140 @@ def page_home():
     for capability, description in capabilities.items():
         st.markdown(f"**{capability}**: {description}")
 
+
+def page_multi_patient_dashboard():
+    """Multi-patient monitoring dashboard"""
+    st.title("👥 Multi-Patient Dashboard")
+    st_autorefresh(interval=30_000, key="multi_patient_refresh")
+
+    raw_patients = fetch_multi_patient_data() or []
+
+    def parse_timestamp(value: Any) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+            except Exception:
+                return datetime.utcnow()
+        return datetime.utcnow()
+
+    patients = [
+        {
+            **patient,
+            "last_analysis": parse_timestamp(patient.get("last_analysis", datetime.utcnow())),
+        }
+        for patient in raw_patients
+    ]
+
+    specialties = sorted({patient.get("specialty", "Unknown") for patient in patients})
+    severity_levels = ["All", "Low", "Moderate", "High", "Critical"]
+
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    with filter_col1:
+        specialty_filter = st.selectbox("Filter by Specialty", ["All"] + specialties)
+    with filter_col2:
+        severity_filter = st.selectbox("Filter by Severity", severity_levels)
+    with filter_col3:
+        sort_option = st.selectbox(
+            "Sort by",
+            [
+                "Cardiovascular Risk (High to Low)",
+                "Readmission Risk (High to Low)",
+                "Active Alerts (High to Low)",
+                "Last Analysis (Newest First)",
+            ],
+        )
+
+    filtered_patients = [
+        patient
+        for patient in patients
+        if (specialty_filter == "All" or patient.get("specialty") == specialty_filter)
+        and (severity_filter == "All" or patient.get("severity") == severity_filter)
+    ]
+
+    if sort_option == "Cardiovascular Risk (High to Low)":
+        filtered_patients.sort(key=lambda p: p.get("cardio_risk", 0), reverse=True)
+    elif sort_option == "Readmission Risk (High to Low)":
+        filtered_patients.sort(key=lambda p: p.get("readmission_risk", 0), reverse=True)
+    elif sort_option == "Active Alerts (High to Low)":
+        filtered_patients.sort(key=lambda p: p.get("active_alerts", 0), reverse=True)
+    elif sort_option == "Last Analysis (Newest First)":
+        filtered_patients.sort(key=lambda p: p.get("last_analysis", datetime.utcnow()), reverse=True)
+
+    if not filtered_patients:
+        st.info("No patients match the selected filters.")
+        return
+
+    total_patients = len(filtered_patients)
+    avg_cardio = sum(p.get("cardio_risk", 0) for p in filtered_patients) / total_patients
+    avg_readmission = sum(p.get("readmission_risk", 0) for p in filtered_patients) / total_patients
+    total_alerts = sum(p.get("active_alerts", 0) for p in filtered_patients)
+
+    metric_col1, metric_col2, metric_col3 = st.columns(3)
+    with metric_col1:
+        st.metric("Patients Displayed", total_patients)
+    with metric_col2:
+        st.metric("Avg Cardiovascular Risk", f"{avg_cardio * 100:.0f}%")
+    with metric_col3:
+        st.metric("Avg Readmission Risk", f"{avg_readmission * 100:.0f}%", delta=f"Alerts: {total_alerts}")
+
+    summary_table = [
+        {
+            "Patient": f"{patient.get('name')} ({patient.get('id')})",
+            "Specialty": patient.get("specialty"),
+            "Severity": patient.get("severity"),
+            "Cardio Risk %": round(patient.get("cardio_risk", 0) * 100),
+            "Readmission Risk %": round(patient.get("readmission_risk", 0) * 100),
+            "Active Alerts": patient.get("active_alerts", 0),
+            "Last Analysis": format_elapsed_time(patient.get("last_analysis", datetime.utcnow())),
+        }
+        for patient in filtered_patients
+    ]
+
+    st.dataframe(summary_table, use_container_width=True, height=240)
+
+    severity_colors = {
+        "Low": "#d9f2d9",
+        "Moderate": "#fff4cc",
+        "High": "#ffe6cc",
+        "Critical": "#ffcccc",
+    }
+
+    for idx, patient in enumerate(filtered_patients):
+        if idx % 3 == 0:
+            card_cols = st.columns(3)
+        card = card_cols[idx % 3].container()
+
+        severity = patient.get("severity", "").title()
+        severity_color = severity_colors.get(severity, "#f0f2f6")
+
+        card.markdown(
+            f"""
+            <div style="background-color:#ffffff;padding:16px;border-radius:10px;border:1px solid #e6e8eb;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div><strong>{patient.get('name')}</strong><br><span style=\"color:#6b7280\">{patient.get('id')}</span></div>
+                    <span style="background:{severity_color};padding:4px 10px;border-radius:12px;font-weight:600;">{severity}</span>
+                </div>
+                <div style="margin-top:8px;color:#6b7280;">{patient.get('specialty')}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        card.markdown("**Cardiovascular Risk**")
+        card.progress(min(max(patient.get("cardio_risk", 0), 0), 1))
+        card.caption(f"{patient.get('cardio_risk', 0) * 100:.0f}%")
+
+        risk_col1, risk_col2, risk_col3 = card.columns(3)
+        with risk_col1:
+            risk_col1.metric("Readmission Risk", f"{patient.get('readmission_risk', 0) * 100:.0f}%")
+        with risk_col2:
+            risk_col2.metric("Active Alerts", patient.get("active_alerts", 0))
+        with risk_col3:
+            risk_col3.metric("Last Analysis", format_elapsed_time(patient.get("last_analysis", datetime.utcnow())))
+
+        card.markdown("---")
 
 def page_patient_analysis():
     """Patient analysis page"""
@@ -451,6 +660,7 @@ def main():
         "Navigation",
         [
             "Home",
+            "Multi-Patient Dashboard",
             "Patient Analysis",
             "Medical Query",
             "Feedback",
@@ -477,6 +687,8 @@ def main():
     # Route to pages
     if page == "Home":
         page_home()
+    elif page == "Multi-Patient Dashboard":
+        page_multi_patient_dashboard()
     elif page == "Patient Analysis":
         page_patient_analysis()
     elif page == "Medical Query":
