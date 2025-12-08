@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import uuid
 import uvicorn
@@ -47,6 +47,9 @@ aot_reasoner = None
 patient_analyzer = None
 notifier = None
 audit_service = None
+
+# In-memory cache for patient dashboard summaries
+patient_summary_cache: Dict[str, Dict[str, Any]] = {}
 
 
 class DeviceRegistration(BaseModel):
@@ -187,6 +190,76 @@ def get_vendor_override(request: Request, default: str = "generic") -> str:
     if vendor_param:
         return vendor_param.lower()
     return default
+
+
+def _latest_analysis_for_patient(patient_id: str) -> Optional[Dict[str, Any]]:
+    """Return the most recent cached analysis for the patient."""
+
+    if not patient_analyzer:
+        return None
+
+    for analysis in reversed(patient_analyzer.analysis_history):
+        if analysis.get("patient_id") == patient_id:
+            return analysis
+    return None
+
+
+def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a dashboard summary payload from a patient analysis."""
+
+    alerts = analysis.get("alerts") or []
+    critical_alerts = len([a for a in alerts if a.get("severity") == "critical"])
+    risk_scores = analysis.get("risk_scores") or {}
+    last_analysis = (
+        analysis.get("analysis_timestamp")
+        or analysis.get("timestamp")
+        or datetime.now(timezone.utc).isoformat()
+    )
+
+    return {
+        "patient_id": analysis.get("patient_id"),
+        "critical_alerts": critical_alerts,
+        "cardiovascular_risk": risk_scores.get("cardiovascular_risk"),
+        "readmission_risk": risk_scores.get("readmission_risk"),
+        "last_analysis": last_analysis,
+    }
+
+
+async def _get_patient_summary(
+    patient_id: str,
+    auth: TokenContext,
+) -> Dict[str, Any]:
+    """Retrieve (and cache) dashboard summary data for a patient."""
+
+    cached = patient_summary_cache.get(patient_id)
+    latest_analysis = _latest_analysis_for_patient(patient_id)
+
+    if cached and (
+        not latest_analysis
+        or cached.get("analysis_timestamp") == latest_analysis.get("analysis_timestamp")
+    ):
+        return cached["summary"]
+
+    if not latest_analysis:
+        if not patient_analyzer:
+            raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+
+        async with fhir_connector.request_context(
+            auth.access_token, auth.scopes, auth.patient
+        ):
+            latest_analysis = await patient_analyzer.analyze(
+                patient_id=patient_id,
+                include_recommendations=False,
+                analysis_focus="dashboard_summary",
+            )
+
+    summary = _extract_summary_from_analysis(latest_analysis)
+
+    patient_summary_cache[patient_id] = {
+        "analysis_timestamp": summary["last_analysis"],
+        "summary": summary,
+    }
+    return summary
 
 
 @app.get("/api/v1/health")
@@ -397,6 +470,75 @@ async def analyze_patient(
                 event_type="analyze",
             )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/dashboard-summary")
+async def dashboard_summary(
+    request: Request,
+    patient_ids: Optional[List[str]] = Query(
+        None, description="Specific patient IDs to include in the dashboard"
+    ),
+    limit: Optional[int] = Query(
+        None, ge=1, description="Maximum number of patients to return"
+    ),
+    sort_by: str = Query(
+        "cardiovascular_risk",
+        description="Sort order for patients (cardiovascular_risk, readmission_risk, critical_alerts, last_analysis)",
+    ),
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    ),
+):
+    """Return a cached dashboard summary for multiple patients."""
+
+    if not patient_analyzer:
+        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+
+    # If no explicit patient list is provided, use the most recent analyses
+    if not patient_ids:
+        seen: set = set()
+        patient_ids = []
+        for analysis in reversed(patient_analyzer.analysis_history):
+            pid = analysis.get("patient_id")
+            if pid and pid not in seen:
+                seen.add(pid)
+                patient_ids.append(pid)
+
+    if not patient_ids:
+        return []
+
+    summaries = []
+    for patient_id in patient_ids:
+        summary = await _get_patient_summary(patient_id, auth)
+        summaries.append(summary)
+
+    def _timestamp_value(value: Optional[str]) -> datetime:
+        try:
+            return datetime.fromisoformat(value) if value else datetime.min.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    sort_options = {
+        "cardiovascular_risk": lambda s: s.get("cardiovascular_risk") or 0,
+        "readmission_risk": lambda s: s.get("readmission_risk") or 0,
+        "critical_alerts": lambda s: s.get("critical_alerts") or 0,
+        "last_analysis": lambda s: _timestamp_value(s.get("last_analysis")),
+    }
+
+    sort_key = sort_options.get(sort_by, sort_options["cardiovascular_risk"])
+    summaries.sort(key=sort_key, reverse=True)
+
+    if limit is not None:
+        summaries = summaries[:limit]
+
+    correlation_id = getattr(request.state, "correlation_id", "")
+    logger.info(
+        "Returned dashboard summary for %s patients",
+        len(summaries),
+        extra={"correlation_id": correlation_id},
+    )
+
+    return summaries
 
 
 @app.get("/api/v1/patient/{patient_id}/fhir")
