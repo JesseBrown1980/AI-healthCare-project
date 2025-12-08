@@ -87,7 +87,13 @@ def test_patient_analyzer_e2e_with_mocks(monkeypatch):
     monkeypatch.setattr(analyzer, "_generate_summary", mock_generate_summary)
     
     async def mock_identify_alerts(patient_data):
-        return [{"alert": "Systolic BP elevated", "severity": "medium"}]
+        return [
+            {
+                "message": "Systolic BP elevated",
+                "severity": "medium",
+                "type": "lab",
+            }
+        ]
     
     monkeypatch.setattr(analyzer, "_identify_alerts", mock_identify_alerts)
     
