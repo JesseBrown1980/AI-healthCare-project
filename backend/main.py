@@ -685,6 +685,7 @@ async def get_system_stats(request: Request):
             "rag": rag_fusion.get_stats() if rag_fusion else None,
             "s_lora": s_lora_manager.get_stats() if s_lora_manager else None,
             "mlc": mlc_learning.get_stats() if mlc_learning else None,
+            "rl": mlc_learning.get_rl_stats() if mlc_learning else None,
         }
         
         return {
