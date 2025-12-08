@@ -5,6 +5,7 @@ Implements online learning strategies for personalization
 """
 
 import logging
+from itertools import combinations
 from typing import Dict, List, Optional, Any, Hashable
 import json
 from datetime import datetime
@@ -119,6 +120,12 @@ class MLCLearning:
             state = self._build_state_signature(components_used)
             action = tuple(sorted(components_used))
             reward = self._compute_reward(feedback_type)
+            logger.info(
+                "Computed reward %.2f for feedback '%s' on components %s",
+                reward,
+                feedback_type,
+                action or "none",
+            )
 
             # Update component performance based on feedback
             update_summary = await self._update_component_performance(
@@ -365,13 +372,33 @@ class MLCLearning:
 
     def _initialize_rl_agent(self) -> None:
         """Initialize the reinforcement learning agent for component composition."""
-        base_actions = [tuple([comp]) for comp in self.learned_components.keys()]
+        # Seed the action space with likely component compositions so the agent can
+        # immediately learn policies for realistic multi-component plans.
+        base_actions = self._generate_action_space()
         self.rl_agent = MLCRLAgent(actions=base_actions, learning_rate=0.1, discount_factor=0.9)
         logger.info(
             "Initialized RL agent with %d base actions for %d components",
             len(base_actions),
             len(self.learned_components),
         )
+
+    def _generate_action_space(self) -> List[Hashable]:
+        """Create a compact action space of component compositions.
+
+        The space includes single components and small combinations (up to 3 items)
+        to balance coverage with tractability.
+        """
+        component_ids = sorted(self.learned_components.keys())
+        actions: List[Hashable] = []
+
+        # Single component choices
+        actions.extend((comp,) for comp in component_ids)
+
+        # Common combinations used during composition
+        for r in range(2, min(3, len(component_ids)) + 1):
+            actions.extend(combinations(component_ids, r))
+
+        return actions
 
     def _build_state_signature(self, components: List[str]) -> Hashable:
         """Create a hashable state representation for RL updates.
@@ -382,12 +409,17 @@ class MLCLearning:
         if not components:
             return ("no_components", 0.0)
 
+        sorted_components = tuple(sorted(components))
         performances: List[float] = [
-            self.learned_components.get(comp, {}).get("performance", 0.0)
-            for comp in components
+            round(self.learned_components.get(comp, {}).get("performance", 0.0), 4)
+            for comp in sorted_components
         ]
         avg_performance = sum(performances) / max(len(performances), 1)
-        return (tuple(sorted(components)), round(avg_performance, 4))
+        return (
+            sorted_components,
+            tuple(zip(sorted_components, performances)),
+            round(avg_performance, 4),
+        )
 
     @staticmethod
     def _compute_reward(feedback_type: str) -> float:
