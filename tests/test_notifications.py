@@ -65,7 +65,14 @@ class FakeFHIRConnector:
 class FakeAnalyzer:
     async def analyze(self, patient_id: str, include_recommendations=True, specialty=None):
         return {
-            "alerts": ["a1"],
+            "alerts": [
+                {
+                    "severity": "info",
+                    "type": "test",
+                    "message": "a1",
+                    "recommendation": "none",
+                }
+            ],
             "alert_count": 1,
             "risk_scores": {"sepsis": 0.92},
             "analysis": {"patient": patient_id},
