@@ -447,26 +447,20 @@ async def analyze_patient(
                 "analysis": result,
             }
 
-            notification_tasks = []
-
-            if notifier.callback_url:
-                notification_tasks.append(
-                    notifier.send(
-                        notification_payload, correlation_id=correlation_id
-                    )
-                )
-
-            notification_tasks.append(
+            # Send the full payload (for callback URL or FCM) and the condensed push
+            # notification in parallel so FCM always receives both the detailed and
+            # summary messages.
+            notification_tasks = [
+                notifier.send(notification_payload, correlation_id=correlation_id),
                 notifier.send_push_notification(
                     title="Patient analysis ready",
                     body=push_body,
                     deep_link=deep_link,
                     correlation_id=correlation_id,
-                )
-            )
+                ),
+            ]
 
-            for task in notification_tasks:
-                await task
+            await asyncio.gather(*notification_tasks)
 
         # Cache and broadcast the latest dashboard summary for real-time updates
         summary = _extract_summary_from_analysis(result)
