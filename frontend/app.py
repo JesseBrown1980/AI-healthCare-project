@@ -9,6 +9,7 @@ import requests
 import json
 from datetime import datetime
 from typing import Optional, Dict, Any
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -315,7 +316,14 @@ def page_multi_patient_dashboard():
         for patient in filtered_patients
     ]
 
-    st.dataframe(summary_table, use_container_width=True, height=240)
+    summary_df = pd.DataFrame(summary_table)
+
+    def highlight_cardio(row: pd.Series) -> list[str]:
+        color = "#ffe6e6" if row.get("Cardio Risk %", 0) >= 80 else ""
+        return [f"background-color: {color}" if color else "" for _ in row]
+
+    styled_summary = summary_df.style.apply(highlight_cardio, axis=1)
+    st.dataframe(styled_summary, use_container_width=True, height=240)
 
     severity_colors = {
         "Low": "#d9f2d9",
@@ -329,12 +337,16 @@ def page_multi_patient_dashboard():
             card_cols = st.columns(3)
         card = card_cols[idx % 3].container()
 
+        high_cardio_risk = patient.get("cardio_risk", 0) >= 0.8
+        card_background = "#fff5f5" if high_cardio_risk else "#ffffff"
+        card_border = "2px solid #fca5a5" if high_cardio_risk else "1px solid #e6e8eb"
+
         severity = patient.get("severity", "").title()
         severity_color = severity_colors.get(severity, "#f0f2f6")
 
         card.markdown(
             f"""
-            <div style="background-color:#ffffff;padding:16px;border-radius:10px;border:1px solid #e6e8eb;">
+            <div style="background-color:{card_background};padding:16px;border-radius:10px;border:{card_border};">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div><strong>{patient.get('name')}</strong><br><span style=\"color:#6b7280\">{patient.get('id')}</span></div>
                     <span style="background:{severity_color};padding:4px 10px;border-radius:12px;font-weight:600;">{severity}</span>
@@ -359,21 +371,31 @@ def page_multi_patient_dashboard():
 
         card.markdown("---")
 
+        if card.button("Open Analysis", key=f"open-analysis-{patient.get('id')}", use_container_width=True):
+            st.session_state["selected_patient_id"] = patient.get("id", "")
+            st.experimental_set_query_params(page="Patient Analysis", patient_id=patient.get("id", ""))
+            st.experimental_rerun()
+
 def page_patient_analysis():
     """Patient analysis page"""
     st.title("🔬 Patient Analysis")
-    
+
     col1, col2 = st.columns([2, 1])
-    
+
+    query_params = st.experimental_get_query_params()
+    default_patient_id = st.session_state.get("selected_patient_id") or query_params.get("patient_id", [""])[0]
+
     with col1:
         patient_id = st.text_input(
             "Enter Patient ID (FHIR)",
-            placeholder="patient-12345"
+            placeholder="patient-12345",
+            value=default_patient_id,
+            key="patient_id_input",
         )
     with col2:
         specialty = st.selectbox(
             "Medical Specialty",
-            ["Auto-detect", "Cardiology", "Oncology", "Neurology", 
+            ["Auto-detect", "Cardiology", "Oncology", "Neurology",
              "Endocrinology", "Pulmonology", "Gastroenterology", "Nephrology"]
         )
     
@@ -656,16 +678,29 @@ def main():
     
     # Sidebar navigation
     st.sidebar.title("🏥 Healthcare AI")
+    pages = [
+        "Home",
+        "Multi-Patient Dashboard",
+        "Patient Analysis",
+        "Medical Query",
+        "Feedback",
+        "Settings",
+    ]
+
+    query_params = st.experimental_get_query_params()
+    default_page = query_params.get("page", [pages[0]])[0]
+    if default_page not in pages:
+        default_page = pages[0]
+
     page = st.sidebar.radio(
         "Navigation",
-        [
-            "Home",
-            "Multi-Patient Dashboard",
-            "Patient Analysis",
-            "Medical Query",
-            "Feedback",
-            "Settings"
-        ]
+        pages,
+        index=pages.index(default_page),
+    )
+
+    st.experimental_set_query_params(
+        page=page,
+        patient_id=query_params.get("patient_id", [""])[0],
     )
     
     st.sidebar.markdown("---")
