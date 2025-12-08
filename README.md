@@ -364,6 +364,24 @@ kubectl apply -f k8s/deployment.yaml
 
 ---
 
+## 🔄 Real-Time Dashboard Updates
+
+The dashboard now exposes two strategies for keeping patient cards fresh. **Polling is the default** to keep the implementation simple and firewall-friendly, while a WebSocket option is available for richer interactivity.
+
+### Default: Polling
+- **Endpoint**: `GET /api/v1/dashboard-summary`
+- **Payload**: Each patient summary includes a `last_updated` timestamp to surface when the backend last refreshed the data.
+- **Frontend guidance**: Trigger a refresh every **15–30 seconds** (configurable per deployment) and display `last_updated` in the dashboard header or list items so clinicians know data freshness.
+
+### Advanced: WebSockets
+- **Endpoint**: `ws://<backend-host>/ws/patient-updates`
+- **Behavior**: The backend broadcasts a `{"event": "dashboard_update", "data": {...summary}}` message whenever a patient analysis finishes. Each message mirrors the summary shape used by the polling endpoint, including `last_updated` and risk metrics.
+- **Client loop**: After connecting and authenticating at the network layer, listen for incoming JSON messages and merge them into the current dashboard state (fall back to polling if the socket drops).
+
+Use polling by default, and enable the WebSocket channel where bidirectional connectivity is allowed and UI responsiveness is critical.
+
+---
+
 ## 🧪 Testing
 
 ```bash
