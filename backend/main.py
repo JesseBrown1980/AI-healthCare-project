@@ -237,7 +237,17 @@ def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
     """Build a dashboard summary payload from a patient analysis."""
 
     alerts = analysis.get("alerts") or []
-    critical_alerts = len([a for a in alerts if a.get("severity") == "critical"])
+    normalized_alerts = []
+
+    for alert in alerts:
+        if isinstance(alert, str):
+            normalized_alerts.append({"message": alert, "severity": "info"})
+        else:
+            normalized_alerts.append(alert)
+
+    critical_alerts = len(
+        [a for a in normalized_alerts if a.get("severity") == "critical"]
+    )
     risk_scores = analysis.get("risk_scores") or {}
     last_analysis = (
         analysis.get("analysis_timestamp")
