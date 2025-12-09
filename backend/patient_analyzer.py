@@ -4,6 +4,7 @@ Central orchestration of all AI components for comprehensive patient analysis
 Combines FHIR data, LLM intelligence, RAG knowledge, S-LoRA adaptation, MLC learning, and AoT reasoning
 """
 
+import asyncio
 import logging
 from typing import Dict, Optional, Any, List
 from datetime import datetime, date, timezone
@@ -197,8 +198,57 @@ class PatientAnalyzer:
         if not has_critical_alert:
             return
 
+        alert_count = analysis_result.get("alert_count")
+        if alert_count is None:
+            alert_count = len(alerts) if isinstance(alerts, list) else 0
+
+        risk_scores = analysis_result.get("risk_scores") or {}
+        top_risk_name = None
+        top_risk_value = None
+        for risk_name, risk_value in risk_scores.items():
+            if isinstance(risk_value, (int, float)) and (
+                top_risk_value is None or risk_value > top_risk_value
+            ):
+                top_risk_name = risk_name
+                top_risk_value = risk_value
+
+        risk_summary = (
+            f", top risk {top_risk_name.replace('_', ' ')} {top_risk_value:.2f}"
+            if top_risk_name is not None and top_risk_value is not None
+            else ""
+        )
+
+        patient_id = analysis_result.get("patient_id", "unknown")
+        deep_link = f"healthcareai://patients/{patient_id}/analysis"
+        notification_payload = {
+            "patient_id": patient_id,
+            "alert_count": alert_count,
+            "risk_scores": risk_scores,
+            "top_risk": {"name": top_risk_name, "value": top_risk_value}
+            if top_risk_name is not None and top_risk_value is not None
+            else None,
+            "deep_link": deep_link,
+            "correlation_id": correlation_id,
+            "analysis": analysis_result,
+            "alerts": alerts,
+        }
+
         try:
-            await self.notifier.notify(analysis_result, correlation_id=correlation_id)
+            tasks = [
+                self.notifier.notify(notification_payload, correlation_id=correlation_id)
+            ]
+
+            if hasattr(self.notifier, "send_push_notification"):
+                tasks.append(
+                    self.notifier.send_push_notification(
+                        title="Patient analysis ready",
+                        body=f"Patient {patient_id}: {alert_count} alerts{risk_summary}",
+                        deep_link=deep_link,
+                        correlation_id=correlation_id,
+                    )
+                )
+
+            await asyncio.gather(*tasks)
         except Exception as exc:  # pragma: no cover - logging only
             logger.warning(
                 "Failed to send critical alert notification: %s", exc

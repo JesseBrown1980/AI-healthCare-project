@@ -55,11 +55,21 @@ class DummyNotifier:
         self.slack_webhook_url = None
         self.sent_payload = None
         self.sent_correlation_id = None
+        self.push_notification = None
 
     async def notify(self, payload, correlation_id: str = ""):
         self.sent_payload = payload
         self.sent_correlation_id = correlation_id
         return {"status": "sent"}
+
+    async def send_push_notification(self, title: str, body: str, deep_link: str, correlation_id: str = ""):
+        self.push_notification = {
+            "title": title,
+            "body": body,
+            "deep_link": deep_link,
+            "correlation_id": correlation_id,
+        }
+        return {"status": "push-sent"}
 
 
 class FakeFHIRConnector:
@@ -134,8 +144,20 @@ async def test_patient_analyzer_triggers_notifications_for_critical_alerts(monke
         correlation_id="corr-123",
     )
 
-    assert notifier.sent_payload == result
+    assert notifier.sent_payload["analysis"]["patient_id"] == "p-1"
+    assert notifier.sent_payload["alert_count"] == result["alert_count"]
+    assert notifier.sent_payload["deep_link"].endswith("/patients/p-1/analysis")
     assert notifier.sent_correlation_id == "corr-123"
+    expected_risk = notifier.sent_payload["top_risk"]
+    expected_body = "Patient p-1: 1 alerts"
+    if expected_risk:
+        expected_body += f", top risk {expected_risk['name'].replace('_', ' ')} {expected_risk['value']:.2f}"
+    assert notifier.push_notification == {
+        "title": "Patient analysis ready",
+        "body": expected_body,
+        "deep_link": "healthcareai://patients/p-1/analysis",
+        "correlation_id": "corr-123",
+    }
 
 
 @pytest.mark.anyio
