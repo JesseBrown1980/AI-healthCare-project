@@ -26,7 +26,9 @@ class PatientAnalyzer:
         rag_fusion,
         s_lora_manager,
         aot_reasoner,
-        mlc_learning
+        mlc_learning,
+        notifier=None,
+        notifications_enabled: bool = False,
     ):
         """
         Initialize PatientAnalyzer with all components
@@ -47,6 +49,8 @@ class PatientAnalyzer:
         self.mlc_learning = mlc_learning
         
         self.analysis_history: List[Dict] = []
+        self.notifier = notifier
+        self.notifications_enabled = notifications_enabled
         
         logger.info("PatientAnalyzer initialized with all components")
     
@@ -55,7 +59,9 @@ class PatientAnalyzer:
         patient_id: str,
         include_recommendations: bool = True,
         specialty: Optional[str] = None,
-        analysis_focus: Optional[str] = None
+        analysis_focus: Optional[str] = None,
+        notify: bool = False,
+        correlation_id: str = "",
     ) -> Dict[str, Any]:
         """
         Comprehensive patient analysis using all AI components
@@ -149,9 +155,11 @@ class PatientAnalyzer:
             
             # Store in history
             self.analysis_history.append(result)
-            
+
             logger.info(f"Analysis completed for patient {patient_id} in {result['analysis_duration_seconds']:.2f}s")
-            
+
+            await self._notify_if_needed(result, notify, correlation_id)
+
             return result
         
         except FHIRConnectorError as e:
@@ -174,6 +182,27 @@ class PatientAnalyzer:
                 "error": str(e),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+
+    async def _notify_if_needed(
+        self, analysis_result: Dict[str, Any], notify: bool, correlation_id: str
+    ) -> None:
+        if not (notify and self.notifications_enabled and self.notifier):
+            return
+
+        alerts = analysis_result.get("alerts") or []
+        has_critical_alert = any(
+            str(alert.get("severity", "")).lower() == "critical" for alert in alerts
+        )
+
+        if not has_critical_alert:
+            return
+
+        try:
+            await self.notifier.notify(analysis_result, correlation_id=correlation_id)
+        except Exception as exc:  # pragma: no cover - logging only
+            logger.warning(
+                "Failed to send critical alert notification: %s", exc
+            )
 
     @staticmethod
     def _derive_overall_risk_score(risk_scores: Dict[str, Any]) -> Optional[float]:

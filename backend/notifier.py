@@ -2,32 +2,31 @@ import asyncio
 import anyio
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 
-class Notifier:
-    """Send notifications to an external callback endpoint or FCM."""
+class NotificationChannel(Protocol):
+    """Protocol for notification channels."""
 
-    def __init__(self, callback_url: Optional[str] = None, fcm_server_key: Optional[str] = None) -> None:
-        self.callback_url = callback_url or os.getenv("NOTIFICATION_URL", "").strip()
-        self.fcm_server_key = fcm_server_key or os.getenv("FCM_SERVER_KEY", "").strip()
-        self.registered_devices: List[Dict[str, str]] = []
+    async def notify(
+        self, payload: Dict[str, Any], correlation_id: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        ...
 
-    def register_device(self, device_token: str, platform: str) -> Dict[str, str]:
-        device = {"device_token": device_token, "platform": platform}
-        for existing in self.registered_devices:
-            if existing["device_token"] == device_token:
-                existing.update(device)
-                return existing
 
-        self.registered_devices.append(device)
-        return device
+class WebhookNotifier:
+    """Send notifications to a generic webhook."""
 
-    async def _send_callback(self, payload: Dict[str, Any], correlation_id: str) -> Optional[Dict[str, Any]]:
+    def __init__(self, callback_url: str) -> None:
+        self.callback_url = callback_url
+
+    async def notify(
+        self, payload: Dict[str, Any], correlation_id: str = ""
+    ) -> Optional[Dict[str, Any]]:
         headers = {"Content-Type": "application/json"}
         if correlation_id:
             headers["X-Correlation-ID"] = correlation_id
@@ -43,6 +42,113 @@ class Notifier:
         except (httpx.HTTPError, asyncio.TimeoutError) as exc:
             logger.warning("Notification delivery failed via callback: %s", exc)
             return None
+
+
+class SlackNotifier:
+    """Send notifications to Slack via webhook."""
+
+    def __init__(self, webhook_url: str) -> None:
+        self.webhook_url = webhook_url
+
+    @staticmethod
+    def _format_message(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        alerts = payload.get("alerts", []) or []
+        critical_alerts = [
+            alert
+            for alert in alerts
+            if str(alert.get("severity", "")).lower() == "critical"
+        ]
+
+        if not critical_alerts:
+            return None
+
+        patient_id = payload.get("patient_id", "unknown")
+        summary_lines = [
+            f"*Critical alert for patient* `{patient_id}`",
+            f"Alerts detected: {len(critical_alerts)} critical / {len(alerts)} total",
+        ]
+
+        for alert in critical_alerts[:3]:
+            summary_lines.append(
+                f"• {alert.get('message', 'Critical alert')} ({alert.get('type', 'alert')})"
+            )
+
+        risk_scores = payload.get("risk_scores", {}) or {}
+        if risk_scores:
+            top_risk_name = None
+            top_risk_value = None
+            for risk_name, risk_value in risk_scores.items():
+                if isinstance(risk_value, (int, float)) and (
+                    top_risk_value is None or risk_value > top_risk_value
+                ):
+                    top_risk_name = risk_name
+                    top_risk_value = risk_value
+
+            if top_risk_name is not None:
+                summary_lines.append(
+                    f"Top risk: {top_risk_name.replace('_', ' ')} ({top_risk_value:.2f})"
+                )
+
+        return {"text": "\n".join(summary_lines)}
+
+    async def notify(
+        self, payload: Dict[str, Any], correlation_id: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        message = self._format_message(payload)
+        if not message:
+            return None
+
+        headers = {"Content-Type": "application/json"}
+        if correlation_id:
+            headers["X-Correlation-ID"] = correlation_id
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(self.webhook_url, json=message, headers=headers)
+                response.raise_for_status()
+                try:
+                    return response.json()
+                except ValueError:
+                    return {"status": "sent", "http_status": response.status_code}
+        except (httpx.HTTPError, asyncio.TimeoutError) as exc:
+            logger.warning("Notification delivery failed via Slack: %s", exc)
+            return None
+
+
+class Notifier:
+    """Coordinator for notification channels (webhook, Slack, and FCM)."""
+
+    def __init__(
+        self,
+        callback_url: Optional[str] = None,
+        fcm_server_key: Optional[str] = None,
+        slack_webhook_url: Optional[str] = None,
+        channels: Optional[List[NotificationChannel]] = None,
+    ) -> None:
+        self.callback_url = callback_url or os.getenv("NOTIFICATION_URL", "").strip()
+        self.slack_webhook_url = slack_webhook_url or os.getenv("SLACK_WEBHOOK_URL", "").strip()
+        self.fcm_server_key = fcm_server_key or os.getenv("FCM_SERVER_KEY", "").strip()
+        self.registered_devices: List[Dict[str, str]] = []
+
+        if channels is not None:
+            self.channels = channels
+        else:
+            configured_channels: List[NotificationChannel] = []
+            if self.callback_url:
+                configured_channels.append(WebhookNotifier(self.callback_url))
+            if self.slack_webhook_url:
+                configured_channels.append(SlackNotifier(self.slack_webhook_url))
+            self.channels = configured_channels
+
+    def register_device(self, device_token: str, platform: str) -> Dict[str, str]:
+        device = {"device_token": device_token, "platform": platform}
+        for existing in self.registered_devices:
+            if existing["device_token"] == device_token:
+                existing.update(device)
+                return existing
+
+        self.registered_devices.append(device)
+        return device
 
     async def _send_fcm(
         self, payload: Dict[str, Any], data: Optional[Dict[str, Any]] = None
@@ -76,22 +182,17 @@ class Notifier:
             logger.warning("Notification delivery failed via FCM: %s", exc)
             return None
 
-    async def send(self, payload: Dict[str, Any], correlation_id: str = "") -> Optional[Dict[str, Any]]:
-        """Send a notification asynchronously.
+    async def notify(
+        self, payload: Dict[str, Any], correlation_id: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        """Send a notification asynchronously to all configured channels."""
 
-        Args:
-            payload: Notification body to send as JSON.
-            correlation_id: Optional correlation identifier for tracing.
-        """
-        tasks = []
-        task_names = []
+        tasks = [channel.notify(payload, correlation_id) for channel in self.channels]
+        task_names = [channel.__class__.__name__ for channel in self.channels]
 
-        if self.callback_url:
-            tasks.append(self._send_callback(payload, correlation_id))
-            task_names.append("callback")
         if self.fcm_server_key and self.registered_devices:
             tasks.append(self._send_fcm(payload))
-            task_names.append("fcm")
+            task_names.append("FCM")
 
         if not tasks:
             logger.info("Notification skipped: no destination configured")
@@ -110,6 +211,13 @@ class Notifier:
                 tg.start_soon(_collect, task_name, task)
 
         return results or None
+
+    async def send(
+        self, payload: Dict[str, Any], correlation_id: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        """Backward compatible alias for notify."""
+
+        return await self.notify(payload, correlation_id)
 
     async def send_push_notification(
         self,
