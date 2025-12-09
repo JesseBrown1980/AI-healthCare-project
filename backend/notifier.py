@@ -161,12 +161,33 @@ class Notifier:
             "Content-Type": "application/json",
             "Authorization": f"key={self.fcm_server_key}",
         }
+        title = payload.get("title") or f"Patient {payload.get('patient_id', 'update')}"
+        body_text = payload.get("body") or (
+            f"Risk: {payload.get('risk_summary', '')}" if payload.get("risk_summary") else ""
+        )
+
+        notification_content = {
+            "title": title,
+            "body": body_text,
+            "click_action": payload.get("deep_link") or payload.get("click_action"),
+        }
+
         body = {
             "registration_ids": [device["device_token"] for device in self.registered_devices],
-            "notification": payload,
+            "notification": notification_content,
         }
-        if data:
-            body["data"] = data
+        if data or payload:
+            data_payload = data.copy() if data else {}
+            data_payload.update(
+                {
+                    "patient_id": payload.get("patient_id"),
+                    "alerts": payload.get("alerts"),
+                    "analysis": payload.get("analysis"),
+                    "deep_link": payload.get("deep_link"),
+                    "correlation_id": payload.get("correlation_id"),
+                }
+            )
+            body["data"] = data_payload
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:

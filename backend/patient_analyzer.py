@@ -213,10 +213,13 @@ class PatientAnalyzer:
                 top_risk_value = risk_value
 
         risk_summary = (
-            f", top risk {top_risk_name.replace('_', ' ')} {top_risk_value:.2f}"
+            f"{top_risk_name.replace('_', ' ')}: {top_risk_value:.2f}"
             if top_risk_name is not None and top_risk_value is not None
             else ""
         )
+
+        push_title = f"Patient {analysis_result.get('patient_id', 'unknown')}: {alert_count} alerts"
+        push_body = f"Alerts: {risk_summary}" if risk_summary else "Alerts available"
 
         patient_id = analysis_result.get("patient_id", "unknown")
         deep_link = f"healthcareai://patients/{patient_id}/analysis"
@@ -231,6 +234,9 @@ class PatientAnalyzer:
             "correlation_id": correlation_id,
             "analysis": analysis_result,
             "alerts": alerts,
+            "title": push_title,
+            "body": push_body,
+            "risk_summary": risk_summary,
         }
 
         try:
@@ -241,8 +247,8 @@ class PatientAnalyzer:
             if hasattr(self.notifier, "send_push_notification"):
                 tasks.append(
                     self.notifier.send_push_notification(
-                        title="Patient analysis ready",
-                        body=f"Patient {patient_id}: {alert_count} alerts{risk_summary}",
+                        title=push_title,
+                        body=push_body,
                         deep_link=deep_link,
                         correlation_id=correlation_id,
                     )

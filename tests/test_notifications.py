@@ -147,14 +147,13 @@ async def test_patient_analyzer_triggers_notifications_for_critical_alerts(monke
     assert notifier.sent_payload["analysis"]["patient_id"] == "p-1"
     assert notifier.sent_payload["alert_count"] == result["alert_count"]
     assert notifier.sent_payload["deep_link"].endswith("/patients/p-1/analysis")
+    assert notifier.sent_payload["title"].startswith("Patient p-1: ")
+    assert notifier.sent_payload["body"].startswith("Alerts")
+    assert notifier.sent_payload["risk_summary"]
     assert notifier.sent_correlation_id == "corr-123"
-    expected_risk = notifier.sent_payload["top_risk"]
-    expected_body = "Patient p-1: 1 alerts"
-    if expected_risk:
-        expected_body += f", top risk {expected_risk['name'].replace('_', ' ')} {expected_risk['value']:.2f}"
     assert notifier.push_notification == {
-        "title": "Patient analysis ready",
-        "body": expected_body,
+        "title": notifier.sent_payload["title"],
+        "body": notifier.sent_payload["body"],
         "deep_link": "healthcareai://patients/p-1/analysis",
         "correlation_id": "corr-123",
     }

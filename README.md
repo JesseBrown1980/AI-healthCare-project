@@ -173,6 +173,7 @@ docker-compose up -d
     - `NOTIFICATION_URL`: Optional callback URL to receive notification payloads in parallel with FCM (left empty to disable).
     - `SLACK_WEBHOOK_URL`: Optional Slack incoming webhook to receive summaries of critical alerts.
     - `ENABLE_NOTIFICATIONS`: Set to `true` to enable outbound notifications. Requests must also specify `notify=true`.
+    - Push notifications include a human-readable `title` and `body` (e.g., "Patient 1234: 2 alerts" / "Alerts: cardiovascular risk: 0.85"), which are required by FCM clients for display.
 
  Set `FCM_SERVER_KEY` in the backend environment to enable delivery to registered devices; without it, the service will skip FCM sends and log that no destination is configured. When `SLACK_WEBHOOK_URL` is provided, a critical-alert summary payload similar to the following will be sent:
 

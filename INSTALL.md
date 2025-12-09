@@ -193,6 +193,7 @@ LOG_LEVEL=INFO
 NOTIFICATION_URL=https://your-app.example.com/patient-callback
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
 ENABLE_NOTIFICATIONS=true
+# Push notifications expect a human-readable title/body payload for FCM display
 
 # Database
 DATABASE_URL=sqlite:///./healthcare_ai.db
@@ -222,6 +223,7 @@ Contact your healthcare IT department for:
 - Set `NOTIFICATION_URL` to an HTTPS endpoint that should receive patient analysis results via POST.
 - Provide `SLACK_WEBHOOK_URL` to forward critical alerts to Slack, and enable notifications globally with `ENABLE_NOTIFICATIONS=true`.
 - The backend will attach `X-Correlation-ID` headers for traceability. Include `notify=true` on `/api/v1/analyze-patient` requests to deliver alerts.
+- FCM push notifications include a human-readable `title` and `body`; ensure these fields are preserved if you proxy or transform payloads.
 
 ---
 
