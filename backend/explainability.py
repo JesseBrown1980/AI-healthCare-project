@@ -72,6 +72,10 @@ def extract_features(patient_analysis: Dict[str, Any]) -> FeatureVector:
     num_medications = float(len(medications))
     num_observations = float(len(observations))
     num_encounters = float(len(encounters))
+    polypharmacy = float(num_medications > 10)
+    recent_completed_encounters = float(
+        len([e for e in encounters if e.get("status") in ["finished", "completed"]])
+    )
 
     has_diabetes = float(any("diab" in code for code in conditions))
     has_hypertension = float(any("hypertension" in code for code in conditions))
@@ -83,6 +87,8 @@ def extract_features(patient_analysis: Dict[str, Any]) -> FeatureVector:
         "number_of_medications",
         "number_of_observations",
         "number_of_encounters",
+        "polypharmacy",
+        "recent_completed_encounters",
         "has_diabetes",
         "has_hypertension",
         "has_smoking_history",
@@ -95,6 +101,8 @@ def extract_features(patient_analysis: Dict[str, Any]) -> FeatureVector:
             num_medications,
             num_observations,
             num_encounters,
+            polypharmacy,
+            recent_completed_encounters,
             has_diabetes,
             has_hypertension,
             has_smoking_history,
@@ -118,6 +126,14 @@ def _generate_synthetic_dataset(feature_names: List[str], n_samples: int = 400) 
         num_medications = max(rng.poisson(5), 0)
         num_observations = max(rng.poisson(10), 0)
         num_encounters = max(rng.poisson(3), 0)
+        polypharmacy = num_medications > 10
+        recent_completed_encounters = max(
+            0,
+            min(
+                num_encounters,
+                rng.integers(low=0, high=max(1, num_encounters + 1)),
+            ),
+        )
 
         has_diabetes = rng.random() < 0.25
         has_hypertension = rng.random() < 0.35
@@ -129,6 +145,8 @@ def _generate_synthetic_dataset(feature_names: List[str], n_samples: int = 400) 
             "number_of_medications": float(num_medications),
             "number_of_observations": float(num_observations),
             "number_of_encounters": float(num_encounters),
+            "polypharmacy": float(polypharmacy),
+            "recent_completed_encounters": float(recent_completed_encounters),
             "has_diabetes": float(has_diabetes),
             "has_hypertension": float(has_hypertension),
             "has_smoking_history": float(has_smoking_history),
@@ -140,6 +158,8 @@ def _generate_synthetic_dataset(feature_names: List[str], n_samples: int = 400) 
             + 0.05 * num_medications
             + 0.04 * num_observations
             + 0.05 * num_encounters
+            + (0.15 if polypharmacy else 0.0)
+            + 0.04 * recent_completed_encounters
             + (0.6 if has_diabetes else 0.0)
             + (0.5 if has_hypertension else 0.0)
             + (0.4 if has_smoking_history else 0.0)
