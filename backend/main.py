@@ -58,6 +58,7 @@ audit_service = None
 analysis_update_queue: Optional[asyncio.Queue] = None
 active_websockets: "set[WebSocket]" = set()
 broadcast_task: Optional[asyncio.Task] = None
+notifications_enabled: bool = os.getenv("ENABLE_NOTIFICATIONS", "false").lower() == "true"
 
 # In-memory cache for patient dashboard summaries
 patient_summary_cache: Dict[str, Dict[str, Any]] = {}
@@ -132,6 +133,9 @@ async def lifespan(app: FastAPI):
             reasoning_depth=int(os.getenv("REASONING_DEPTH", "3"))
         )
         
+        logger.info("Loading Notifier...")
+        notifier = Notifier()
+
         logger.info("Initializing Patient Analyzer...")
         patient_analyzer = PatientAnalyzer(
             fhir_connector=fhir_connector,
@@ -139,11 +143,10 @@ async def lifespan(app: FastAPI):
             rag_fusion=rag_fusion,
             s_lora_manager=s_lora_manager,
             aot_reasoner=aot_reasoner,
-            mlc_learning=mlc_learning
+            mlc_learning=mlc_learning,
+            notifier=notifier,
+            notifications_enabled=notifications_enabled,
         )
-
-        logger.info("Loading Notifier...")
-        notifier = Notifier()
 
         logger.info("Initializing Audit Service...")
         audit_service = AuditService(fhir_connector=fhir_connector)
@@ -515,63 +518,10 @@ async def analyze_patient(
             result = await patient_analyzer.analyze(
                 patient_id=fhir_patient_id,
                 include_recommendations=include_recommendations,
-                specialty=specialty
+                specialty=specialty,
+                notify=bool(notifications_enabled and notify),
+                correlation_id=correlation_id,
             )
-
-        if notify and notifier:
-            alerts = result.get("alerts") or []
-            alert_count = result.get("alert_count")
-            if alert_count is None:
-                alert_count = len(alerts) if isinstance(alerts, list) else 0
-
-            risk_scores = result.get("risk_scores") or {}
-            top_risk_name = None
-            top_risk_value = None
-            for risk_name, risk_value in risk_scores.items():
-                if isinstance(risk_value, (int, float)) and (
-                    top_risk_value is None or risk_value > top_risk_value
-                ):
-                    top_risk_name = risk_name
-                    top_risk_value = risk_value
-
-            risk_summary = (
-                f", top risk {top_risk_name.replace('_', ' ')} {top_risk_value:.2f}"
-                if top_risk_name is not None and top_risk_value is not None
-                else ""
-            )
-
-            push_body = f"Patient {fhir_patient_id}: {alert_count} alerts{risk_summary}"
-            deep_link = f"healthcareai://patients/{fhir_patient_id}/analysis"
-
-            notification_payload = {
-                "patient_id": fhir_patient_id,
-                "alert_count": alert_count,
-                "risk_scores": risk_scores,
-                "top_risk": {
-                    "name": top_risk_name,
-                    "value": top_risk_value,
-                }
-                if top_risk_name is not None and top_risk_value is not None
-                else None,
-                "deep_link": deep_link,
-                "correlation_id": correlation_id,
-                "analysis": result,
-            }
-
-            # Send the full payload (for callback URL or FCM) and the condensed push
-            # notification in parallel so FCM always receives both the detailed and
-            # summary messages.
-            notification_tasks = [
-                notifier.send(notification_payload, correlation_id=correlation_id),
-                notifier.send_push_notification(
-                    title="Patient analysis ready",
-                    body=push_body,
-                    deep_link=deep_link,
-                    correlation_id=correlation_id,
-                ),
-            ]
-
-            await asyncio.gather(*notification_tasks)
 
         # Cache and broadcast the latest dashboard summary for real-time updates
         summary = _extract_summary_from_analysis(result)

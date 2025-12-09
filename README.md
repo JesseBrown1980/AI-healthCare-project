@@ -168,11 +168,22 @@ docker-compose up -d
     - `platform` (string): Mobile platform identifier (e.g., `ios`, `android`).
   - Response: `{ "status": "registered", "device": { ... } }` when the device is tracked for notifications.
   - Requires authentication using the same token scheme as other protected API routes.
-- **Environment variables**:
-  - `FCM_SERVER_KEY`: Server key from Firebase Cloud Messaging used to authorize push notification delivery.
-  - `NOTIFICATION_URL`: Optional callback URL to receive notification payloads in parallel with FCM (left empty to disable).
+  - **Environment variables**:
+    - `FCM_SERVER_KEY`: Server key from Firebase Cloud Messaging used to authorize push notification delivery.
+    - `NOTIFICATION_URL`: Optional callback URL to receive notification payloads in parallel with FCM (left empty to disable).
+    - `SLACK_WEBHOOK_URL`: Optional Slack incoming webhook to receive summaries of critical alerts.
+    - `ENABLE_NOTIFICATIONS`: Set to `true` to enable outbound notifications. Requests must also specify `notify=true`.
+    - Push notifications include a human-readable `title` and `body` (e.g., "Patient 1234: 2 alerts" / "Alerts: cardiovascular risk: 0.85"), which are required by FCM clients for display.
 
-Set `FCM_SERVER_KEY` in the backend environment to enable delivery to registered devices; without it, the service will skip FCM sends and log that no destination is configured.
+ Set `FCM_SERVER_KEY` in the backend environment to enable delivery to registered devices; without it, the service will skip FCM sends and log that no destination is configured. When `SLACK_WEBHOOK_URL` is provided, a critical-alert summary payload similar to the following will be sent:
+
+```json
+{
+  "text": "*Critical alert for patient* `1234`\nAlerts detected: 1 critical / 2 total\n• Critical condition identified: MI (condition)\nTop risk: cardiovascular risk (0.85)"
+}
+```
+
+To trigger notifications from the analysis API, ensure `ENABLE_NOTIFICATIONS=true` and call `/api/v1/analyze-patient` with `notify=true` in the query or payload.
 
 ---
 

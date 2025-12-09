@@ -20,34 +20,56 @@ class PatientAnalyzer:  # pragma: no cover - import stub
 patient_analyzer_stub.PatientAnalyzer = PatientAnalyzer
 sys.modules.setdefault("patient_analyzer", patient_analyzer_stub)
 
+shap_stub = types.ModuleType("shap")
+sys.modules.setdefault("shap", shap_stub)
+
+sklearn_stub = types.ModuleType("sklearn")
+linear_model_stub = types.ModuleType("sklearn.linear_model")
+
+
+class LogisticRegression:  # pragma: no cover - import stub
+    def __init__(self, *_, **__):
+        pass
+
+    def fit(self, *_, **__):
+        return self
+
+    def predict_proba(self, X):
+        return [[0.5, 0.5] for _ in range(len(X))]
+
+
+linear_model_stub.LogisticRegression = LogisticRegression
+sklearn_stub.linear_model = linear_model_stub
+sys.modules.setdefault("sklearn", sklearn_stub)
+sys.modules.setdefault("sklearn.linear_model", linear_model_stub)
+
 from backend import main  # noqa: E402
 from backend.notifier import Notifier  # noqa: E402
+from backend.patient_analyzer import PatientAnalyzer as RealPatientAnalyzer  # noqa: E402
 from backend.security import TokenContext  # noqa: E402
 
 
 class DummyNotifier:
     def __init__(self) -> None:
         self.callback_url = "http://callback.local"
+        self.slack_webhook_url = None
         self.sent_payload = None
         self.sent_correlation_id = None
         self.push_notification = None
-        self.push_correlation_id = None
 
-    async def send(self, payload, correlation_id: str = ""):
+    async def notify(self, payload, correlation_id: str = ""):
         self.sent_payload = payload
         self.sent_correlation_id = correlation_id
         return {"status": "sent"}
 
-    async def send_push_notification(
-        self, title: str, body: str, deep_link: str, correlation_id: str = ""
-    ):
+    async def send_push_notification(self, title: str, body: str, deep_link: str, correlation_id: str = ""):
         self.push_notification = {
             "title": title,
             "body": body,
             "deep_link": deep_link,
+            "correlation_id": correlation_id,
         }
-        self.push_correlation_id = correlation_id
-        return {"status": "push_sent"}
+        return {"status": "push-sent"}
 
 
 class FakeFHIRConnector:
@@ -62,21 +84,35 @@ class FakeFHIRConnector:
         return self._Ctx()
 
 
-class FakeAnalyzer:
-    async def analyze(self, patient_id: str, include_recommendations=True, specialty=None):
+class StubFHIRConnector:
+    async def get_patient(self, patient_id: str):
         return {
-            "alerts": [
-                {
-                    "severity": "info",
-                    "type": "test",
-                    "message": "a1",
-                    "recommendation": "none",
-                }
-            ],
-            "alert_count": 1,
-            "risk_scores": {"sepsis": 0.92},
-            "analysis": {"patient": patient_id},
+            "patient": {"name": "Test Patient", "gender": "other", "birthDate": "1970-01-01"},
+            "conditions": [{"code": "stroke"}],
+            "medications": [],
+            "encounters": [],
+            "observations": [],
         }
+
+
+class StubSLoRA:
+    async def select_adapters(self, specialties=None, patient_data=None):
+        return []
+
+    async def activate_adapter(self, adapter):
+        return None
+
+    @property
+    def adapters(self):
+        return {}
+
+
+class Noop:
+    def __getattr__(self, _):
+        async def _noop(*_, **__):
+            return None
+
+        return _noop
 
 
 def make_request_with_state(correlation_id: str = ""):
@@ -87,62 +123,116 @@ def make_request_with_state(correlation_id: str = ""):
 
 
 @pytest.mark.anyio
-async def test_analyze_patient_sends_notifications(monkeypatch):
+async def test_patient_analyzer_triggers_notifications_for_critical_alerts(monkeypatch):
     notifier = DummyNotifier()
-    monkeypatch.setattr(main, "notifier", notifier)
-    monkeypatch.setattr(main, "fhir_connector", FakeFHIRConnector())
-    monkeypatch.setattr(main, "patient_analyzer", FakeAnalyzer())
-
-    request = make_request_with_state("corr-123")
-    auth = TokenContext(access_token="token", scopes=set(), clinician_roles=set(), patient="p-1")
-
-    await main.analyze_patient(
-        request,
-        fhir_patient_id="p-1",
-        include_recommendations=True,
-        specialty=None,
-        notify=True,
-        auth=auth,
+    analyzer = RealPatientAnalyzer(
+        fhir_connector=StubFHIRConnector(),
+        llm_engine=Noop(),
+        rag_fusion=Noop(),
+        s_lora_manager=StubSLoRA(),
+        aot_reasoner=Noop(),
+        mlc_learning=Noop(),
+        notifier=notifier,
+        notifications_enabled=True,
     )
 
-    assert notifier.sent_payload is not None
+    result = await analyzer.analyze(
+        patient_id="p-1",
+        include_recommendations=False,
+        specialty=None,
+        notify=True,
+        correlation_id="corr-123",
+    )
+
+    assert notifier.sent_payload["analysis"]["patient_id"] == "p-1"
+    assert notifier.sent_payload["alert_count"] == result["alert_count"]
+    assert notifier.sent_payload["deep_link"].endswith("/patients/p-1/analysis")
+    assert notifier.sent_payload["title"].startswith("Patient p-1: ")
+    assert notifier.sent_payload["body"].startswith("Alerts")
+    assert notifier.sent_payload["risk_summary"]
     assert notifier.sent_correlation_id == "corr-123"
     assert notifier.push_notification == {
-        "title": "Patient analysis ready",
-        "body": "Patient p-1: 1 alerts, top risk sepsis 0.92",
+        "title": notifier.sent_payload["title"],
+        "body": notifier.sent_payload["body"],
         "deep_link": "healthcareai://patients/p-1/analysis",
+        "correlation_id": "corr-123",
     }
-    assert notifier.push_correlation_id == "corr-123"
 
 
 @pytest.mark.anyio
-async def test_analyze_patient_sends_notifications_without_callback(monkeypatch):
+async def test_patient_analyzer_skips_notifications_when_disabled(monkeypatch):
     notifier = DummyNotifier()
-    notifier.callback_url = None
-    monkeypatch.setattr(main, "notifier", notifier)
-    monkeypatch.setattr(main, "fhir_connector", FakeFHIRConnector())
-    monkeypatch.setattr(main, "patient_analyzer", FakeAnalyzer())
+    analyzer = RealPatientAnalyzer(
+        fhir_connector=StubFHIRConnector(),
+        llm_engine=Noop(),
+        rag_fusion=Noop(),
+        s_lora_manager=StubSLoRA(),
+        aot_reasoner=Noop(),
+        mlc_learning=Noop(),
+        notifier=notifier,
+        notifications_enabled=True,
+    )
 
-    request = make_request_with_state("corr-789")
-    auth = TokenContext(access_token="token", scopes=set(), clinician_roles=set(), patient="p-2")
+    await analyzer.analyze(
+        patient_id="p-2",
+        include_recommendations=False,
+        specialty=None,
+        notify=False,
+        correlation_id="corr-999",
+    )
+
+    assert notifier.sent_payload is None
+
+
+class RecordingAnalyzer:
+    def __init__(self):
+        self.last_notify = None
+
+    async def analyze(
+        self,
+        patient_id: str,
+        include_recommendations: bool = True,
+        specialty=None,
+        notify: bool = False,
+        correlation_id: str = "",
+    ):
+        self.last_notify = notify
+        return {"alerts": [], "risk_scores": {}, "patient_id": patient_id}
+
+
+@pytest.mark.anyio
+async def test_analyze_patient_respects_notify_flag(monkeypatch):
+    recorder = RecordingAnalyzer()
+    monkeypatch.setattr(main, "patient_analyzer", recorder)
+    monkeypatch.setattr(main, "fhir_connector", FakeFHIRConnector())
+    monkeypatch.setattr(main, "notifications_enabled", False)
+
+    request = make_request_with_state("corr-000")
+    auth = TokenContext(access_token="token", scopes=set(), clinician_roles=set(), patient="p-3")
 
     await main.analyze_patient(
         request,
-        fhir_patient_id="p-2",
+        fhir_patient_id="p-3",
         include_recommendations=True,
         specialty=None,
         notify=True,
         auth=auth,
     )
 
-    assert notifier.sent_payload is not None
-    assert notifier.sent_correlation_id == "corr-789"
-    assert notifier.push_notification == {
-        "title": "Patient analysis ready",
-        "body": "Patient p-2: 1 alerts, top risk sepsis 0.92",
-        "deep_link": "healthcareai://patients/p-2/analysis",
-    }
-    assert notifier.push_correlation_id == "corr-789"
+    assert recorder.last_notify is False
+
+    monkeypatch.setattr(main, "notifications_enabled", True)
+
+    await main.analyze_patient(
+        request,
+        fhir_patient_id="p-3",
+        include_recommendations=True,
+        specialty=None,
+        notify=True,
+        auth=auth,
+    )
+
+    assert recorder.last_notify is True
 
 
 @pytest.mark.anyio
