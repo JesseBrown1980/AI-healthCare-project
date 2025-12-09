@@ -45,6 +45,10 @@ class MLCLearning:
         self._initialize_components()
         self._initialize_rl_agent()
 
+        # RL-driven policy priors can be injected here to bias default risk thresholds
+        # or component selection before any user feedback arrives.
+        self._rl_policy_prior: Optional[Any] = None
+
         logger.info("MLC Learning system initialized")
     
     def _initialize_components(self):
@@ -384,6 +388,16 @@ class MLCLearning:
             "exploration_rate": getattr(self.rl_agent, "epsilon", None),
             "last_update": self._rl_metrics.get("last_update"),
         }
+
+    def update_policy_from_rl(self, policy: Any) -> None:
+        """Optional hook to ingest an external RL policy into MLC settings.
+
+        Example usage could map risk-class action values into default thresholds
+        for `risk_detection` or reprioritize component selection for high-risk
+        patients before feedback is available.
+        """
+        self._rl_policy_prior = policy
+        logger.info("Updated MLC policy prior from RL output")
 
     def _initialize_rl_agent(self) -> None:
         """Initialize the reinforcement learning agent for component composition."""

@@ -157,6 +157,11 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 - SHAP-based feature attributions surfaced through `/api/v1/patient/{id}/explain` and a Streamlit page.
 - Limitation: synthetic training data means the risk scores and attributions are illustrative and **not** clinically calibrated.
 
+### Advanced MLC / RL Prototype
+- **RL environment**: a tabular Q-learning experiment (`experiments/rl_policy_demo.py`) that frames risk classification as a sequential decision problem over synthetic patient states (age bucket, comorbidity score, vitals flag) with actions `LOW_RISK`, `MEDIUM_RISK`, `HIGH_RISK`.
+- **Policy refinement concept**: the learned Q-values/policy can update MLCLearning defaults (e.g., thresholds or component weights) via a hook, providing a data-driven prior for risk classes that complements user feedback and rule-based settings.
+- **Intended usage**: run locally for research/education; in production it would be gated, validated, and fused with deterministic safety checks before affecting live risk scoring.
+
 ---
 
 ## 🎨 Frontend Features
