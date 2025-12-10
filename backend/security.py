@@ -22,6 +22,26 @@ from jose.utils import base64url_decode
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+_shared_async_client: Optional[httpx.AsyncClient] = None
+
+
+async def get_shared_async_client() -> httpx.AsyncClient:
+    """Return a shared ``httpx.AsyncClient`` instance for JWKS retrieval."""
+
+    global _shared_async_client
+    if _shared_async_client is None or _shared_async_client.is_closed:
+        _shared_async_client = httpx.AsyncClient(timeout=10.0)
+    return _shared_async_client
+
+
+async def close_shared_async_client() -> None:
+    """Close the shared ``httpx.AsyncClient`` if it was created."""
+
+    global _shared_async_client
+    if _shared_async_client and not _shared_async_client.is_closed:
+        await _shared_async_client.aclose()
+    _shared_async_client = None
+
 
 @dataclass
 class TokenContext:
@@ -42,24 +62,32 @@ class TokenContext:
 class JWTValidator:
     """Validates JWT bearer tokens against JWKS keys and SMART constraints."""
 
-    def __init__(self) -> None:
+    def __init__(self, async_client: Optional[httpx.AsyncClient] = None) -> None:
         self.jwks_url = os.getenv("IAM_JWKS_URL")
         self.issuer = os.getenv("IAM_ISSUER")
         self.audience = os.getenv("SMART_CLIENT_ID") or os.getenv("IAM_AUDIENCE")
         self._jwks_cache: Optional[Dict[str, Dict]] = None
+        self._async_client = async_client
 
-    def _fetch_jwks(self) -> Dict[str, Dict]:
+    async def _fetch_jwks(self) -> Dict[str, Dict]:
         if not self.jwks_url:
             raise RuntimeError("IAM_JWKS_URL must be configured for token validation")
 
-        if self._jwks_cache:
+        if self._jwks_cache is not None:
             return self._jwks_cache
 
-        with httpx.Client(timeout=10.0) as client:
-            response = client.get(self.jwks_url)
+        client = self._async_client or await get_shared_async_client()
+        try:
+            response = await client.get(self.jwks_url)
             response.raise_for_status()
-            jwks = response.json().get("keys", [])
-            self._jwks_cache = {key.get("kid"): key for key in jwks if key.get("kid")}
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to fetch JWKS",
+            ) from exc
+
+        jwks = response.json().get("keys", [])
+        self._jwks_cache = {key.get("kid"): key for key in jwks if key.get("kid")}
         return self._jwks_cache
 
     def _verify_signature(self, token: str, jwk_key: Dict) -> Dict:
@@ -90,7 +118,7 @@ class JWTValidator:
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
 
-    def validate(self, token: str) -> TokenContext:
+    async def validate(self, token: str) -> TokenContext:
         try:
             unverified_header = jwt.get_unverified_header(token)
         except JWTError as exc:
@@ -100,7 +128,7 @@ class JWTValidator:
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
 
-        jwks = self._fetch_jwks()
+        jwks = await self._fetch_jwks()
         jwk_key = jwks.get(unverified_header.get("kid"))
         if not jwk_key:
             raise HTTPException(
@@ -169,6 +197,8 @@ def auth_dependency(
 ):
     """Create a FastAPI dependency that validates bearer tokens and scopes."""
 
+    validator = JWTValidator()
+
     async def _dependency(
         credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     ) -> TokenContext:
@@ -179,8 +209,7 @@ def auth_dependency(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        validator = JWTValidator()
-        token_context = validator.validate(credentials.credentials)
+        token_context = await validator.validate(credentials.credentials)
 
         scopes_set = set(required_scopes or [])
         if scopes_set and not token_context.scopes.intersection(scopes_set):
