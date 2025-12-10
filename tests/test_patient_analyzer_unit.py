@@ -1,68 +1,68 @@
+from unittest.mock import AsyncMock
+
 import pytest
 
 from backend.patient_analyzer import PatientAnalyzer
 
 
+class DummyAdapterManager:
+    adapters = {"cardio": {"specialty": "cardiology"}}
+
+    async def select_adapters(self, specialties, patient_data):
+        return ["cardio"]
+
+    async def activate_adapter(self, adapter):
+        return None
+
+
 @pytest.mark.anyio
-async def test_risk_scores_and_polypharmacy_for_older_patients():
+async def test_patient_analyzer_orchestrates_services():
+    patient_data_service = AsyncMock()
+    patient_data_service.fetch_patient_data.return_value = {"patient": {"id": "p1"}}
+    patient_data_service.generate_summary.return_value = {"summary": True}
+
+    risk_service = AsyncMock()
+    risk_service.calculate_risk_scores.return_value = {
+        "risk": 0.5,
+        "polypharmacy_risk": False,
+    }
+    risk_service.derive_overall_risk_score = lambda scores: 0.5
+    risk_service.review_medications.return_value = {"total_medications": 0}
+
+    alert_service = AsyncMock()
+    alert_service.identify_alerts.return_value = [
+        {"severity": "critical", "message": "alert"}
+    ]
+    alert_service.highest_alert_severity = lambda alerts: "critical"
+
+    recommendation_service = AsyncMock()
+    recommendation_service.generate_recommendations.return_value = {
+        "clinical_recommendations": [{"recommendation": "do"}]
+    }
+
+    notification_service = AsyncMock()
+
     analyzer = PatientAnalyzer(
         fhir_connector=None,
         llm_engine=None,
         rag_fusion=None,
-        s_lora_manager=None,
+        s_lora_manager=DummyAdapterManager(),
         aot_reasoner=None,
         mlc_learning=None,
+        patient_data_service=patient_data_service,
+        risk_scoring_service=risk_service,
+        recommendation_service=recommendation_service,
+        alert_service=alert_service,
+        notification_service=notification_service,
     )
 
-    patient_data = {
-        "patient": {"id": "elder", "name": "Elder Test", "gender": "male", "birthDate": "1940-01-01"},
-        "conditions": [{"code": "Hypertension"}],
-        "medications": [
-            {"medication": f"Med {i}", "status": "active"} for i in range(12)
-        ],
-        "encounters": [{"status": "finished"}],
-    }
+    result = await analyzer.analyze("p1", notify=True)
 
-    risk_scores = await analyzer._calculate_risk_scores(patient_data)
-    medication_review = await analyzer._medication_review(patient_data)
+    patient_data_service.fetch_patient_data.assert_awaited_with("p1")
+    alert_service.identify_alerts.assert_awaited()
+    risk_service.calculate_risk_scores.assert_awaited()
+    recommendation_service.generate_recommendations.assert_awaited()
+    notification_service.notify_if_needed.assert_awaited()
 
-    assert 0 <= risk_scores["cardiovascular_risk"] <= 1
-    assert 0 <= risk_scores["medication_non_adherence_risk"] <= 1
-    assert risk_scores["polypharmacy"] is True
-
-    assert risk_scores["polypharmacy_risk"] is True
-    
-    assert any("Polypharmacy" in issue for issue in medication_review.get("potential_issues", []))
-
-
-@pytest.mark.anyio
-async def test_risk_scores_include_age_and_medication_load():
-    analyzer = PatientAnalyzer(
-        fhir_connector=None,
-        llm_engine=None,
-        rag_fusion=None,
-        s_lora_manager=None,
-        aot_reasoner=None,
-        mlc_learning=None,
-    )
-
-    younger_patient = {
-        "patient": {"id": "young", "birthDate": "2005-01-01"},
-        "conditions": [],
-        "medications": [],
-        "encounters": [],
-    }
-
-    older_polypharmacy_patient = {
-        "patient": {"id": "senior", "birthDate": "1950-01-01"},
-        "conditions": [{"code": "Hypertension"}, {"code": "Diabetes"}],
-        "medications": [{"medication": f"M{i}"} for i in range(15)],
-        "encounters": [{"status": "finished"} for _ in range(3)],
-    }
-
-    young_scores = await analyzer._calculate_risk_scores(younger_patient)
-    senior_scores = await analyzer._calculate_risk_scores(older_polypharmacy_patient)
-
-    assert young_scores["cardiovascular_risk"] < senior_scores["cardiovascular_risk"]
-    assert senior_scores["readmission_risk"] > 0.2
-    assert senior_scores["polypharmacy_risk"] is True
+    assert result["patient_id"] == "p1"
+    assert result["highest_alert_severity"] == "critical"
