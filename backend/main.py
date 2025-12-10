@@ -23,7 +23,7 @@ import uuid
 import uvicorn
 import os
 from dotenv import load_dotenv
-from security import TokenContext, auth_dependency
+from security import TokenContext, auth_dependency, close_shared_async_client
 from audit_service import AuditService
 from pydantic import BaseModel, validator
 
@@ -182,6 +182,8 @@ async def lifespan(app: FastAPI):
             await websocket.close(code=1001)
         except Exception:
             pass
+
+    await close_shared_async_client()
     logger.info("Shutdown complete")
 
 
