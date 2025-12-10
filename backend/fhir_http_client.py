@@ -317,6 +317,10 @@ class FhirHttpClient:
             await self._refresh_access_token()
             return
 
+        if self.client_id and self.token_url:
+            await self._request_client_credentials_token()
+            return
+
         raise PermissionError("FHIR access token is missing or expired")
 
     async def _refresh_access_token(self) -> None:
@@ -349,6 +353,36 @@ class FhirHttpClient:
         token_data = response.json()
         self._persist_token_data(token_data)
 
+    async def _request_client_credentials_token(self) -> None:
+        """Obtain a new access token using the client_credentials grant."""
+
+        if not self.token_url:
+            raise PermissionError("Cannot obtain token: token endpoint unavailable")
+
+        data: Dict[str, Any] = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+        }
+        if self.scope:
+            data["scope"] = self.scope
+        if self.audience:
+            data["aud"] = self.audience
+
+        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
+            response = await client.post(
+                self.token_url,
+                data=data,
+                auth=(self.client_id, self.client_secret) if self.client_secret else None,
+            )
+
+        if response.status_code >= 400:
+            raise PermissionError(
+                f"Failed to obtain client credentials token ({response.status_code}): {response.text}"
+            )
+
+        token_data = response.json()
+        self._persist_token_data(token_data)
+
     def _auth_headers(self) -> Dict[str, str]:
         access_token, _, _, _ = self._effective_context()
         if not access_token:
@@ -364,11 +398,31 @@ class FhirHttpClient:
         normalized = {scope.lower() for scope in granted_scopes}
 
         for resource in required_resources:
-            resource_scope = f"{resource.lower()}/*.read"
-            wildcard_scope = f"patient/*.read"
-            if resource_scope not in normalized and wildcard_scope not in normalized:
+            lower_resource = resource.lower()
+            wildcard_scopes = {f"{prefix}/*.read" for prefix in ("patient", "user", "system")}
+            resource_variants = {
+                f"{lower_resource}/*.read",
+                f"{lower_resource}.read",
+            }
+            for prefix in ("patient", "user", "system"):
+                resource_variants.update(
+                    {
+                        f"{prefix}/{lower_resource}/*.read",
+                        f"{prefix}/{lower_resource}.read",
+                    }
+                )
+
+            allowed = bool(normalized & wildcard_scopes)
+            if not allowed:
+                allowed = bool(normalized & resource_variants)
+
+            if not allowed:
                 raise PermissionError(
-                    f"Missing required scope: {resource_scope} (granted: {', '.join(sorted(normalized))})"
+                    (
+                        f"Missing required scope for {resource}: expected one of "
+                        f"{', '.join(sorted(resource_variants | wildcard_scopes))} "
+                        f"(granted: {', '.join(sorted(normalized))})"
+                    )
                 )
 
     async def _request_with_retry(
