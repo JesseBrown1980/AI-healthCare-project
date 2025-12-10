@@ -47,14 +47,14 @@ export class ApiClient {
   analyzePatient(patientId) {
     return this.request('/api/v1/analyze-patient', {
       method: 'POST',
-      body: JSON.stringify({ patient_id: patientId }),
+      body: JSON.stringify({ fhir_patient_id: patientId, notify: true }),
     });
   }
 
   registerPushToken(pushToken) {
     return this.request('/api/v1/notifications/register', {
       method: 'POST',
-      body: JSON.stringify({ push_token: pushToken }),
+      body: JSON.stringify({ push_token: pushToken, platform: 'expo' }),
     });
   }
 }
