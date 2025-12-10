@@ -3,6 +3,7 @@ import types
 from pathlib import Path
 
 import pytest
+from unittest.mock import AsyncMock
 
 # Ensure imports like `import security` inside backend.main work during tests
 ROOT = Path(__file__).resolve().parent.parent
@@ -70,6 +71,20 @@ class DummyNotifier:
             "correlation_id": correlation_id,
         }
         return {"status": "push-sent"}
+
+
+@pytest.mark.anyio
+async def test_notifier_sends_fcm_without_callback(monkeypatch):
+    notifier = Notifier(callback_url="", fcm_server_key="dummy-key")
+    notifier.register_device("token-1", "ios")
+
+    send_fcm = AsyncMock(return_value={"status": "fcm-sent"})
+    monkeypatch.setattr(notifier, "_send_fcm", send_fcm)
+
+    result = await notifier.notify({"patient_id": "p-123", "alerts": []})
+
+    send_fcm.assert_awaited_once()
+    assert result == {"FCM": {"status": "fcm-sent"}}
 
 
 class FakeFHIRConnector:
