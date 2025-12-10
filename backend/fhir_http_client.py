@@ -446,15 +446,28 @@ class FhirHttpClient:
                     headers=self._auth_headers(),
                 )
                 if response.status_code in {401, 403}:
-                    await self._refresh_access_token()
-                    if attempt >= max_attempts:
+                    reason = f"status {response.status_code}"
+                    reauth_attempted = False
+
+                    try:
+                        if self.refresh_token:
+                            await self._refresh_access_token()
+                            reauth_attempted = True
+                        elif self.client_id and self.token_url:
+                            await self._request_client_credentials_token()
+                            reauth_attempted = True
+                    except PermissionError:
+                        # Fall through to final handling below when reauth fails
+                        pass
+
+                    if not reauth_attempted or attempt >= max_attempts:
                         raise PermissionError(
                             (
                                 f"FHIR request rejected with {response.status_code}. "
                                 "Confirm SMART authorization, patient consent, and granted scopes."
                             )
                         )
-                    reason = f"status {response.status_code}"
+
                     attempt += 1
                     continue
                 if response.status_code not in retryable_statuses:
