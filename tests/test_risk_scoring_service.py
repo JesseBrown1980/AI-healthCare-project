@@ -1,10 +1,11 @@
+import asyncio
+
 import pytest
 
 from backend.risk_scoring_service import RiskScoringService
 
 
-@pytest.mark.anyio
-async def test_risk_scores_and_polypharmacy_for_older_patients():
+def test_risk_scores_and_polypharmacy_for_older_patients():
     service = RiskScoringService()
 
     patient_data = {
@@ -19,8 +20,8 @@ async def test_risk_scores_and_polypharmacy_for_older_patients():
         "encounters": [{"status": "finished"}],
     }
 
-    risk_scores = await service.calculate_risk_scores(patient_data)
-    medication_review = await service.review_medications(patient_data)
+    risk_scores = asyncio.run(service.calculate_risk_scores(patient_data))
+    medication_review = asyncio.run(service.review_medications(patient_data))
 
     assert 0 <= risk_scores["cardiovascular_risk"] <= 1
     assert 0 <= risk_scores["medication_non_adherence_risk"] <= 1
@@ -31,8 +32,7 @@ async def test_risk_scores_and_polypharmacy_for_older_patients():
     )
 
 
-@pytest.mark.anyio
-async def test_risk_scores_include_age_and_medication_load():
+def test_risk_scores_include_age_and_medication_load():
     service = RiskScoringService()
 
     younger_patient = {
@@ -49,8 +49,10 @@ async def test_risk_scores_include_age_and_medication_load():
         "encounters": [{"status": "finished"} for _ in range(3)],
     }
 
-    young_scores = await service.calculate_risk_scores(younger_patient)
-    senior_scores = await service.calculate_risk_scores(older_polypharmacy_patient)
+    young_scores = asyncio.run(service.calculate_risk_scores(younger_patient))
+    senior_scores = asyncio.run(
+        service.calculate_risk_scores(older_polypharmacy_patient)
+    )
 
     assert young_scores["cardiovascular_risk"] < senior_scores["cardiovascular_risk"]
     assert senior_scores["readmission_risk"] > 0.2

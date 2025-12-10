@@ -11,8 +11,8 @@ Existing callers can continue importing :class:`FHIRConnector`, which aliases
 the new :class:`FhirResourceService`.
 """
 
-from .fhir_http_client import FHIRConnectorError, FhirHttpClient
-from .fhir_resource_service import FhirResourceService
+from backend.fhir_http_client import FHIRConnectorError, FhirHttpClient
+from backend.fhir_resource_service import FhirResourceService
 
 FHIRConnector = FhirResourceService
 

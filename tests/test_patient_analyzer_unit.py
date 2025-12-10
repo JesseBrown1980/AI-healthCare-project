@@ -1,6 +1,39 @@
+import asyncio
+import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+
+sys.modules.setdefault(
+    "httpx",
+    SimpleNamespace(
+        AsyncClient=type("AsyncClient", (), {}),
+        Client=type("Client", (), {}),
+        TimeoutException=Exception,
+        RequestError=Exception,
+        HTTPError=Exception,
+        Response=type("Response", (), {}),
+        QueryParams=lambda params: params,
+        Headers=dict,
+    ),
+)
+
+
+class _DummyTaskGroup:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+    async def spawn(self, *args, **kwargs):
+        return None
+
+
+sys.modules.setdefault(
+    "anyio", SimpleNamespace(create_task_group=lambda: _DummyTaskGroup())
+)
 
 from backend.patient_analyzer import PatientAnalyzer
 
@@ -15,8 +48,7 @@ class DummyAdapterManager:
         return None
 
 
-@pytest.mark.anyio
-async def test_patient_analyzer_orchestrates_services():
+def test_patient_analyzer_orchestrates_services():
     patient_data_service = AsyncMock()
     patient_data_service.fetch_patient_data.return_value = {"patient": {"id": "p1"}}
     patient_data_service.generate_summary.return_value = {"summary": True}
@@ -24,6 +56,7 @@ async def test_patient_analyzer_orchestrates_services():
     risk_service = AsyncMock()
     risk_service.calculate_risk_scores.return_value = {
         "risk": 0.5,
+        "polypharmacy": False,
         "polypharmacy_risk": False,
     }
     risk_service.derive_overall_risk_score = lambda scores: 0.5
@@ -56,7 +89,7 @@ async def test_patient_analyzer_orchestrates_services():
         notification_service=notification_service,
     )
 
-    result = await analyzer.analyze("p1", notify=True)
+    result = asyncio.run(analyzer.analyze("p1", notify=True))
 
     patient_data_service.fetch_patient_data.assert_awaited_with("p1")
     alert_service.identify_alerts.assert_awaited()
@@ -66,3 +99,5 @@ async def test_patient_analyzer_orchestrates_services():
 
     assert result["patient_id"] == "p1"
     assert result["highest_alert_severity"] == "critical"
+    assert result["polypharmacy_risk"] is False
+    assert result["risk_scores"]["polypharmacy"] is False
