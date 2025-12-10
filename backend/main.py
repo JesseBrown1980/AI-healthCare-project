@@ -26,7 +26,7 @@ import os
 from dotenv import load_dotenv
 from security import TokenContext, auth_dependency, close_shared_async_client
 from audit_service import AuditService
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, root_validator, validator
 
 # Load environment variables
 load_dotenv()
@@ -68,14 +68,32 @@ patient_summary_cache: Dict[str, Dict[str, Any]] = {}
 
 class DeviceRegistration(BaseModel):
     device_token: str
-    platform: str
+    platform: str = "unknown"
+
+    @root_validator(pre=True)
+    def populate_device_token(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Allow payloads that send push_token instead of device_token."""
+
+        if not values.get("device_token") and values.get("push_token"):
+            values["device_token"] = values["push_token"]
+        return values
 
     @validator("platform")
     def validate_platform(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"ios", "android"}:
-            raise ValueError("platform must be iOS or Android")
-        return "iOS" if normalized == "ios" else "Android"
+        normalized = value.strip().lower() if value else "unknown"
+        if normalized in {"ios", "android"}:
+            return "iOS" if normalized == "ios" else "Android"
+        if normalized in {"expo", "unknown", ""}:
+            return "Expo" if normalized == "expo" else "Unknown"
+        raise ValueError("platform must be iOS, Android, or Expo")
+
+
+class AnalyzePatientRequest(BaseModel):
+    fhir_patient_id: Optional[str] = None
+    patient_id: Optional[str] = None
+    include_recommendations: Optional[bool] = True
+    specialty: Optional[str] = None
+    notify: Optional[bool] = None
 
 
 @asynccontextmanager
@@ -344,7 +362,7 @@ async def _get_patient_summary(
         return cached["summary"]
 
     if not latest_analysis:
-        if not patient_analyzer:
+        if not patient_analyzer or not fhir_connector:
             raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
         async with fhir_connector.request_context(
@@ -452,14 +470,9 @@ async def health_check(
     }
 
 
-@app.post("/api/v1/register-device")
-async def register_device(
-    registration: DeviceRegistration,
-    request: Request,
-    auth: TokenContext = Depends(auth_dependency()),
-):
-    """Register a device token for push notifications."""
-
+def _register_device_token(
+    registration: DeviceRegistration, request: Request
+) -> Dict[str, Any]:
     if not notifier:
         raise HTTPException(status_code=503, detail="Notifier not initialized")
 
@@ -473,6 +486,28 @@ async def register_device(
     )
 
     return {"status": "registered", "device": registered}
+
+
+@app.post("/api/v1/register-device")
+async def register_device(
+    registration: DeviceRegistration,
+    request: Request,
+    auth: TokenContext = Depends(auth_dependency()),
+):
+    """Register a device token for push notifications."""
+
+    return _register_device_token(registration, request)
+
+
+@app.post("/api/v1/notifications/register")
+async def register_push_token(
+    registration: DeviceRegistration,
+    request: Request,
+    auth: TokenContext = Depends(auth_dependency()),
+):
+    """Compatibility endpoint for registering Expo push tokens."""
+
+    return _register_device_token(registration, request)
 
 
 @app.get("/api/v1/patients/dashboard")
@@ -493,6 +528,7 @@ async def get_dashboard_patients(
     correlation_id = getattr(
         request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
     )
+
 
     try:
         async with fhir_connector.request_context(
@@ -525,10 +561,11 @@ async def get_dashboard_patients(
 @app.post("/api/v1/analyze-patient")
 async def analyze_patient(
     request: Request,
-    fhir_patient_id: str,
+    fhir_patient_id: Optional[str] = None,
     include_recommendations: bool = True,
     specialty: Optional[str] = None,
-    notify: bool = False,
+    notify: Optional[bool] = False,
+    analysis: Optional[AnalyzePatientRequest] = None,
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
@@ -544,33 +581,50 @@ async def analyze_patient(
     correlation_id = getattr(
         request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
     )
+    patient_id: Optional[str] = fhir_patient_id
 
     try:
-        if not patient_analyzer:
+        if not patient_analyzer or not fhir_connector:
             raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
-        logger.info(f"Analyzing patient: {fhir_patient_id}")
+        payload_patient_id = None
+        if analysis:
+            payload_patient_id = analysis.fhir_patient_id or analysis.patient_id
 
-        if auth.patient and auth.patient != fhir_patient_id:
+        patient_id = payload_patient_id or patient_id
+        if not patient_id:
+            raise HTTPException(status_code=422, detail="patient_id is required")
+
+        logger.info(f"Analyzing patient: {patient_id}")
+
+        if auth.patient and auth.patient != patient_id:
             raise HTTPException(
                 status_code=403,
                 detail="Token is scoped to a different patient context",
             )
 
+        include_recs = (
+            analysis.include_recommendations
+            if analysis and analysis.include_recommendations is not None
+            else include_recommendations
+        )
+        requested_specialty = analysis.specialty if analysis else specialty
+        should_notify = analysis.notify if analysis and analysis.notify is not None else notify
+
         async with fhir_connector.request_context(
             auth.access_token, auth.scopes, auth.patient
         ):
             result = await patient_analyzer.analyze(
-                patient_id=fhir_patient_id,
-                include_recommendations=include_recommendations,
-                specialty=specialty,
-                notify=bool(notifications_enabled and notify),
+                patient_id=patient_id,
+                include_recommendations=include_recs,
+                specialty=requested_specialty,
+                notify=bool(notifications_enabled and should_notify),
                 correlation_id=correlation_id,
             )
 
         # Cache and broadcast the latest dashboard summary for real-time updates
         summary = _extract_summary_from_analysis(result)
-        patient_summary_cache[fhir_patient_id] = {
+        patient_summary_cache[patient_id] = {
             "analysis_timestamp": summary["last_analysis"],
             "summary": summary,
         }
@@ -579,7 +633,7 @@ async def analyze_patient(
         if audit_service:
             await audit_service.record_event(
                 action="E",
-                patient_id=fhir_patient_id,
+                patient_id=patient_id,
                 user_context=auth,
                 correlation_id=correlation_id,
                 outcome="0",
@@ -597,7 +651,7 @@ async def analyze_patient(
         if audit_service:
             await audit_service.record_event(
                 action="E",
-                patient_id=fhir_patient_id,
+                patient_id=patient_id,
                 user_context=auth,
                 correlation_id=correlation_id,
                 outcome="8",
@@ -615,7 +669,7 @@ async def analyze_patient(
         if audit_service:
             await audit_service.record_event(
                 action="E",
-                patient_id=fhir_patient_id,
+                patient_id=patient_id,
                 user_context=auth,
                 correlation_id=correlation_id,
                 outcome="8",
@@ -628,7 +682,7 @@ async def analyze_patient(
         if audit_service:
             await audit_service.record_event(
                 action="E",
-                patient_id=fhir_patient_id,
+                patient_id=patient_id,
                 user_context=auth,
                 correlation_id=correlation_id,
                 outcome="8",
