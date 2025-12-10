@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from backend.patient_analyzer import PatientAnalyzer
-from backend.fhir_connector import FHIRConnector
+from backend.fhir_connector import FHIRConnector, FhirHttpClient
 from backend.llm_engine import LLMEngine
 from backend.rag_fusion import RAGFusion
 from backend.s_lora_manager import SLoRAManager
@@ -24,7 +24,8 @@ def test_patient_analyzer_e2e_with_mocks(monkeypatch):
     """
     
     # Create component instances
-    fhir = FHIRConnector(server_url="http://mock.fhir")
+    fhir_client = FhirHttpClient(server_url="http://mock.fhir")
+    fhir = FHIRConnector(fhir_client)
     llm = LLMEngine(model_name="gpt-4", api_key="mock-key")
     rag = RAGFusion(knowledge_base_path="./data/medical_kb")
     slora = SLoRAManager(adapter_path="./models/adapters", base_model="mock-model")

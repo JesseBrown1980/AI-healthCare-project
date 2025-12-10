@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import core modules (to be implemented)
-from fhir_connector import FHIRConnector, FHIRConnectorError
+from fhir_connector import FHIRConnectorError, FhirHttpClient, FhirResourceService
 from llm_engine import LLMEngine
 from rag_fusion import RAGFusion
 from s_lora_manager import SLoRAManager
@@ -46,6 +46,7 @@ from notifier import Notifier
 from explainability import explain_risk
 
 # Global instances
+fhir_client = None
 fhir_connector = None
 llm_engine = None
 rag_fusion = None
@@ -84,12 +85,12 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing Healthcare AI Assistant...")
     try:
-        global fhir_connector, llm_engine, rag_fusion, s_lora_manager, mlc_learning, aot_reasoner, patient_analyzer
+        global fhir_client, fhir_connector, llm_engine, rag_fusion, s_lora_manager, mlc_learning, aot_reasoner, patient_analyzer
         global audit_service, notifier
         
         # Initialize core components
-        logger.info("Loading FHIR Connector...")
-        fhir_connector = FHIRConnector(
+        logger.info("Loading FHIR HTTP client and resource service...")
+        fhir_client = FhirHttpClient(
             server_url=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir"),
             vendor=os.getenv("EHR_VENDOR", "generic"),
             client_id=os.getenv("SMART_CLIENT_ID", ""),
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
             audience=os.getenv("SMART_AUDIENCE") or None,
             refresh_token=os.getenv("SMART_REFRESH_TOKEN") or None,
         )
+        fhir_connector = FhirResourceService(fhir_client)
         
         logger.info("Loading LLM Engine...")
         llm_engine = LLMEngine(

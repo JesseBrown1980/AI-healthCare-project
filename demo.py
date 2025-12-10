@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Import backend modules
 from backend.patient_analyzer import PatientAnalyzer
-from backend.fhir_connector import FHIRConnector
+from backend.fhir_connector import FHIRConnector, FhirHttpClient
 from backend.llm_engine import LLMEngine
 from backend.rag_fusion import RAGFusion
 from backend.s_lora_manager import SLoRAManager
@@ -38,7 +38,8 @@ async def main():
     
     # Initialize components
     print("\n📦 Initializing components...")
-    fhir = FHIRConnector(server_url="http://localhost:8080/fhir")
+    fhir_client = FhirHttpClient(server_url="http://localhost:8080/fhir")
+    fhir = FHIRConnector(fhir_client)
     llm = LLMEngine(model_name="gpt-4", api_key="demo-key")
     rag = RAGFusion(knowledge_base_path="./data/medical_kb")
     slora = SLoRAManager(adapter_path="./models/adapters", base_model="meta-llama/Llama-2-7b-hf")
