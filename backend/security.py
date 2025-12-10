@@ -73,7 +73,7 @@ class JWTValidator:
         if not self.jwks_url:
             raise RuntimeError("IAM_JWKS_URL must be configured for token validation")
 
-        if self._jwks_cache:
+        if self._jwks_cache is not None:
             return self._jwks_cache
 
         client = self._async_client or await get_shared_async_client()
@@ -197,6 +197,8 @@ def auth_dependency(
 ):
     """Create a FastAPI dependency that validates bearer tokens and scopes."""
 
+    validator = JWTValidator()
+
     async def _dependency(
         credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     ) -> TokenContext:
@@ -207,7 +209,6 @@ def auth_dependency(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        validator = JWTValidator()
         token_context = await validator.validate(credentials.credentials)
 
         scopes_set = set(required_scopes or [])
