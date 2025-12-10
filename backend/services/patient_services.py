@@ -144,7 +144,7 @@ class RiskScoringService:
 
         conditions = [c.get("code", "").lower() for c in patient_data.get("conditions", [])]
         medication_count = len(patient_data.get("medications", []))
-        polypharmacy = medication_count > 10
+        polypharmacy = medication_count >= 10
         med_burden_factor = min(0.2, medication_count * 0.02)
 
         cv_risk = 0.15 + (0.35 * age_factor)
@@ -204,9 +204,9 @@ class MedicationReviewService:
             }
             review["medications"].append(med_review)
 
-        if review["total_medications"] > 10:
+        if review["total_medications"] >= 10:
             review["potential_issues"].append(
-                "Polypharmacy (>10 medications) - review for duplication"
+                "Polypharmacy (>=10 medications) - review for duplication"
             )
             review["deprescribing_candidates"] = [
                 m.get("medication") for m in patient_data.get("medications", [])[:2]

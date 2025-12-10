@@ -15,6 +15,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from contextlib import asynccontextmanager
 import logging
 from typing import Optional, List, Dict, Any
@@ -57,7 +58,7 @@ patient_analyzer = None
 notifier = None
 audit_service = None
 analysis_update_queue: Optional[asyncio.Queue] = None
-active_websockets: "set[WebSocket]" = set()
+active_websockets: Dict[WebSocket, TokenContext] = {}
 broadcast_task: Optional[asyncio.Task] = None
 notifications_enabled: bool = os.getenv("ENABLE_NOTIFICATIONS", "false").lower() == "true"
 
@@ -156,7 +157,7 @@ async def lifespan(app: FastAPI):
         # Initialize real-time update infrastructure
         global analysis_update_queue, active_websockets, broadcast_task
         analysis_update_queue = asyncio.Queue()
-        active_websockets = set()
+        active_websockets = {}
         broadcast_task = asyncio.create_task(_broadcast_analysis_updates())
         
         logger.info("✓ Healthcare AI Assistant initialized successfully")
@@ -177,7 +178,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-    for websocket in list(active_websockets):
+    for websocket in list(active_websockets.keys()):
         try:
             await websocket.close(code=1001)
         except Exception:
@@ -369,7 +370,14 @@ async def _broadcast_analysis_updates():
         update = await analysis_update_queue.get()
         stale_connections = []
 
-        for websocket in list(active_websockets):
+        update_patient_id = None
+        if isinstance(update, dict):
+            data = update.get("data") or {}
+            update_patient_id = data.get("patient_id") or update.get("patient_id")
+
+        for websocket, token_context in list(active_websockets.items()):
+            if update_patient_id and token_context.patient and token_context.patient != update_patient_id:
+                continue
             try:
                 await websocket.send_json(update)
             except Exception:
@@ -377,7 +385,7 @@ async def _broadcast_analysis_updates():
 
         for websocket in stale_connections:
             try:
-                active_websockets.remove(websocket)
+                active_websockets.pop(websocket, None)
             except KeyError:
                 pass
 
@@ -387,6 +395,39 @@ async def _queue_analysis_update(summary: Dict[str, Any]) -> None:
 
     if analysis_update_queue:
         await analysis_update_queue.put({"event": "dashboard_update", "data": summary})
+
+
+def _websocket_credentials_from_request(websocket: WebSocket) -> Optional[HTTPAuthorizationCredentials]:
+    """Extract bearer credentials from WebSocket headers or query parameters."""
+
+    auth_header = websocket.headers.get("authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        if token:
+            return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    query_token = websocket.query_params.get("token")
+    if query_token:
+        return HTTPAuthorizationCredentials(scheme="Bearer", credentials=query_token)
+
+    return None
+
+
+async def _authenticate_websocket(websocket: WebSocket) -> TokenContext:
+    """Validate a WebSocket connection before accepting it."""
+
+    dependency = auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    credentials = _websocket_credentials_from_request(websocket)
+
+    try:
+        return await dependency(credentials=credentials)
+    except HTTPException as exc:
+        close_code = 4401 if exc.status_code == 401 else 4403
+        try:
+            await websocket.close(code=close_code, reason=exc.detail)
+        finally:
+            pass
+        raise WebSocketDisconnect(code=close_code)
 
 
 @app.get("/api/v1/health")
@@ -599,8 +640,10 @@ async def analyze_patient(
 async def patient_updates(websocket: WebSocket):
     """Provide real-time dashboard updates via WebSocket."""
 
+    token_context = await _authenticate_websocket(websocket)
+
     await websocket.accept()
-    active_websockets.add(websocket)
+    active_websockets[websocket] = token_context
 
     try:
         while True:
@@ -611,8 +654,7 @@ async def patient_updates(websocket: WebSocket):
     except Exception:
         pass
     finally:
-        if websocket in active_websockets:
-            active_websockets.remove(websocket)
+        active_websockets.pop(websocket, None)
 
 
 @app.get("/api/v1/dashboard-summary")

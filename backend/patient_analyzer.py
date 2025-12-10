@@ -74,6 +74,48 @@ class PatientAnalyzer:
 
         logger.info("PatientAnalyzer initialized with all components")
 
+    async def _generate_summary(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.patient_data_service:
+            return {}
+        return await self.patient_data_service.generate_summary(patient_data)
+
+    async def _identify_alerts(self, patient_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if not self.alert_service:
+            return []
+        return await self.alert_service.identify_alerts(patient_data)
+
+    def _highest_alert_severity(self, alerts: List[Dict[str, Any]]) -> Optional[str]:
+        if not self.alert_service:
+            return None
+        return self.alert_service.highest_alert_severity(alerts)
+
+    async def _calculate_risk_scores(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.risk_scoring_service:
+            return {}
+        return await self.risk_scoring_service.calculate_risk_scores(patient_data)
+
+    async def _medication_review(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.risk_scoring_service:
+            return {}
+        return await self.risk_scoring_service.review_medications(patient_data)
+
+    async def _generate_recommendations(self, *, patient_data, summary, alerts, risk_scores, adapters, focus):
+        if not self.recommendation_service:
+            return []
+        return await self.recommendation_service.generate_recommendations(
+            patient_data=patient_data,
+            summary=summary,
+            alerts=alerts,
+            risk_scores=risk_scores,
+            adapters=adapters,
+            focus=focus,
+        )
+
+    async def _record_for_learning(self, patient_id: str, result: Dict[str, Any]) -> None:
+        if not self.mlc_learning:
+            return
+        await self.mlc_learning.record_feedback(patient_id, result)
+
     async def analyze(
         self,
         patient_id: str,
@@ -129,23 +171,19 @@ class PatientAnalyzer:
 
             # 3. GENERATE PATIENT SUMMARY
             logger.info("Step 3: Generating patient summary...")
-            summary = await self.patient_data_service.generate_summary(patient_data)
+            summary = await self._generate_summary(patient_data)
             result["summary"] = summary
 
             # 4. IDENTIFY ALERTS
             logger.info("Step 4: Identifying clinical alerts...")
-            alerts = await self.alert_service.identify_alerts(patient_data)
+            alerts = await self._identify_alerts(patient_data)
             result["alerts"] = alerts
             result["alert_count"] = len(alerts)
-            result["highest_alert_severity"] = self.alert_service.highest_alert_severity(
-                alerts
-            )
+            result["highest_alert_severity"] = self._highest_alert_severity(alerts)
 
             # 5. CALCULATE RISK SCORES
             logger.info("Step 5: Calculating risk scores...")
-            risk_scores = await self.risk_scoring_service.calculate_risk_scores(
-                patient_data
-            )
+            risk_scores = await self._calculate_risk_scores(patient_data)
             result["risk_scores"] = risk_scores
             result["overall_risk_score"] = self.risk_scoring_service.derive_overall_risk_score(
                 risk_scores
@@ -154,15 +192,13 @@ class PatientAnalyzer:
 
             # 6. MEDICATION REVIEW
             logger.info("Step 6: Reviewing medications...")
-            medication_review = await self.risk_scoring_service.review_medications(
-                patient_data
-            )
+            medication_review = await self._medication_review(patient_data)
             result["medication_review"] = medication_review
 
             # 7. GENERATE RECOMMENDATIONS (if requested)
             if include_recommendations:
                 logger.info("Step 7: Generating clinical recommendations...")
-                recommendations = await self.recommendation_service.generate_recommendations(
+                recommendations = await self._generate_recommendations(
                     patient_data=patient_data,
                     summary=summary,
                     alerts=alerts,
