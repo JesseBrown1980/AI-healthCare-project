@@ -4,7 +4,8 @@ from typing import Any, Dict, List
 
 import pytest
 
-from backend.fhir_connector import FHIRConnector
+from backend.fhir_http_client import FhirHttpClient
+from backend.fhir_resource_service import FhirResourceService
 
 
 class FakeResponse:
@@ -44,21 +45,22 @@ class FakeDiscoveryClient:
 
 @pytest.mark.anyio
 async def test_epic_paginated_observations_with_smart_auth(monkeypatch):
-    monkeypatch.setattr("backend.fhir_connector.httpx.Client", FakeDiscoveryClient)
+    monkeypatch.setattr("backend.fhir_http_client.httpx.Client", FakeDiscoveryClient)
 
-    connector = FHIRConnector(
+    client = FhirHttpClient(
         server_url="https://epic.example/fhir", vendor="epic", client_id="client-1"
     )
+    connector = FhirResourceService(client)
 
     token_calls = {"count": 0}
 
     async def fake_request_token():
         token_calls["count"] += 1
-        connector.access_token = "epic-token"
-        connector.granted_scopes = {"patient/Observation.read"}
-        connector.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        client.access_token = "epic-token"
+        client.granted_scopes = {"patient/Observation.read"}
+        client.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
-    monkeypatch.setattr(connector, "_request_token", fake_request_token)
+    monkeypatch.setattr(client, "_request_token", fake_request_token)
 
     first_bundle = {
         "entry": [
@@ -87,14 +89,14 @@ async def test_epic_paginated_observations_with_smart_auth(monkeypatch):
     calls: List[str] = []
 
     class FakeSession:
-        async def request(self, method, url, params=None, headers=None):
+        async def request(self, method, url, params=None, headers=None, json=None):
             calls.append(url)
             assert headers.get("Authorization") == "Bearer epic-token"
             if url.endswith("/Observation"):
                 return FakeResponse(first_bundle)
             return FakeResponse(second_bundle)
 
-    connector.session = FakeSession()
+    client.session = FakeSession()
 
     observations = await connector._get_patient_observations("pat-epic", limit=1)
 
@@ -108,21 +110,22 @@ async def test_epic_paginated_observations_with_smart_auth(monkeypatch):
 
 @pytest.mark.anyio
 async def test_cerner_patient_flow_includes_pagination_and_normalization(monkeypatch):
-    monkeypatch.setattr("backend.fhir_connector.httpx.Client", FakeDiscoveryClient)
+    monkeypatch.setattr("backend.fhir_http_client.httpx.Client", FakeDiscoveryClient)
 
-    connector = FHIRConnector(
+    client = FhirHttpClient(
         server_url="https://cerner.example/r4", vendor="cerner", client_id="client-2"
     )
+    connector = FhirResourceService(client)
 
     token_calls = {"count": 0}
 
     async def fake_request_token():
         token_calls["count"] += 1
-        connector.access_token = "cerner-token"
-        connector.granted_scopes = {"patient/*.read"}
-        connector.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        client.access_token = "cerner-token"
+        client.granted_scopes = {"patient/*.read"}
+        client.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
-    monkeypatch.setattr(connector, "_request_token", fake_request_token)
+    monkeypatch.setattr(client, "_request_token", fake_request_token)
 
     patient_resource: Dict[str, Any] = {
         "id": "cerner-p1",
@@ -168,7 +171,7 @@ async def test_cerner_patient_flow_includes_pagination_and_normalization(monkeyp
     urls_seen: List[str] = []
 
     class FakeSession:
-        async def request(self, method, url, params=None, headers=None):
+        async def request(self, method, url, params=None, headers=None, json=None):
             urls_seen.append(url)
             assert headers.get("Authorization") == "Bearer cerner-token"
 
@@ -180,7 +183,7 @@ async def test_cerner_patient_flow_includes_pagination_and_normalization(monkeyp
                 return FakeResponse(condition_bundles[idx])
             return FakeResponse({"entry": []})
 
-    connector.session = FakeSession()
+    client.session = FakeSession()
 
     result = await connector.get_patient("cerner-p1")
 

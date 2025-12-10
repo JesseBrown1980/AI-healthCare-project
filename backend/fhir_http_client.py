@@ -1,4 +1,6 @@
-"""Low-level FHIR HTTP client handling SMART auth, retries, and caching helpers."""
+"""HTTP client utilities for communicating with SMART-on-FHIR servers."""
+
+from __future__ import annotations
 
 import asyncio
 import base64
@@ -7,13 +9,13 @@ import logging
 import os
 import random
 import secrets
-import urllib.parse
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Set, Tuple
 
 import httpx
+
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ class FHIRConnectorError(Exception):
 
 
 class FhirHttpClient:
-    """SMART-on-FHIR aware HTTP client that handles auth and retries."""
+    """Encapsulates SMART discovery, authentication, and HTTP retries."""
 
     def __init__(
         self,
@@ -61,6 +63,7 @@ class FhirHttpClient:
         audience: Optional[str] = None,
         refresh_token: Optional[str] = None,
         use_proxies: bool = True,
+        session: Optional[httpx.AsyncClient] = None,
     ) -> None:
         self.vendor = vendor.lower() if vendor else None
 
@@ -84,7 +87,6 @@ class FhirHttpClient:
         self.audience = audience
         self.refresh_token = refresh_token
         self.use_proxies = use_proxies
-        self.session: Optional[httpx.AsyncClient] = None
         self.discovery_document: Dict[str, Any] = {}
         self.auth_url = vendor_auth_url
         self.token_url = vendor_token_url
@@ -106,8 +108,11 @@ class FhirHttpClient:
         )
 
         self._configure_from_well_known()
-        self.session = self._initialize_session()
+        self.session = session or self._initialize_session()
 
+    # ---------------------------------------------------------------------
+    # Context helpers
+    # ---------------------------------------------------------------------
     @asynccontextmanager
     async def request_context(
         self,
@@ -116,9 +121,7 @@ class FhirHttpClient:
         patient_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ):
-        """
-        Temporarily override the client's token and scopes for a specific request.
-        """
+        """Temporarily override token and scopes for a specific request."""
 
         previous_context = self._request_context.get()
         self._request_context.set(
@@ -134,150 +137,81 @@ class FhirHttpClient:
         finally:
             self._request_context.set(previous_context)
 
-    def _effective_context(
-        self,
-    ) -> Tuple[Optional[str], Set[str], Optional[str], Optional[str]]:
-        """Return the active access token, scopes, patient, and user context."""
-
+    def get_effective_context(self) -> Tuple[Optional[str], Set[str], Optional[str], Optional[str]]:
         context = self._request_context.get()
         if context:
             return (
                 context.get("access_token"),
                 set(context.get("scopes") or set()),
-                context.get("patient") if context.get("patient") is not None else self.patient_context,
-                context.get("user") if context.get("user") is not None else self.user_context,
+                context.get("patient")
+                if context.get("patient") is not None
+                else self.patient_context,
+                context.get("user")
+                if context.get("user") is not None
+                else self.user_context,
             )
         return self.access_token, self.granted_scopes, self.patient_context, self.user_context
 
-    def _configure_from_well_known(self) -> None:
-        """Load SMART-on-FHIR metadata from the server's discovery document."""
-
-        try:
-            with httpx.Client(trust_env=self.use_proxies, timeout=10.0) as client:
-                response = client.get(self.well_known_url)
-                response.raise_for_status()
-                self.discovery_document = response.json()
-                self.auth_url = self.auth_url or self.discovery_document.get(
-                    "authorization_endpoint"
-                )
-                self.token_url = self.token_url or self.discovery_document.get(
-                    "token_endpoint"
-                )
-                if not self.scope:
-                    self.scope = self.discovery_document.get("scopes_supported", "")
-        except httpx.HTTPError as exc:
-            logger.warning("SMART discovery failed at %s: %s", self.well_known_url, exc)
-        except Exception as exc:  # pragma: no cover - defensive guard
-            logger.error("Unexpected error during SMART discovery: %s", exc)
-
-    def _initialize_session(self) -> httpx.AsyncClient:
-        """Initialize HTTP session for FHIR interactions using SMART auth"""
-
-        logger.info("FHIR HTTP client initialized for %s", self.server_url)
-
-        trust_env = self.use_proxies
-        try:
-            return httpx.AsyncClient(
-                timeout=30.0,
-                trust_env=trust_env,
-            )
-        except ImportError as exc:
-            logger.warning(
-                "Proxy support unavailable (%s); creating session without proxies.",
-                exc,
-            )
-            return httpx.AsyncClient(
-                timeout=30.0,
-                trust_env=False,
-            )
-
-    def _generate_pkce_pair(self) -> Tuple[str, str]:
-        """Generate a PKCE code_verifier and corresponding code_challenge."""
-
-        verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).decode()
-        verifier = verifier.rstrip("=")
-        challenge = hashlib.sha256(verifier.encode()).digest()
-        challenge_b64 = base64.urlsafe_b64encode(challenge).decode().rstrip("=")
-        return verifier, challenge_b64
-
+    # ---------------------------------------------------------------------
+    # Authorization helpers
+    # ---------------------------------------------------------------------
     def build_authorization_url(
         self,
         redirect_uri: str,
         *,
         state: Optional[str] = None,
-        audience: Optional[str] = None,
-        launch: Optional[str] = None,
         patient: Optional[str] = None,
         user: Optional[str] = None,
     ) -> Tuple[str, str]:
+        """Construct the SMART authorization URL with PKCE."""
+
         if not self.auth_url:
-            raise RuntimeError(
-                "Authorization endpoint is not configured for SMART authentication"
-            )
+            raise RuntimeError("Authorization endpoint is not configured")
 
-        self.code_verifier, self.code_challenge = self._generate_pkce_pair()
-        state = state or secrets.token_urlsafe(24)
-        audience = audience or self.audience or self.server_url
+        verifier = secrets.token_urlsafe(32)
+        self.code_verifier = verifier
+        challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode()).digest()
+        ).decode().rstrip("=")
+        self.code_challenge = challenge
 
+        state = state or secrets.token_urlsafe(16)
         params = {
             "response_type": "code",
             "client_id": self.client_id,
             "redirect_uri": redirect_uri,
             "scope": self.scope,
+            "aud": self.server_url,
             "state": state,
-            "code_challenge": self.code_challenge,
+            "code_challenge": challenge,
             "code_challenge_method": self.code_challenge_method,
         }
 
-        if audience:
-            params["aud"] = audience
-        if launch:
-            params["launch"] = launch
         if patient:
             params["patient"] = patient
         if user:
             params["user"] = user
 
-        query = urllib.parse.urlencode(params)
+        query = httpx.QueryParams(params)
         return f"{self.auth_url}?{query}", state
 
-    async def complete_authorization(
-        self,
-        code: str,
-        redirect_uri: str,
-        *,
-        code_verifier: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    async def complete_authorization(self, code: str, redirect_uri: str) -> Dict[str, Any]:
         if not self.token_url:
-            raise RuntimeError("Token endpoint is not configured for SMART authentication")
-
-        verifier = code_verifier or self.code_verifier
-        if not verifier:
-            raise ValueError("code_verifier is required to complete the PKCE flow")
-
-        data: Dict[str, Any] = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": redirect_uri,
-            "client_id": self.client_id,
-            "code_verifier": verifier,
-        }
-        if self.audience:
-            data["aud"] = self.audience
+            raise RuntimeError("Token endpoint is not configured")
 
         async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
             response = await client.post(
                 self.token_url,
-                data=data,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "code_verifier": self.code_verifier,
+                },
                 auth=(self.client_id, self.client_secret) if self.client_secret else None,
             )
 
-        if response.status_code >= 400:
-            detail = response.json().get("error_description") if response.content else response.text
-            raise PermissionError(
-                f"SMART authorization code exchange failed ({response.status_code}): {detail or 'authorization denied'}"
-            )
-
+        response.raise_for_status()
         token_data = response.json()
         self._persist_token_data(token_data)
         return token_data
@@ -305,169 +239,121 @@ class FhirHttpClient:
             or self.user_context
         )
 
-    async def _ensure_valid_token(self) -> None:
-        access_token, _, _, _ = self._effective_context()
-        if access_token:
-            if self.token_expires_at and datetime.now(timezone.utc) < self.token_expires_at:
-                return
-            if self.token_expires_at is None:
-                return
+    def _auth_headers(self) -> Dict[str, str]:
+        access_token, _, _, _ = self.get_effective_context()
+        if not access_token:
+            return self.default_headers.copy()
 
-        if self.refresh_token and self.token_url:
-            await self._refresh_access_token()
-            return
+        headers = self.default_headers.copy()
+        headers["Authorization"] = f"Bearer {access_token}"
+        return headers
 
-        if self.client_id and self.token_url:
-            await self._request_client_credentials_token()
-            return
+    async def _request_token(self) -> None:
+        if not self.token_url:
+            raise RuntimeError("Token endpoint is not configured for SMART authentication")
 
-        raise PermissionError("FHIR access token is missing or expired")
+        data = {
+            "grant_type": "client_credentials",
+            "scope": self.scope,
+        }
+        if self.audience:
+            data["aud"] = self.audience
+
+        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
+            response = await client.post(
+                self.token_url,
+                data=data,
+                auth=(self.client_id, self.client_secret) if self.client_secret else None,
+            )
+
+        if response.status_code >= 400:
+            detail = response.json().get("error_description") if response.content else response.text
+            raise PermissionError(
+                f"SMART token exchange failed ({response.status_code}): {detail or 'consent or credentials invalid'}"
+            )
+
+        token_data = response.json()
+        self._persist_token_data(token_data)
 
     async def _refresh_access_token(self) -> None:
         if not self.refresh_token:
-            raise PermissionError("Cannot refresh token: no refresh token available")
-
-        if not self.token_url:
-            raise PermissionError("Cannot refresh token: token endpoint unavailable")
-
-        data = {
-            "grant_type": "refresh_token",
-            "refresh_token": self.refresh_token,
-            "client_id": self.client_id,
-        }
-        if self.audience:
-            data["aud"] = self.audience
-
-        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
-            response = await client.post(
-                self.token_url,
-                data=data,
-                auth=(self.client_id, self.client_secret) if self.client_secret else None,
-            )
-
-        if response.status_code >= 400:
-            raise PermissionError(
-                f"Failed to refresh token ({response.status_code}): {response.text}"
-            )
-
-        token_data = response.json()
-        self._persist_token_data(token_data)
-
-    async def _request_client_credentials_token(self) -> None:
-        """Obtain a new access token using the client_credentials grant."""
-
-        if not self.token_url:
-            raise PermissionError("Cannot obtain token: token endpoint unavailable")
-
-        data: Dict[str, Any] = {
-            "grant_type": "client_credentials",
-            "client_id": self.client_id,
-        }
-        if self.scope:
-            data["scope"] = self.scope
-        if self.audience:
-            data["aud"] = self.audience
-
-        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
-            response = await client.post(
-                self.token_url,
-                data=data,
-                auth=(self.client_id, self.client_secret) if self.client_secret else None,
-            )
-
-        if response.status_code >= 400:
-            raise PermissionError(
-                f"Failed to obtain client credentials token ({response.status_code}): {response.text}"
-            )
-
-        token_data = response.json()
-        self._persist_token_data(token_data)
-
-    def _auth_headers(self) -> Dict[str, str]:
-        access_token, _, _, _ = self._effective_context()
-        if not access_token:
-            return self.default_headers
-        return {**self.default_headers, "Authorization": f"Bearer {access_token}"}
-
-    def _require_scopes(self, *required_resources: str) -> None:
-        _, granted_scopes, _, _ = self._effective_context()
-        if not granted_scopes:
+            await self._request_token()
             return
 
-        # SMART scopes are typically like "patient/*.read" or "Patient/*.read"
-        normalized = {scope.lower() for scope in granted_scopes}
+        async with httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0) as client:
+            response = await client.post(
+                self.token_url,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": self.refresh_token,
+                    "scope": self.scope,
+                },
+                auth=(self.client_id, self.client_secret) if self.client_secret else None,
+            )
 
-        for resource in required_resources:
-            lower_resource = resource.lower()
-            wildcard_scopes = {f"{prefix}/*.read" for prefix in ("patient", "user", "system")}
-            resource_variants = {
-                f"{lower_resource}/*.read",
-                f"{lower_resource}.read",
-            }
-            for prefix in ("patient", "user", "system"):
-                resource_variants.update(
-                    {
-                        f"{prefix}/{lower_resource}/*.read",
-                        f"{prefix}/{lower_resource}.read",
-                    }
-                )
+        if response.status_code >= 400:
+            detail = response.json().get("error_description") if response.content else response.text
+            logger.warning(
+                "SMART token refresh failed (%s): %s", response.status_code, detail
+            )
+            await self._request_token()
+            return
 
-            allowed = bool(normalized & wildcard_scopes)
-            if not allowed:
-                allowed = bool(normalized & resource_variants)
+        token_data = response.json()
+        self._persist_token_data(token_data)
 
-            if not allowed:
-                raise PermissionError(
-                    (
-                        f"Missing required scope for {resource}: expected one of "
-                        f"{', '.join(sorted(resource_variants | wildcard_scopes))} "
-                        f"(granted: {', '.join(sorted(normalized))})"
-                    )
-                )
+    async def ensure_valid_token(self) -> None:
+        context = self._request_context.get()
+        if context and context.get("access_token"):
+            return
 
-    async def _request_with_retry(
+        if not self.client_id:
+            return
+
+        needs_token = not self.access_token
+        is_expired = self.token_expires_at and datetime.now(timezone.utc) >= self.token_expires_at - timedelta(seconds=60)
+
+        if needs_token:
+            await self._request_token()
+        elif is_expired:
+            await self._refresh_access_token()
+
+    # ------------------------------------------------------------------
+    # HTTP utilities
+    # ------------------------------------------------------------------
+    async def request(
         self,
         method: str,
         url: str,
         *,
         params: Optional[Dict[str, Any]] = None,
+        json: Optional[Dict[str, Any]] = None,
         max_attempts: int = 4,
         correlation_context: str = "",
     ) -> httpx.Response:
         retryable_statuses = {429, 500, 502, 503, 504}
         attempt = 1
+
         while True:
             try:
-                await self._ensure_valid_token()
+                await self.ensure_valid_token()
                 response = await self.session.request(
                     method,
                     url,
                     params=params,
+                    json=json,
                     headers=self._auth_headers(),
                 )
                 if response.status_code in {401, 403}:
-                    reason = f"status {response.status_code}"
-                    reauth_attempted = False
-
-                    try:
-                        if self.refresh_token:
-                            await self._refresh_access_token()
-                            reauth_attempted = True
-                        elif self.client_id and self.token_url:
-                            await self._request_client_credentials_token()
-                            reauth_attempted = True
-                    except PermissionError:
-                        # Fall through to final handling below when reauth fails
-                        pass
-
-                    if not reauth_attempted or attempt >= max_attempts:
+                    await self._refresh_access_token()
+                    if attempt >= max_attempts:
                         raise PermissionError(
                             (
                                 f"FHIR request rejected with {response.status_code}. "
                                 "Confirm SMART authorization, patient consent, and granted scopes."
                             )
                         )
-
+                    reason = f"status {response.status_code}"
                     attempt += 1
                     continue
                 if response.status_code not in retryable_statuses:
@@ -507,3 +393,43 @@ class FhirHttpClient:
             )
             attempt += 1
             await asyncio.sleep(sleep_time)
+
+    async def get_resource(
+        self,
+        url: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        correlation_context: str = "",
+    ) -> httpx.Response:
+        return await self.request(
+            "GET", url, params=params, correlation_context=correlation_context
+        )
+
+    # ------------------------------------------------------------------
+    # Session / discovery helpers
+    # ------------------------------------------------------------------
+    def _configure_from_well_known(self) -> None:
+        try:
+            with httpx.Client(trust_env=self.use_proxies, timeout=10.0) as client:
+                response = client.get(self.well_known_url)
+                response.raise_for_status()
+                self.discovery_document = response.json()
+                self.auth_url = self.auth_url or self.discovery_document.get(
+                    "authorization_endpoint"
+                )
+                self.token_url = self.token_url or self.discovery_document.get(
+                    "token_endpoint"
+                )
+                if not self.scope:
+                    self.scope = self.discovery_document.get("scopes_supported", "")
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "SMART discovery failed at %s: %s", self.well_known_url, exc
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.error("Unexpected error during SMART discovery: %s", exc)
+
+    def _initialize_session(self) -> httpx.AsyncClient:
+        logger.info(f"FHIR HTTP client initialized for {self.server_url}")
+        return httpx.AsyncClient(trust_env=self.use_proxies, timeout=30.0)
+
