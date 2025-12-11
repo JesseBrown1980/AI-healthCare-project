@@ -6,6 +6,7 @@ Interactive dashboard for healthcare AI assistant
 import streamlit as st
 from streamlit import st_autorefresh
 import requests
+from requests import HTTPError, RequestException
 import json
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -60,23 +61,40 @@ st.markdown("""
 
 # ==================== UTILITY FUNCTIONS ====================
 
-def make_api_call(endpoint: str, method: str = "GET", data: Optional[Dict] = None) -> Optional[Dict]:
-    """Make API call to backend"""
+def make_api_call(
+    endpoint: str,
+    method: str = "GET",
+    data: Optional[Dict] = None,
+    *,
+    timeout: float = 10.0,
+) -> Optional[Dict]:
+    """Make API call to backend with basic error handling."""
+
     try:
         url = f"{API_URL}{endpoint}"
         headers = {"Content-Type": "application/json"}
-        
+
         if method == "GET":
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=timeout)
         elif method == "POST":
-            response = requests.post(url, headers=headers, json=data)
+            response = requests.post(url, headers=headers, json=data, timeout=timeout)
         else:
             return None
-        
+
         response.raise_for_status()
         return response.json()
-    except Exception as e:
-        st.error(f"API Error: {str(e)}")
+    except HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        st.error("Unable to fetch data from the server. Please try again later.")
+        st.info(f"Request failed with status {status}.")
+        return None
+    except RequestException as exc:
+        st.error("Unable to reach the server. Please check your connection or try again soon.")
+        st.info(str(exc))
+        return None
+    except Exception as exc:  # pragma: no cover - defensive UI guard
+        st.error("An unexpected error occurred while contacting the API.")
+        st.info(str(exc))
         return None
 
 
