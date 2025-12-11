@@ -21,9 +21,9 @@
 
 ### Software Requirements
 - **Python**: 3.9 or higher
-- **Node.js**: 16.0 or higher (for frontend)
 - **Docker**: 20.10+ (optional, for containerized deployment)
 - **Git**: For version control
+- **Node.js**: *Not required today.* We'll add it to the prerequisites once the frontend migrates to React; the current UI runs on Streamlit.
 
 ---
 
@@ -63,20 +63,21 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Setup frontend
-cd ../frontend
-python -m venv venv_frontend
-source venv_frontend/bin/activate  # On Windows: venv_frontend\Scripts\activate
-pip install -r requirements.txt
-
-# Run backend
-cd ../backend
+# Run backend API (keep this terminal open)
 python main.py
-
-# In another terminal, run frontend
-cd frontend
-streamlit run app.py
 ```
+
+Open a second terminal for the Streamlit frontend:
+
+```bash
+cd AI-healthCare-project/frontend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py --server.port 3000
+```
+
+> Planning for React? Node.js and `npm` will become prerequisites when we introduce the React UI. Until then, keep using the Streamlit commands above.
 
 We now depend on `httpx[socks]` and `python-socks` to enable SOCKS proxy handling. These packages will be installed automatically when running `pip install -r requirements.txt`. After pulling the latest changes, rerun `pip install -r requirements.txt` to ensure the new dependencies are present.
 
