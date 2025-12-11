@@ -449,6 +449,7 @@ class FhirResourceService:
         return {
             "id": fhir_patient.get("id"),
             "name": self._get_name(fhir_patient),
+            "mrn": self._extract_mrn(fhir_patient.get("identifier", [])),
             "birthDate": fhir_patient.get("birthDate"),
             "gender": fhir_patient.get("gender"),
             "telecom": fhir_patient.get("telecom", []),
@@ -456,6 +457,19 @@ class FhirResourceService:
             "maritalStatus": fhir_patient.get("maritalStatus"),
             "contact": fhir_patient.get("contact", []),
         }
+
+    def _extract_mrn(self, identifiers: List[Dict[str, Any]]) -> Optional[str]:
+        """Attempt to pull a medical record number from FHIR identifiers."""
+
+        for identifier in identifiers or []:
+            coding = (identifier.get("type") or {}).get("coding", [{}])[0]
+            system = (identifier.get("system") or "").lower()
+            code = (coding.get("code") or "").lower()
+
+            if "mrn" in system or code in {"mr", "mrn"}:
+                return identifier.get("value") or coding.get("display")
+
+        return None
 
     def _normalize_condition(self, fhir_condition: Dict) -> Dict:
         fhir_condition = self._normalize_vendor_extensions(fhir_condition)
