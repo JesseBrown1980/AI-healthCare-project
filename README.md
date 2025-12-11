@@ -152,6 +152,10 @@ Live knowledge integration ensures cutting-edge medical information:
    > before launching the app; otherwise `/api/v1/auth/login` returns `404` when the
    > mobile client calls the demo login route.
 
+### Testing, Validation, and Production Readiness
+
+- See [`docs/testing-validation.md`](docs/testing-validation.md) for a summary of existing automated coverage, quick manual validation steps (including Swagger/Postman flows), and a short checklist to align APIs with the frontend/mobile clients before demos.
+
 ### Docker Deployment
 
 ```bash
