@@ -158,6 +158,26 @@ Live knowledge integration ensures cutting-edge medical information:
 
 - See [`docs/testing-validation.md`](docs/testing-validation.md) for a summary of existing automated coverage, quick manual validation steps (including Swagger/Postman flows), and a short checklist to align APIs with the frontend/mobile clients before demos.
 
+### Troubleshooting
+
+- **401 Unauthorized on API requests**
+  - Ensure requests include a bearer token: `curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/profile`.
+  - If tokens come from the demo login, confirm the backend was started with valid `DEMO_JWT_SECRET`/`DEMO_JWT_ISSUER` values so signatures and issuers match.
+
+- **`/api/v1/auth/login` returns 404 when testing the mobile demo**
+  - The demo login route is disabled by default; enable it by exporting `ENABLE_DEMO_LOGIN=true` before starting the backend:
+    ```bash
+    ENABLE_DEMO_LOGIN=true uvicorn main:app --reload
+    ```
+  - If already running, check the current setting with `grep ENABLE_DEMO_LOGIN .env` or `echo "$ENABLE_DEMO_LOGIN"`.
+
+- **Demo JWT validation fails because secrets/issuers don’t match**
+  - Verify the backend environment matches the values used to mint demo tokens:
+    ```bash
+    grep -E "DEMO_JWT_SECRET|DEMO_JWT_ISSUER" .env
+    ```
+  - Regenerate tokens (or update the env vars) so both the mobile client and backend use the same `DEMO_JWT_SECRET` and `DEMO_JWT_ISSUER`.
+
 ### Docker Deployment
 
 ```bash
