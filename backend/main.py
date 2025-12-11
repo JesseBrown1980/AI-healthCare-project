@@ -478,7 +478,7 @@ async def _get_patient_summary(
     return summary
 
 
-def _collect_recent_alerts(limit: int) -> List[Dict[str, Any]]:
+def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Aggregate recent critical alerts across analysis history."""
 
     alerts: List[Dict[str, Any]] = []
@@ -488,7 +488,10 @@ def _collect_recent_alerts(limit: int) -> List[Dict[str, Any]]:
 
     for analysis in reversed(patient_analyzer.analysis_history):
         timestamp = analysis.get("analysis_timestamp") or analysis.get("timestamp")
-        patient_id = analysis.get("patient_id")
+        analysis_patient_id = analysis.get("patient_id")
+
+        if patient_id and analysis_patient_id and patient_id != analysis_patient_id:
+            continue
 
         for idx, alert in enumerate(analysis.get("alerts") or []):
             normalized = alert if isinstance(alert, dict) else {"summary": str(alert)}
@@ -500,8 +503,8 @@ def _collect_recent_alerts(limit: int) -> List[Dict[str, Any]]:
             alerts.append(
                 {
                     "id": normalized.get("id")
-                    or f"{patient_id}-{idx}-{timestamp or len(alerts)}",
-                    "patient_id": patient_id,
+                    or f"{analysis_patient_id}-{idx}-{timestamp or len(alerts)}",
+                    "patient_id": analysis_patient_id,
                     "title": normalized.get("title")
                     or normalized.get("type")
                     or "Clinical Alert",
@@ -666,6 +669,15 @@ async def list_patients(
         raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
     patients = _dashboard_patient_list()
+
+    if auth.patient:
+        patients = [p for p in patients if p.get("patient_id") == auth.patient]
+        if not patients:
+            raise HTTPException(
+                status_code=403,
+                detail="Token is scoped to a patient outside the configured roster",
+            )
+
     correlation_id = getattr(
         request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
     )
@@ -762,7 +774,7 @@ async def get_alerts(
     )
 
     try:
-        alerts = _collect_recent_alerts(limit)
+        alerts = _collect_recent_alerts(limit, patient_id=auth.patient)
         return {"alerts": alerts}
     except Exception as exc:
         logger.error("Error collecting alert feed [%s]: %s", correlation_id, str(exc))
