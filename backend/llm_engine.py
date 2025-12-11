@@ -154,7 +154,8 @@ class LLMEngine:
                     ],
                     temperature=0.2,  # Lower for medical accuracy
                     max_tokens=2000,
-                    top_p=0.95
+                    top_p=0.95,
+                    timeout=30.0,
                 )
                 
                 return {
