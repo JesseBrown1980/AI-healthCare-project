@@ -39,6 +39,7 @@ class PatientAnalyzer:
         recommendation_service: Optional[RecommendationService] = None,
         alert_service: Optional[AlertService] = None,
         notification_service: Optional[NotificationService] = None,
+        history_limit: Optional[int] = None,
     ):
         """
         Initialize PatientAnalyzer with all components
@@ -71,6 +72,7 @@ class PatientAnalyzer:
         )
 
         self.analysis_history: List[Dict] = []
+        self.history_limit = history_limit
 
         logger.info("PatientAnalyzer initialized with all components")
 
@@ -220,7 +222,7 @@ class PatientAnalyzer:
             result["last_analyzed_at"] = analysis_end.isoformat()
             result["status"] = "completed"
 
-            self.analysis_history.append(result)
+            self._add_to_history(result)
 
             logger.info(
                 "Analysis completed for patient %s in %.2fs",
@@ -258,6 +260,21 @@ class PatientAnalyzer:
     async def _record_for_learning(self, patient_id: str, analysis: Dict):
         """Record analysis for MLC learning and feedback"""
         logger.info("Recording analysis for MLC learning: %s", patient_id)
+
+    def _add_to_history(self, analysis: Dict[str, Any]) -> None:
+        """Add an analysis result to history while enforcing limits."""
+
+        self.analysis_history.append(analysis)
+
+        if self.history_limit is not None and self.history_limit > 0:
+            excess = len(self.analysis_history) - self.history_limit
+            if excess > 0:
+                del self.analysis_history[:excess]
+
+    def clear_history(self) -> None:
+        """Remove all cached analyses to reclaim memory."""
+
+        self.analysis_history.clear()
 
     def get_stats(self) -> Dict:
         """Get analyzer statistics"""

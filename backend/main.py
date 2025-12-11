@@ -66,6 +66,7 @@ notifications_enabled: bool = os.getenv("ENABLE_NOTIFICATIONS", "false").lower()
 demo_login_enabled: bool = os.getenv("ENABLE_DEMO_LOGIN", "false").lower() == "true"
 demo_login_secret: str = os.getenv("DEMO_JWT_SECRET", "dev-secret-change-me")
 demo_login_expires_minutes: int = int(os.getenv("DEMO_JWT_EXPIRES", "15"))
+analysis_history_limit: int = int(os.getenv("ANALYSIS_HISTORY_LIMIT", "200"))
 
 # In-memory cache for patient dashboard summaries
 patient_summary_cache: Dict[str, Dict[str, Any]] = {}
@@ -184,6 +185,7 @@ async def lifespan(app: FastAPI):
             mlc_learning=mlc_learning,
             notifier=notifier,
             notifications_enabled=notifications_enabled,
+            history_limit=analysis_history_limit,
         )
 
         logger.info("Initializing Audit Service...")
@@ -650,6 +652,27 @@ async def health_check(
         "service": "Healthcare AI Assistant",
         "version": "1.0.0",
         "vendor": selected_vendor,
+    }
+
+
+@app.post("/api/v1/cache/clear")
+async def clear_caches(
+    auth: TokenContext = Depends(auth_dependency({"system/*.read", "user/*.read"}))
+):
+    """Clear in-memory caches and analysis history for memory hygiene."""
+
+    cleared_summaries = len(patient_summary_cache)
+    patient_summary_cache.clear()
+
+    cleared_analyses = 0
+    if patient_analyzer:
+        cleared_analyses = len(patient_analyzer.analysis_history)
+        patient_analyzer.clear_history()
+
+    return {
+        "status": "cleared",
+        "analysis_history_cleared": cleared_analyses,
+        "summary_cache_entries_cleared": cleared_summaries,
     }
 
 

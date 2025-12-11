@@ -169,6 +169,14 @@ docker-compose up -d
 
 ---
 
+## 🧠 Memory and cache management
+
+- Use `ANALYSIS_HISTORY_LIMIT` to cap how many recent analyses are retained in memory (default: 200). Older entries are dropped automatically to keep memory bounded for long-running processes.
+- Call `POST /api/v1/cache/clear` to flush both the in-memory analysis history and the patient dashboard summary cache. This is useful after load tests or when refreshing demo data without restarting the service.
+- For horizontal scaling or Kubernetes deployments, move these caches to a shared store (database, Redis, etc.) so state is consistent across processes. The current single-process cache is intended for local and demo use.
+
+---
+
 ## 📲 Mobile Notifications and Device Registration
 
 - **Endpoint**: `POST /api/v1/register-device`
