@@ -94,7 +94,7 @@ Live knowledge integration ensures cutting-edge medical information:
 
 ### Prerequisites
 - Python 3.9+
-- Node.js 16+ (for frontend)
+- Node.js 16+ and npm (optional; required only for the React frontend)
 - API keys for LLM service (OpenAI, Anthropic, or local LLaMA)
 - FHIR-compliant healthcare data source (or test data)
 
@@ -132,15 +132,27 @@ Live knowledge integration ensures cutting-edge medical information:
    # Server runs on http://localhost:8000
    ```
 
-5. **Set up and run frontend**
+5. **Run the Streamlit UI (default frontend)**
+   ```bash
+   cd ../frontend
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   streamlit run app.py --server.port 3000
+   # UI available at http://localhost:3000
+   ```
+   The Streamlit experience is the default user interface. Use it if you want the quickest path to a working UI without Node.js.
+
+6. **(Optional/in-progress) Run the React frontend**
    ```bash
    cd ../frontend
    npm install
    npm start
    # UI available at http://localhost:3000
    ```
+   Choose this path if you prefer the React interface; Node.js and npm are only needed for this option. React work is underway, so use these commands once the React UI is available in your local checkout.
 
-6. **Run the mobile app**
+7. **Run the mobile app**
    ```bash
    cd ../mobile
    npm install
@@ -157,6 +169,26 @@ Live knowledge integration ensures cutting-edge medical information:
 ### Testing, Validation, and Production Readiness
 
 - See [`docs/testing-validation.md`](docs/testing-validation.md) for a summary of existing automated coverage, quick manual validation steps (including Swagger/Postman flows), and a short checklist to align APIs with the frontend/mobile clients before demos.
+
+### Troubleshooting
+
+- **401 Unauthorized on API requests**
+  - Ensure requests include a bearer token: `curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/profile`.
+  - If tokens come from the demo login, confirm the backend was started with valid `DEMO_JWT_SECRET`/`DEMO_JWT_ISSUER` values so signatures and issuers match.
+
+- **`/api/v1/auth/login` returns 404 when testing the mobile demo**
+  - The demo login route is disabled by default; enable it by exporting `ENABLE_DEMO_LOGIN=true` before starting the backend:
+    ```bash
+    ENABLE_DEMO_LOGIN=true uvicorn main:app --reload
+    ```
+  - If already running, check the current setting with `grep ENABLE_DEMO_LOGIN .env` or `echo "$ENABLE_DEMO_LOGIN"`.
+
+- **Demo JWT validation fails because secrets/issuers don’t match**
+  - Verify the backend environment matches the values used to mint demo tokens:
+    ```bash
+    grep -E "DEMO_JWT_SECRET|DEMO_JWT_ISSUER" .env
+    ```
+  - Regenerate tokens (or update the env vars) so both the mobile client and backend use the same `DEMO_JWT_SECRET` and `DEMO_JWT_ISSUER`.
 
 ### Docker Deployment
 
@@ -275,11 +307,12 @@ SHAP (SHapley Additive exPlanations) assigns each feature a contribution score f
 - `alert_models.py`: Clinical alert definitions
 
 ### Frontend (`/frontend/`)
-- React-based SPA with Tailwind CSS
+- **Current UI: Streamlit.** Entry point at [`frontend/app.py`](frontend/app.py) with dependencies in [`frontend/requirements.txt`](frontend/requirements.txt). Launch with `streamlit run app.py --server.port 3000` (see Quick Start step 5).
 - Dashboard for patient data visualization
 - Chat interface for querying the AI
 - Decision support recommendations panel
 - Alert notification system
+- **Planned/optional React UI.** A React SPA is planned for teams that prefer that workflow; once available, use the optional React commands in the setup section (`npm install && npm start`) to run it.
 
 ---
 

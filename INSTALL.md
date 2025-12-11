@@ -23,7 +23,7 @@
 - **Python**: 3.9 or higher
 - **Docker**: 20.10+ (optional, for containerized deployment)
 - **Git**: For version control
-- **Node.js**: Optional today. Keep it installed if you plan to run or develop the future React client; the current UI runs on Streamlit.
+- **Node.js**: *Not required today.* We'll add it to the prerequisites once the frontend migrates to React; the current UI runs on Streamlit.
 
 ---
 
@@ -67,9 +67,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Open a second terminal and choose your frontend:
+Open a second terminal for the Streamlit frontend:
 
-**Streamlit frontend (current default):**
 ```bash
 cd AI-healthCare-project/frontend
 python -m venv venv
@@ -78,16 +77,7 @@ pip install -r requirements.txt
 streamlit run app.py --server.port 3000
 ```
 
-**React frontend (future-ready):**
-If you're working on a branch or feature that includes the React UI, use Node.js 18+ and run:
-```bash
-cd AI-healthCare-project/frontend
-npm install
-npm start
-```
-Keep the backend running in the first terminal. Use Streamlit or React based on client needs—just make sure only one frontend binds to port 3000 at a time.
-
-> Note: The repository currently ships only the Streamlit UI. No React dependencies or build scripts live in the codebase yet, so nothing else needs to be updated for React 18 compatibility. When the React client lands, its `package.json` will declare React 18+ (and the required toolchain) explicitly.
+> Planning for React? Node.js and `npm` will become prerequisites when we introduce the React UI. Until then, keep using the Streamlit commands above.
 
 We now depend on `httpx[socks]` and `python-socks` to enable SOCKS proxy handling. These packages will be installed automatically when running `pip install -r requirements.txt`. After pulling the latest changes, rerun `pip install -r requirements.txt` to ensure the new dependencies are present.
 
