@@ -143,14 +143,14 @@ Live knowledge integration ensures cutting-edge medical information:
    ```
    The Streamlit experience is the default user interface. Use it if you want the quickest path to a working UI without Node.js.
 
-6. **(Optional) Run the React frontend**
+6. **(Optional/in-progress) Run the React frontend**
    ```bash
    cd ../frontend
    npm install
    npm start
    # UI available at http://localhost:3000
    ```
-   Choose this path if you prefer the React interface; Node.js and npm are only needed for this option.
+   Choose this path if you prefer the React interface; Node.js and npm are only needed for this option. React work is underway, so use these commands once the React UI is available in your local checkout.
 
 7. **Run the mobile app**
    ```bash
@@ -307,11 +307,12 @@ SHAP (SHapley Additive exPlanations) assigns each feature a contribution score f
 - `alert_models.py`: Clinical alert definitions
 
 ### Frontend (`/frontend/`)
-- React-based SPA with Tailwind CSS
+- Streamlit UI at [`frontend/app.py`](frontend/app.py) using [`frontend/requirements.txt`](frontend/requirements.txt); run with `streamlit run app.py --server.port 3000` as shown in the setup steps above.
 - Dashboard for patient data visualization
 - Chat interface for querying the AI
 - Decision support recommendations panel
 - Alert notification system
+- React UI is planned/optional for teams that prefer a SPA workflow; React capabilities are being added soon—use the optional React commands in the setup section once the SPA lands.
 
 ---
 
