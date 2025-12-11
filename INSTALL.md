@@ -21,9 +21,9 @@
 
 ### Software Requirements
 - **Python**: 3.9 or higher
-- **Node.js**: 16.0 or higher (for frontend)
 - **Docker**: 20.10+ (optional, for containerized deployment)
 - **Git**: For version control
+- **Node.js**: Optional today—required only when working on the upcoming React client. The shipped UI runs on Streamlit, so you can skip Node if you are not testing React features.
 
 ---
 
@@ -57,26 +57,39 @@ docker-compose up -d
 git clone https://github.com/JesseBrown1980/AI-healthCare-project.git
 cd AI-healthCare-project
 
-# Setup backend
+# Terminal 1 — start the backend first (frontend depends on it)
 cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Setup frontend
-cd ../frontend
-python -m venv venv_frontend
-source venv_frontend/bin/activate  # On Windows: venv_frontend\Scripts\activate
-pip install -r requirements.txt
-
-# Run backend
-cd ../backend
+# Run backend API (keep this terminal open)
 python main.py
-
-# In another terminal, run frontend
-cd frontend
-streamlit run app.py
 ```
+
+> Why backend first? Both the Streamlit UI and any future React UI call the FastAPI backend for data. Starting a frontend before the API is live will surface connection errors until the backend comes up, so launching the backend first avoids that downtime.
+
+Open a second terminal for the frontend (after the backend is running):
+
+**Streamlit frontend (current default):**
+```bash
+cd AI-healthCare-project/frontend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py --server.port 3000
+```
+
+**React frontend (future-ready):**
+If you're working on a branch or feature that includes the React UI, use Node.js 18+ and run:
+```bash
+cd AI-healthCare-project/frontend
+npm install
+npm start
+```
+Keep the backend running in the first terminal. Use Streamlit or React based on client needs—just make sure only one frontend binds to port 3000 at a time.
+
+> Note: The repository currently ships only the Streamlit UI. No React dependencies or build scripts live in the codebase yet, so nothing else needs to be updated for React 18 compatibility. When the React client lands, its `package.json` will declare React 18+ (and the required toolchain) explicitly.
 
 We now depend on `httpx[socks]` and `python-socks` to enable SOCKS proxy handling. These packages will be installed automatically when running `pip install -r requirements.txt`. After pulling the latest changes, rerun `pip install -r requirements.txt` to ensure the new dependencies are present.
 
@@ -231,9 +244,11 @@ Contact your healthcare IT department for:
 
 ### Starting the Backend
 
+Use the same backend virtual environment created in [Quick Start](#option-2-local-development):
+
 ```bash
 cd backend
-source venv/bin/activate
+source venv/bin/activate  # Or venv\Scripts\activate on Windows
 
 # Development mode (with auto-reload)
 python main.py --reload
@@ -248,15 +263,24 @@ API Documentation: **http://localhost:8000/docs**
 
 ### Starting the Frontend
 
+**Streamlit frontend (current default):**
 ```bash
 cd frontend
-source venv_frontend/bin/activate
-
-# Run Streamlit app
-streamlit run app.py
+python -m venv venv
+source venv/bin/activate  # Or venv\Scripts\activate on Windows
+pip install -r requirements.txt
+streamlit run app.py --server.port 3000
 ```
 
-Frontend runs on: **http://localhost:3000**
+**React frontend (when available):**
+If your branch includes the React UI, use Node.js 18+ and run:
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Run only one frontend at a time so they do not both bind to port 3000. Keep the backend running in a separate terminal.
 
 ### Using Docker Compose
 
