@@ -94,7 +94,7 @@ Live knowledge integration ensures cutting-edge medical information:
 
 ### Prerequisites
 - Python 3.9+
-- Node.js 16+ (for frontend)
+- Node.js 16+ and npm (optional; required only for the React frontend)
 - API keys for LLM service (OpenAI, Anthropic, or local LLaMA)
 - FHIR-compliant healthcare data source (or test data)
 
@@ -132,15 +132,27 @@ Live knowledge integration ensures cutting-edge medical information:
    # Server runs on http://localhost:8000
    ```
 
-5. **Set up and run frontend**
+5. **Run the Streamlit UI (default frontend)**
+   ```bash
+   cd ../frontend
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   streamlit run app.py --server.port 3000
+   # UI available at http://localhost:3000
+   ```
+   The Streamlit experience is the default user interface. Use it if you want the quickest path to a working UI without Node.js.
+
+6. **(Optional) Run the React frontend**
    ```bash
    cd ../frontend
    npm install
    npm start
    # UI available at http://localhost:3000
    ```
+   Choose this path if you prefer the React interface; Node.js and npm are only needed for this option.
 
-6. **Run the mobile app**
+7. **Run the mobile app**
    ```bash
    cd ../mobile
    npm install
