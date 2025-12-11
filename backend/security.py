@@ -68,12 +68,20 @@ class JWTValidator:
         self.jwks_url = os.getenv("IAM_JWKS_URL")
         self.issuer = os.getenv("IAM_ISSUER")
         self.audience = os.getenv("SMART_CLIENT_ID") or os.getenv("IAM_AUDIENCE")
+        self.demo_login_enabled = (
+            os.getenv("ENABLE_DEMO_LOGIN", "false").lower() == "true"
+        )
+        self.demo_secret = os.getenv("DEMO_JWT_SECRET")
+        self.demo_issuer = os.getenv("DEMO_JWT_ISSUER", "demo-login")
         self._jwks_cache: Optional[Dict[str, Dict]] = None
         self._async_client = async_client
 
     async def _fetch_jwks(self) -> Dict[str, Dict]:
         if not self.jwks_url:
-            raise RuntimeError("IAM_JWKS_URL must be configured for token validation")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="IAM_JWKS_URL must be configured for token validation",
+            )
 
         if self._jwks_cache is not None:
             return self._jwks_cache
@@ -120,6 +128,32 @@ class JWTValidator:
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
 
+    def _verify_hs256(self, token: str) -> Dict:
+        """Validate HS256 demo tokens when IAM is not available."""
+
+        if not self.demo_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Demo JWT secret is not configured",
+            )
+
+        try:
+            options = {"verify_aud": bool(self.audience)}
+            return jwt.decode(
+                token,
+                self.demo_secret,
+                algorithms=["HS256"],
+                audience=self.audience,
+                issuer=self.demo_issuer,
+                options=options,
+            )
+        except JWTError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Token validation failed: {exc}",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from exc
+
     async def validate(self, token: str) -> TokenContext:
         try:
             unverified_header = jwt.get_unverified_header(token)
@@ -130,16 +164,20 @@ class JWTValidator:
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
 
-        jwks = await self._fetch_jwks()
-        jwk_key = jwks.get(unverified_header.get("kid"))
-        if not jwk_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token key not recognized",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        if self._should_use_demo_validation(unverified_header):
+            claims = self._verify_hs256(token)
+        else:
+            jwks = await self._fetch_jwks()
+            jwk_key = jwks.get(unverified_header.get("kid"))
+            if not jwk_key:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token key not recognized",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
-        claims = self._verify_signature(token, jwk_key)
+            claims = self._verify_signature(token, jwk_key)
+
         self._ensure_not_expired(claims)
 
         scopes = self._extract_scopes(claims)
@@ -191,6 +229,16 @@ class JWTValidator:
         if isinstance(custom, list):
             roles.update(custom)
         return roles
+
+    def _should_use_demo_validation(self, unverified_header: Dict) -> bool:
+        alg = (unverified_header or {}).get("alg", "")
+        if not self.demo_login_enabled:
+            return False
+        if alg.upper().startswith("HS") and self.demo_secret:
+            return True
+        if not self.jwks_url and self.demo_secret:
+            return True
+        return False
 
 
 def auth_dependency(

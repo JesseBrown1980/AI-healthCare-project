@@ -150,7 +150,9 @@ Live knowledge integration ensures cutting-edge medical information:
    > Mobile testing requires demo login endpoints to be enabled on the backend.
    > Set `ENABLE_DEMO_LOGIN=true` (and optionally `DEMO_LOGIN_EMAIL`/`DEMO_LOGIN_PASSWORD`)
    > before launching the app; otherwise `/api/v1/auth/login` returns `404` when the
-   > mobile client calls the demo login route.
+   > mobile client calls the demo login route. Demo JWTs are validated with the
+   > `DEMO_JWT_SECRET`/`DEMO_JWT_ISSUER` values, so use the same settings for any
+   > external client that needs to mint tokens locally.
 
 ### Testing, Validation, and Production Readiness
 

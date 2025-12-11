@@ -111,6 +111,9 @@ ENABLE_DEMO_LOGIN=true
 # Optional: override defaults for the demo account
 DEMO_LOGIN_EMAIL=demo@example.com
 DEMO_LOGIN_PASSWORD=changeme
+# Optional: override the signing secret/issuer used to validate demo JWTs
+DEMO_JWT_SECRET=dev-secret-change-me
+DEMO_JWT_ISSUER=demo-login
 ```
 
 Without `ENABLE_DEMO_LOGIN`, the demo login endpoint at `/api/v1/auth/login` returns `404`
