@@ -101,6 +101,21 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+### Mobile testing
+
+If you are running the mobile client against the local backend, enable demo login routes
+before launching the app:
+
+```env
+ENABLE_DEMO_LOGIN=true
+# Optional: override defaults for the demo account
+DEMO_LOGIN_EMAIL=demo@example.com
+DEMO_LOGIN_PASSWORD=changeme
+```
+
+Without `ENABLE_DEMO_LOGIN`, the demo login endpoint at `/api/v1/auth/login` returns `404`
+and the mobile client cannot authenticate.
+
 See `INSTALL.md` for detailed installation options.
 
 ---

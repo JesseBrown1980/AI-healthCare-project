@@ -147,6 +147,10 @@ Live knowledge integration ensures cutting-edge medical information:
    npm start
    # Requires Node.js 16+; Metro server starts for the mobile client
    ```
+   > Mobile testing requires demo login endpoints to be enabled on the backend.
+   > Set `ENABLE_DEMO_LOGIN=true` (and optionally `DEMO_LOGIN_EMAIL`/`DEMO_LOGIN_PASSWORD`)
+   > before launching the app; otherwise `/api/v1/auth/login` returns `404` when the
+   > mobile client calls the demo login route.
 
 ### Docker Deployment
 
