@@ -57,7 +57,7 @@ docker-compose up -d
 git clone https://github.com/JesseBrown1980/AI-healthCare-project.git
 cd AI-healthCare-project
 
-# Setup backend
+# Terminal 1 — start the backend first (frontend depends on it)
 cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -232,9 +232,11 @@ Contact your healthcare IT department for:
 
 ### Starting the Backend
 
+Use the same backend virtual environment created in [Quick Start](#option-2-local-development):
+
 ```bash
 cd backend
-source venv/bin/activate
+source venv/bin/activate  # Or venv\Scripts\activate on Windows
 
 # Development mode (with auto-reload)
 python main.py --reload
@@ -249,15 +251,24 @@ API Documentation: **http://localhost:8000/docs**
 
 ### Starting the Frontend
 
+**Streamlit frontend (current default):**
 ```bash
 cd frontend
-source venv_frontend/bin/activate
-
-# Run Streamlit app
-streamlit run app.py
+python -m venv venv
+source venv/bin/activate  # Or venv\Scripts\activate on Windows
+pip install -r requirements.txt
+streamlit run app.py --server.port 3000
 ```
 
-Frontend runs on: **http://localhost:3000**
+**React frontend (when available):**
+If your branch includes the React UI, use Node.js 18+ and run:
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Run only one frontend at a time so they do not both bind to port 3000. Keep the backend running in a separate terminal.
 
 ### Using Docker Compose
 
