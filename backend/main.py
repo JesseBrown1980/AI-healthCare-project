@@ -19,7 +19,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from contextlib import asynccontextmanager
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import uvicorn
 import os
@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from security import TokenContext, auth_dependency, close_shared_async_client
 from audit_service import AuditService
 from pydantic import BaseModel, root_validator, validator
+from jose import jwt
 
 # Load environment variables
 load_dotenv()
@@ -61,6 +62,9 @@ analysis_update_queue: Optional[asyncio.Queue] = None
 active_websockets: Dict[WebSocket, TokenContext] = {}
 broadcast_task: Optional[asyncio.Task] = None
 notifications_enabled: bool = os.getenv("ENABLE_NOTIFICATIONS", "false").lower() == "true"
+demo_login_enabled: bool = os.getenv("ENABLE_DEMO_LOGIN", "false").lower() == "true"
+demo_login_secret: str = os.getenv("DEMO_JWT_SECRET", "dev-secret-change-me")
+demo_login_expires_minutes: int = int(os.getenv("DEMO_JWT_EXPIRES", "15"))
 
 # In-memory cache for patient dashboard summaries
 patient_summary_cache: Dict[str, Dict[str, Any]] = {}
@@ -94,6 +98,18 @@ class AnalyzePatientRequest(BaseModel):
     include_recommendations: Optional[bool] = True
     specialty: Optional[str] = None
     notify: Optional[bool] = None
+
+
+class DemoLoginRequest(BaseModel):
+    email: str
+    password: str
+    patient: Optional[str] = None
+
+
+class DemoLoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
 
 
 @asynccontextmanager
@@ -236,6 +252,37 @@ async def add_correlation_id(request: Request, call_next):
     return response
 
 
+# ==================== AUTHENTICATION ====================
+
+
+@app.post("/api/v1/auth/login", response_model=DemoLoginResponse)
+async def demo_login(payload: DemoLoginRequest):
+    """
+    Issue a short-lived JWT for local development and demos.
+
+    This endpoint is disabled by default and should not be used in production.
+    In production deployments, obtain SMART-on-FHIR access tokens from your
+    configured IAM/authorization server instead of calling this route.
+    """
+
+    if not demo_login_enabled:
+        raise HTTPException(status_code=404, detail="Demo login is disabled")
+
+    allowed_email = os.getenv("DEMO_LOGIN_EMAIL")
+    allowed_password = os.getenv("DEMO_LOGIN_PASSWORD")
+
+    if allowed_email and payload.email.lower() != allowed_email.lower():
+        raise HTTPException(status_code=403, detail="Invalid credentials")
+
+    if allowed_password and payload.password != allowed_password:
+        raise HTTPException(status_code=403, detail="Invalid credentials")
+
+    if not allowed_email and not allowed_password and not payload.password:
+        raise HTTPException(status_code=400, detail="Password is required for demo login")
+
+    return _issue_demo_token(payload.email, payload.patient)
+
+
 # ==================== API ENDPOINTS ====================
 
 def get_vendor_override(request: Request, default: str = "generic") -> str:
@@ -280,6 +327,32 @@ def _dashboard_patient_list() -> List[Dict[str, Optional[str]]]:
         ]
 
     return patients
+
+
+def _issue_demo_token(email: str, patient: Optional[str]) -> DemoLoginResponse:
+    """Create a short-lived JWT for demo use when SMART tokens are unavailable."""
+
+    issued_at = datetime.now(timezone.utc)
+    expires_at = issued_at + timedelta(minutes=demo_login_expires_minutes)
+    scopes = "patient/*.read user/*.read system/*.read"
+
+    payload = {
+        "sub": email,
+        "scope": scopes,
+        "iat": int(issued_at.timestamp()),
+        "exp": int(expires_at.timestamp()),
+        "iss": "demo-login",
+    }
+
+    if patient:
+        payload["patient"] = patient
+
+    token = jwt.encode(payload, demo_login_secret, algorithm="HS256")
+
+    return DemoLoginResponse(
+        access_token=token,
+        expires_in=int((expires_at - issued_at).total_seconds()),
+    )
 
 
 def _build_dashboard_entry(analysis: Dict[str, Any], fallback_name: Optional[str]) -> Dict[str, Any]:

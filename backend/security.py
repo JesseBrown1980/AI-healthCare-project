@@ -4,7 +4,9 @@ This module provides a FastAPI dependency that validates SMART-on-FHIR access
 tokens, ensuring the signature, issuer, audience, expiry, scopes, and clinician
 roles are checked before any protected route executes. The dependency returns a
 ``TokenContext`` that downstream services (e.g., ``FHIRConnector``) can use to
-forward the caller's token and patient context to FHIR servers.
+forward the caller's token and patient context to FHIR servers. For local
+development, a demo login route can mint short-lived HS256 JWTs, but production
+deployments should always rely on SMART tokens issued by your IAM.
 """
 from __future__ import annotations
 
