@@ -44,6 +44,7 @@ from s_lora_manager import SLoRAManager
 from mlc_learning import MLCLearning
 from aot_reasoner import AoTReasoner
 from patient_analyzer import PatientAnalyzer
+from patient_data_service import PatientDataService
 from notifier import Notifier
 from explainability import explain_risk
 
@@ -329,6 +330,27 @@ def _dashboard_patient_list() -> List[Dict[str, Optional[str]]]:
     return patients
 
 
+def _build_patient_list_entry(
+    patient: Dict[str, Optional[str]], patient_data: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Normalize patient details for mobile patient list consumption."""
+
+    patient_info = (patient_data or {}).get("patient") or {}
+    patient_id = patient_info.get("id") or patient.get("patient_id")
+    name = patient_info.get("name") or patient.get("name") or patient_id
+    age = PatientDataService._calculate_age(patient_info.get("birthDate"))
+
+    return {
+        "id": patient_id,
+        "patient_id": patient_id,
+        "name": name,
+        "full_name": name,
+        "age": age,
+        "mrn": patient_info.get("mrn"),
+        "last_updated": (patient_data or {}).get("fetched_at"),
+    }
+
+
 def _issue_demo_token(email: str, patient: Optional[str]) -> DemoLoginResponse:
     """Create a short-lived JWT for demo use when SMART tokens are unavailable."""
 
@@ -454,6 +476,54 @@ async def _get_patient_summary(
         "summary": summary,
     }
     return summary
+
+
+def _collect_recent_alerts(limit: int) -> List[Dict[str, Any]]:
+    """Aggregate recent critical alerts across analysis history."""
+
+    alerts: List[Dict[str, Any]] = []
+
+    if not patient_analyzer:
+        return alerts[:limit]
+
+    for analysis in reversed(patient_analyzer.analysis_history):
+        timestamp = analysis.get("analysis_timestamp") or analysis.get("timestamp")
+        patient_id = analysis.get("patient_id")
+
+        for idx, alert in enumerate(analysis.get("alerts") or []):
+            normalized = alert if isinstance(alert, dict) else {"summary": str(alert)}
+            severity = (normalized.get("severity") or "").lower()
+
+            if severity not in {"critical", "high"}:
+                continue
+
+            alerts.append(
+                {
+                    "id": normalized.get("id")
+                    or f"{patient_id}-{idx}-{timestamp or len(alerts)}",
+                    "patient_id": patient_id,
+                    "title": normalized.get("title")
+                    or normalized.get("type")
+                    or "Clinical Alert",
+                    "summary": normalized.get("summary")
+                    or normalized.get("description")
+                    or normalized.get("message")
+                    or str(alert),
+                    "severity": normalized.get("severity") or "critical",
+                    "timestamp": normalized.get("timestamp")
+                    or normalized.get("created_at")
+                    or timestamp
+                    or datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+            if len(alerts) >= limit:
+                break
+
+        if len(alerts) >= limit:
+            break
+
+    return sorted(alerts, key=lambda a: a.get("timestamp", ""), reverse=True)[:limit]
 
 
 async def _broadcast_analysis_updates():
@@ -583,6 +653,49 @@ async def register_push_token(
     return _register_device_token(registration, request)
 
 
+@app.get("/api/v1/patients")
+async def list_patients(
+    request: Request,
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    ),
+):
+    """Return patient roster formatted for the mobile client."""
+
+    if not patient_analyzer or not fhir_connector:
+        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+
+    patients = _dashboard_patient_list()
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
+    try:
+        async with fhir_connector.request_context(
+            auth.access_token, auth.scopes, auth.patient
+        ):
+            roster = []
+            for patient in patients:
+                patient_data = None
+                try:
+                    patient_data = await patient_analyzer.patient_data_service.fetch_patient_data(
+                        patient["patient_id"]
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Unable to fetch demographics for %s: %s",
+                        patient.get("patient_id"),
+                        exc,
+                    )
+
+                roster.append(_build_patient_list_entry(patient, patient_data))
+
+        return {"patients": roster}
+    except Exception as exc:
+        logger.error("Error fetching patient roster [%s]: %s", correlation_id, str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/api/v1/patients/dashboard")
 async def get_dashboard_patients(
     request: Request,
@@ -628,6 +741,31 @@ async def get_dashboard_patients(
         logger.error(
             "Error building dashboard overview [%s]: %s", correlation_id, str(exc)
         )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/v1/alerts")
+async def get_alerts(
+    request: Request,
+    limit: int = Query(25, ge=1, le=200),
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
+    ),
+):
+    """Return recent high-severity alerts for mobile notifications/feed."""
+
+    if not patient_analyzer:
+        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+
+    try:
+        alerts = _collect_recent_alerts(limit)
+        return {"alerts": alerts}
+    except Exception as exc:
+        logger.error("Error collecting alert feed [%s]: %s", correlation_id, str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 
