@@ -13,8 +13,28 @@ const PatientListScreen = ({ client, navigation }) => {
         client.fetchPatients(),
         client.fetchAlerts(),
       ]);
-      setPatients(patientResponse?.patients || patientResponse || []);
-      setAlerts(alertResponse?.alerts || alertResponse || []);
+      const patientList = patientResponse?.patients || patientResponse || [];
+      const alertFeed = alertResponse?.alerts || alertResponse || [];
+
+      const fallbackAlerts = patientList
+        .filter((p) =>
+          ['critical', 'high'].includes(
+            (p.highest_alert_severity || '').toLowerCase(),
+          ),
+        )
+        .map((p, index) => ({
+          id: p.id || p.patient_id || `patient-${index}`,
+          title: p.name || p.full_name || 'Patient alert',
+          summary:
+            p.highest_alert_severity === 'critical'
+              ? 'Critical alert detected'
+              : 'High-priority alert detected',
+          severity: p.highest_alert_severity,
+          timestamp: p.last_analyzed_at || p.last_updated,
+        }));
+
+      setPatients(patientList);
+      setAlerts(alertFeed.length ? alertFeed : fallbackAlerts);
     } catch (error) {
       console.error('Failed to load patients', error);
     } finally {
@@ -26,6 +46,12 @@ const PatientListScreen = ({ client, navigation }) => {
     loadData();
   }, [loadData]);
 
+  const formatRisk = (risk) => {
+    if (risk === null || risk === undefined) return 'N/A';
+    if (Number.isFinite(risk)) return `${(risk * 100).toFixed(0)}%`;
+    return String(risk);
+  };
+
   const renderPatient = ({ item }) => (
     <TouchableOpacity
       style={styles.card}
@@ -35,6 +61,13 @@ const PatientListScreen = ({ client, navigation }) => {
       <Text>ID: {item.id}</Text>
       <Text>Age: {item.age || 'N/A'}</Text>
       <Text>MRN: {item.mrn || 'N/A'}</Text>
+      <Text>Risk: {formatRisk(item.latest_risk_score)}</Text>
+      <Text>
+        Alerts:{' '}
+        {item.highest_alert_severity
+          ? item.highest_alert_severity.toUpperCase()
+          : 'None'}
+      </Text>
     </TouchableOpacity>
   );
 
@@ -42,6 +75,9 @@ const PatientListScreen = ({ client, navigation }) => {
     <View style={styles.alertCard}>
       <Text style={styles.cardTitle}>{item.title || item.type}</Text>
       <Text style={styles.alertDetail}>{item.summary || item.description}</Text>
+      {item.patient_name && (
+        <Text style={styles.alertMeta}>Patient: {item.patient_name}</Text>
+      )}
       <Text style={styles.alertMeta}>{new Date(item.timestamp || item.created_at).toLocaleString()}</Text>
     </View>
   );

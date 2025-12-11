@@ -335,10 +335,33 @@ def _build_patient_list_entry(
 ) -> Dict[str, Any]:
     """Normalize patient details for mobile patient list consumption."""
 
-    patient_info = (patient_data or {}).get("patient") or {}
+    latest_analysis = _latest_analysis_for_patient(patient.get("patient_id", ""))
+    analysis_patient_data = (latest_analysis or {}).get("patient_data") or {}
+
+    patient_info = (
+        (patient_data or {}).get("patient")
+        or analysis_patient_data.get("patient")
+        or {}
+    )
     patient_id = patient_info.get("id") or patient.get("patient_id")
     name = patient_info.get("name") or patient.get("name") or patient_id
+
     age = PatientDataService._calculate_age(patient_info.get("birthDate"))
+
+    alerts = (latest_analysis or {}).get("alerts") or []
+    highest_alert_severity = (
+        (latest_analysis or {}).get("highest_alert_severity")
+        or PatientAnalyzer._highest_alert_severity(alerts)
+    )
+
+    risk_scores = (latest_analysis or {}).get("risk_scores") or {}
+    overall_risk_score = (latest_analysis or {}).get("overall_risk_score")
+    if overall_risk_score is None and risk_scores:
+        overall_risk_score = PatientAnalyzer._derive_overall_risk_score(risk_scores)
+
+    last_analyzed_at = (latest_analysis or {}).get("last_analyzed_at") or (
+        latest_analysis or {}
+    ).get("analysis_timestamp")
 
     return {
         "id": patient_id,
@@ -348,6 +371,9 @@ def _build_patient_list_entry(
         "age": age,
         "mrn": patient_info.get("mrn"),
         "last_updated": (patient_data or {}).get("fetched_at"),
+        "highest_alert_severity": highest_alert_severity,
+        "latest_risk_score": overall_risk_score,
+        "last_analyzed_at": last_analyzed_at,
     }
 
 
@@ -483,6 +509,8 @@ def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List
 
     alerts: List[Dict[str, Any]] = []
 
+    roster_lookup = {p["patient_id"]: p.get("name") for p in _dashboard_patient_list()}
+
     if not patient_analyzer:
         return alerts[:limit]
 
@@ -492,6 +520,14 @@ def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List
 
         if patient_id and analysis_patient_id and patient_id != analysis_patient_id:
             continue
+
+        patient_name = (
+            (analysis.get("summary") or {}).get("patient_name")
+            or (analysis.get("patient_data") or {})
+            .get("patient", {})
+            .get("name")
+            or roster_lookup.get(analysis_patient_id)
+        )
 
         for idx, alert in enumerate(analysis.get("alerts") or []):
             normalized = alert if isinstance(alert, dict) else {"summary": str(alert)}
@@ -505,6 +541,7 @@ def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List
                     "id": normalized.get("id")
                     or f"{analysis_patient_id}-{idx}-{timestamp or len(alerts)}",
                     "patient_id": analysis_patient_id,
+                    "patient_name": patient_name,
                     "title": normalized.get("title")
                     or normalized.get("type")
                     or "Clinical Alert",
