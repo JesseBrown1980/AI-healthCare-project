@@ -307,12 +307,12 @@ SHAP (SHapley Additive exPlanations) assigns each feature a contribution score f
 - `alert_models.py`: Clinical alert definitions
 
 ### Frontend (`/frontend/`)
-- Streamlit UI at [`frontend/app.py`](frontend/app.py) using [`frontend/requirements.txt`](frontend/requirements.txt); run with `streamlit run app.py --server.port 3000` as shown in the setup steps above.
+- **Current UI: Streamlit.** Entry point at [`frontend/app.py`](frontend/app.py) with dependencies in [`frontend/requirements.txt`](frontend/requirements.txt). Launch with `streamlit run app.py --server.port 3000` (see Quick Start step 5).
 - Dashboard for patient data visualization
 - Chat interface for querying the AI
 - Decision support recommendations panel
 - Alert notification system
-- React UI is planned/optional for teams that prefer a SPA workflow; React capabilities are being added soon—use the optional React commands in the setup section once the SPA lands.
+- **Planned/optional React UI.** A React SPA is planned for teams that prefer that workflow; once available, use the optional React commands in the setup section (`npm install && npm start`) to run it.
 
 ---
 
