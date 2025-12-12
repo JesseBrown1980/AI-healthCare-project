@@ -143,14 +143,14 @@ helm install healthcare-ai ./k8s/healthcare-ai-chart \
 
 ### Method 4: Desktop Wrapper (PyWebview)
 
-Create a native-feeling desktop window that loads the Streamlit frontend served on `http://localhost:8501` (Streamlit's default) and uses the healthcare icon at `desktop/icon.png` for native launchers. Override the target URL with the `DESKTOP_APP_URL` environment variable if you want to point at a different frontend (e.g., a React dev server on port 3000).
+Create a native-feeling desktop window that loads the Streamlit frontend served on `http://localhost:3000` (the stack-wide default) and uses the healthcare icon at `desktop/icon.png` for native launchers. Override the target URL with the `DESKTOP_APP_URL` environment variable if you want to point at a different frontend (e.g., a React dev server on port 3000).
 
 ```bash
 # Install desktop dependencies
 pip install pywebview
 
 # Start the frontend (from the frontend/ directory)
-streamlit run app.py --server.port 8501
+streamlit run app.py --server.port 3000
 
 # Launch the desktop shell
 python desktop/app.py
