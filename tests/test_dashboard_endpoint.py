@@ -49,14 +49,26 @@ from backend.main import PatientAnalyzer, TokenContext, app
 
 class _StubAnalyzer:
     def __init__(self, responses: Dict[str, Dict[str, Any]]):
-        self.analysis_history = []
+        self.analysis_history = {}
         self._responses = responses
 
     async def analyze(self, patient_id: str, include_recommendations: bool = False, analysis_focus: str = None):
         result = self._responses[patient_id]
-        self.analysis_history.append(result)
+        self.analysis_history.setdefault(patient_id, []).append(result)
         await asyncio.sleep(0)
         return result
+
+    def get_latest_analysis(self, patient_id: str) -> Dict[str, Any]:
+        bucket = self.analysis_history.get(patient_id, [])
+        return bucket[-1] if bucket else None
+
+    def get_history(self, patient_id: str = None):
+        if patient_id:
+            return list(self.analysis_history.get(patient_id, []))
+        combined = []
+        for bucket in self.analysis_history.values():
+            combined.extend(bucket)
+        return combined
 
 
 class _StubFHIRConnector:

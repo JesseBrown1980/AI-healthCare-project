@@ -37,10 +37,13 @@ from backend.main import TokenContext, app, patient_summary_cache
 
 class _StubAnalyzer:
     def __init__(self, entries: int):
-        self.analysis_history = [{"patient_id": f"p{idx}"} for idx in range(entries)]
+        self.analysis_history = {"all": [{"patient_id": f"p{idx}"} for idx in range(entries)]}
 
     def clear_history(self) -> None:
         self.analysis_history.clear()
+
+    def total_history_count(self) -> int:
+        return sum(len(bucket) for bucket in self.analysis_history.values())
 
 
 def _override_auth_dependency(route_path: str, token: TokenContext) -> None:
