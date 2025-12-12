@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from backend.patient_analyzer import PatientAnalyzer
@@ -30,15 +30,20 @@ def test_history_limit_keeps_recent_entries():
         history_limit=2,
     )
 
-    now = datetime.now(timezone.utc).isoformat()
-    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": now})
-    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": now})
-    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": now})
+    base_time = datetime.now(timezone.utc)
+    t1 = base_time.isoformat()
+    t2 = (base_time + timedelta(minutes=1)).isoformat()
+    t3 = (base_time + timedelta(minutes=2)).isoformat()
 
-    assert [entry["patient_id"] for entry in analyzer.get_history("p1")] == [
-        "p1",
-        "p1",
-    ]
+    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t1})
+    analyzer._add_to_history({"patient_id": "p2", "analysis_timestamp": t1})
+    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t2})
+    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t3})
+
+    history = analyzer.get_history("p1")
+
+    assert [entry["patient_id"] for entry in history] == ["p1", "p1"]
+    assert [entry["analysis_timestamp"] for entry in history] == [t2, t3]
 
 
 def test_clear_history_empties_cache():
