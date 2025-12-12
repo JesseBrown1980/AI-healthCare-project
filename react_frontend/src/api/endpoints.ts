@@ -1,5 +1,6 @@
 export const ENDPOINTS = {
   dashboardPatients: "/patients/dashboard",
+  dashboardSummary: "/dashboard-summary",
   analyzePatient: "/analyze-patient",
   queryMedical: "/query",
   submitFeedback: "/feedback",

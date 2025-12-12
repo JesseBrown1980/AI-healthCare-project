@@ -8,32 +8,45 @@ import type {
   HealthStatus,
   QueryResult,
 } from "./types";
+import { getEndpointPath } from "./endpoints";
 
 export { request, ApiError };
 
 export const getDashboardPatients = async (): Promise<DashboardPatient[]> => {
-  // TODO: Implement dashboard patients fetch
-  throw new Error("Not implemented");
+  return request<DashboardPatient[]>(getEndpointPath("dashboardPatients"));
 };
 
 export const analyzePatient = async (
   patientId: string,
   options?: { includeRecommendations?: boolean; specialty?: string; notify?: boolean }
 ): Promise<AnalysisResult> => {
-  void patientId;
-  void options;
-  // TODO: Implement patient analysis call
-  throw new Error("Not implemented");
+  const body = {
+    fhir_patient_id: patientId,
+    include_recommendations: options?.includeRecommendations ?? true,
+    specialty: options?.specialty,
+    notify: options?.notify,
+  };
+
+  return request<AnalysisResult>(getEndpointPath("analyzePatient"), {
+    method: "POST",
+    body,
+  });
 };
 
 export const queryMedical = async (
   question: string,
   options?: { patientId?: string; includeReasoning?: boolean }
 ): Promise<QueryResult> => {
-  void question;
-  void options;
-  // TODO: Implement medical query call
-  throw new Error("Not implemented");
+  const body = {
+    question,
+    patient_id: options?.patientId,
+    include_reasoning: options?.includeReasoning ?? true,
+  };
+
+  return request<QueryResult>(getEndpointPath("queryMedical"), {
+    method: "POST",
+    body,
+  });
 };
 
 export const submitFeedback = async (
@@ -41,24 +54,26 @@ export const submitFeedback = async (
   feedbackType: string,
   correctedText?: string
 ): Promise<FeedbackResponse> => {
-  void queryId;
-  void feedbackType;
-  void correctedText;
-  // TODO: Implement feedback submission
-  throw new Error("Not implemented");
+  const body = {
+    query_id: queryId,
+    feedback_type: feedbackType,
+    corrected_text: correctedText,
+  };
+
+  return request<FeedbackResponse>(getEndpointPath("submitFeedback"), {
+    method: "POST",
+    body,
+  });
 };
 
 export const getHealthStatus = async (): Promise<HealthStatus> => {
-  // TODO: Implement health status fetch
-  throw new Error("Not implemented");
+  return request<HealthStatus>(getEndpointPath("healthStatus"));
 };
 
 export const getAdaptersStatus = async (): Promise<AdaptersStatus> => {
-  // TODO: Implement adapters status fetch
-  throw new Error("Not implemented");
+  return request<AdaptersStatus>(getEndpointPath("adaptersStatus"));
 };
 
 export const getDashboardSummary = async (): Promise<DashboardSummary[]> => {
-  // TODO: Implement dashboard summary fetch
-  throw new Error("Not implemented");
+  return request<DashboardSummary[]>(getEndpointPath("dashboardSummary"));
 };
