@@ -6,6 +6,7 @@ export const ENDPOINTS = {
   submitFeedback: "/feedback",
   healthStatus: "/health",
   adaptersStatus: "/adapters",
+  authLogin: "/auth/login",
 };
 
 export type EndpointKey = keyof typeof ENDPOINTS;

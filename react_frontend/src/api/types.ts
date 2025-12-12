@@ -6,6 +6,18 @@ export interface Alert {
   timestamp?: string;
 }
 
+export interface LoginRequest {
+  email: string;
+  password: string;
+  patient?: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
 export interface Recommendation {
   title?: string;
   recommendation?: string;

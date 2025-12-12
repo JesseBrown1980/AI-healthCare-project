@@ -53,18 +53,28 @@ const mergeHeaders = (headers?: HeadersInit): Headers => {
   return merged;
 };
 
+const getStoredAuthToken = (): string | null => {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return null;
+  }
+
+  return window.localStorage.getItem("authToken");
+};
+
 export const request = async <T = unknown>(path: string, options: ApiClientOptions = {}): Promise<T> => {
   const { authToken, skipJsonContentType, headers, body, ...rest } = options;
 
   const requestHeaders = mergeHeaders(headers);
+
+  const resolvedAuthToken = authToken ?? getStoredAuthToken();
 
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   if (!skipJsonContentType && body && !isFormData) {
     requestHeaders.set("Content-Type", "application/json");
   }
 
-  if (authToken) {
-    requestHeaders.set("Authorization", `Bearer ${authToken}`);
+  if (resolvedAuthToken) {
+    requestHeaders.set("Authorization", `Bearer ${resolvedAuthToken}`);
   }
 
   const response = await fetch(buildUrl(path), {
