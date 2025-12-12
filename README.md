@@ -145,12 +145,12 @@ Live knowledge integration ensures cutting-edge medical information:
 
 6. **(Optional/in-progress) Run the React frontend**
    ```bash
-   cd ../frontend
+   cd ../react_frontend
    npm install
    npm start
    # UI available at http://localhost:3000
    ```
-   Choose this path if you prefer the React interface; Node.js and npm are only needed for this option. React work is underway, so use these commands once the React UI is available in your local checkout.
+   The React client is currently a skeleton: no API calls are wired up yet and several components/pages are stubs. Use it only if you plan to build out the React experience yourself. For demos, deployments, or user testing, the Streamlit UI remains the only fully working frontend today.
 
 7. **Run the mobile app**
    ```bash
