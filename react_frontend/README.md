@@ -14,7 +14,7 @@ This Vite + React + TypeScript app provides the UI for the AI Healthcare project
 - After signing out, you are redirected to `/login`. Protected routes will bounce unauthenticated users to the same page with a redirect back to their original destination after login.
 
 ## Scripts
-- `npm run dev` – start the Vite dev server
+- `npm run dev` – start the Vite dev server on port **3000** (matches the Streamlit UI; only run one frontend at a time so they don't conflict)
 - `npm run build` – type-check and create a production build
 - `npm run lint` – run ESLint against the project
 
