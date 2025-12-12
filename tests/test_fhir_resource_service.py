@@ -255,3 +255,17 @@ async def test_get_patient_cache_invalidation_and_expiry(monkeypatch):
     assert fourth["patient"]["gender"] == "female"
     assert len(client.calls) == 3
 
+
+def test_sample_data_mode_serves_offline_patient(monkeypatch):
+    client = StubHttpClient("http://unused.fhir", routes={})
+    service = FhirResourceService(client, enable_sample_data=True)
+
+    result = asyncio.run(service.get_patient("offline-1"))
+
+    assert result["patient"]["id"] == "offline-1"
+    assert result["conditions"]
+    assert result["medications"]
+    assert result["observations"]
+    assert result["encounters"]
+    assert client.calls == []
+

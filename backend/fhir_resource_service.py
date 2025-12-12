@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -32,6 +34,148 @@ except ImportError:  # Optional dependency for schema validation
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_SAMPLE_DATA = {
+    "patient": {
+        "resourceType": "Patient",
+        "id": "sample-patient",
+        "name": [{"use": "official", "family": "Doe", "given": ["Sample"]}],
+        "gender": "female",
+        "birthDate": "1975-07-15",
+        "address": [
+            {
+                "line": ["456 Health St"],
+                "city": "Wellness",
+                "state": "CA",
+                "postalCode": "94016",
+                "country": "USA",
+            }
+        ],
+        "telecom": [{"system": "phone", "value": "555-555-0000", "use": "home"}],
+    },
+    "conditions": [
+        {
+            "resourceType": "Condition",
+            "id": "cond-diabetes",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "44054006",
+                        "display": "Diabetes mellitus type 2",
+                    }
+                ]
+            },
+            "clinicalStatus": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                        "code": "active",
+                    }
+                ]
+            },
+            "onsetDateTime": "2012-03-01",
+        }
+    ],
+    "medications": [
+        {
+            "resourceType": "MedicationRequest",
+            "id": "med-metformin",
+            "status": "active",
+            "medicationCodeableConcept": {
+                "coding": [
+                    {
+                        "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                        "code": "860975",
+                        "display": "Metformin 500 MG Oral Tablet",
+                    }
+                ]
+            },
+            "dosageInstruction": [
+                {
+                    "text": "500mg twice daily with meals",
+                    "timing": {"repeat": {"frequency": 2, "period": 1, "periodUnit": "d"}},
+                }
+            ],
+            "authoredOn": "2023-01-15",
+        },
+        {
+            "resourceType": "MedicationRequest",
+            "id": "med-atorvastatin",
+            "status": "active",
+            "medicationCodeableConcept": {
+                "coding": [
+                    {
+                        "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                        "code": "83367",
+                        "display": "Atorvastatin 20 MG Oral Tablet",
+                    }
+                ]
+            },
+            "dosageInstruction": [
+                {
+                    "text": "20mg once daily",
+                    "timing": {"repeat": {"frequency": 1, "period": 1, "periodUnit": "d"}},
+                }
+            ],
+            "authoredOn": "2024-02-20",
+        },
+    ],
+    "observations": [
+        {
+            "resourceType": "Observation",
+            "id": "obs-a1c",
+            "status": "final",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "4548-4",
+                        "display": "Hemoglobin A1c/Hemoglobin.total in Blood",
+                    }
+                ]
+            },
+            "valueQuantity": {"value": 7.2, "unit": "%"},
+            "effectiveDateTime": "2024-08-21",
+        },
+        {
+            "resourceType": "Observation",
+            "id": "obs-bp",
+            "status": "final",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "85354-9",
+                        "display": "Blood pressure panel with all children optional",
+                    }
+                ]
+            },
+            "valueQuantity": {"value": 128, "unit": "mmHg"},
+            "effectiveDateTime": "2024-11-04",
+        },
+    ],
+    "encounters": [
+        {
+            "resourceType": "Encounter",
+            "id": "enc-annual",
+            "status": "finished",
+            "type": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                            "code": "AMB",
+                            "display": "ambulatory",
+                        }
+                    ]
+                }
+            ],
+            "period": {"start": "2024-10-20", "end": "2024-10-20"},
+        }
+    ],
+}
+
+
 class FhirResourceService:
     """Higher-level operations for fetching and normalizing FHIR resources."""
 
@@ -41,6 +185,8 @@ class FhirResourceService:
         *,
         cache_ttl: Optional[int] = 300,
         cache_ttl_seconds: Optional[int] = None,
+        enable_sample_data: Optional[bool] = None,
+        sample_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.client = client
         ttl_seconds = cache_ttl if cache_ttl_seconds is None else cache_ttl_seconds
@@ -49,6 +195,13 @@ class FhirResourceService:
         )
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._patient_cache: Dict[str, Dict[str, Any]] = {}
+        env_sample_flag = os.getenv("FHIR_USE_SAMPLE_DATA", "")
+        self.enable_sample_data = (
+            enable_sample_data
+            if enable_sample_data is not None
+            else env_sample_flag.lower() in {"1", "true", "yes", "sample"}
+        )
+        self.sample_data = deepcopy(sample_data) if sample_data else deepcopy(DEFAULT_SAMPLE_DATA)
 
     # ------------------------------------------------------------------
     # Public API helpers
@@ -122,6 +275,11 @@ class FhirResourceService:
             cached = self._get_cached_patient(patient_id)
             if cached:
                 return cached
+
+            if self.enable_sample_data:
+                patient_data = self._build_sample_patient_data(patient_id)
+                self._cache_patient(patient_id, patient_data)
+                return patient_data
 
             await self.client.ensure_valid_token()
             self._require_scopes("Patient")
@@ -434,6 +592,39 @@ class FhirResourceService:
     # ------------------------------------------------------------------
     # Normalization helpers
     # ------------------------------------------------------------------
+    def _build_sample_patient_data(self, patient_id: str) -> Dict[str, Any]:
+        sample = deepcopy(self.sample_data)
+        patient_resource = sample.get("patient", {})
+        patient_resource["id"] = patient_id or patient_resource.get("id")
+
+        patient_data = {
+            "patient": self._normalize_patient(patient_resource),
+            "conditions": [
+                self._normalize_condition(condition)
+                for condition in sample.get("conditions", [])
+            ],
+            "medications": [
+                self._normalize_medication(med)
+                for med in sample.get("medications", [])
+            ],
+            "observations": [
+                self._normalize_observation(obs)
+                for obs in sample.get("observations", [])
+            ],
+            "encounters": [
+                self._normalize_encounter(enc)
+                for enc in sample.get("encounters", [])
+            ],
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        logger.info(
+            "Serving patient %s from built-in sample data; unset FHIR_USE_SAMPLE_DATA to disable.",
+            patient_id,
+        )
+
+        return patient_data
+
     def _resolve_next_link(self, bundle: Dict[str, Any]) -> Optional[str]:
         for link in bundle.get("link", []):
             if link.get("relation") == "next":
