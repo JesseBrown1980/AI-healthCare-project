@@ -98,7 +98,9 @@ cd frontend
 python -m venv venv_fe
 source venv_fe/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+# Align with the stack-wide Streamlit port used by docker-compose and the desktop
+# wrapper so everything points to the same UI
+streamlit run app.py --server.port 3000
 ```
 
 ### Mobile testing

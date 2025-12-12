@@ -117,6 +117,14 @@ Live knowledge integration ensures cutting-edge medical information:
    > `pip install -r requirements.txt`, which pulls in FastAPI, uvicorn, and the
    > supporting stack used by the backend APIs.
 
+   **Default ports (and how to override them)**
+   | Component | Default port | How to change |
+   | --- | --- | --- |
+   | Backend (FastAPI) | `8000` | Set `PORT` before starting `main.py` |
+   | Streamlit UI (default frontend) | `3000` | Pass `--server.port` to `streamlit run` (the desktop wrapper points here by default; override it with `DESKTOP_APP_URL`) |
+   | React dev server (optional) | `3000` | Configure your React dev server port or set `DESKTOP_APP_URL` when testing with the desktop shell |
+   | FHIR test server (docker) | `8080` | Edit `docker-compose.yml` port mapping or `FHIR_SERVER_URL` |
+
 3. **Configure environment variables**
    ```bash
    cp .env.example .env
