@@ -820,7 +820,7 @@ async def get_dashboard_patients(
 ):
     """Return a list of patients with risk and alert summaries for the dashboard."""
 
-    if not patient_analyzer:
+    if not patient_analyzer or not fhir_connector:
         raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
     patients = _dashboard_patient_list()
