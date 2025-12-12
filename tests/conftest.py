@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# These aliases allow code that imports modules as top-level names (e.g. "audit_service")
+# to work in the test runner, even though the actual modules live under "backend.<module>".
 MODULE_ALIASES = [
     "analysis_cache",
     "security",
@@ -23,35 +25,15 @@ MODULE_ALIASES = [
     "explainability",
 ]
 
-for _module in MODULE_ALIASES:
-    if _module not in sys.modules:
-        sys.modules[_module] = importlib.import_module(f"backend.{_module}")
+for name in MODULE_ALIASES:
+    if name not in sys.modules:
+        sys.modules[name] = importlib.import_module(f"backend.{name}")
 
-if "di" not in sys.modules:
-    try:
+# If the DI package exists (added in PR #123), alias it as top-level "di" so
+# imports like "from di import ServiceContainer" work during tests.
+try:
+    if "di" not in sys.modules:
         sys.modules["di"] = importlib.import_module("backend.di")
-    except ModuleNotFoundError:
-        import types
-
-        backend_di = types.ModuleType("backend.di")
-
-        class ServiceContainer:  # pragma: no cover - test helper stub
-            pass
-
-        backend_di.ServiceContainer = ServiceContainer
-        sys.modules["backend.di"] = backend_di
-        sys.modules["di"] = backend_di
-
-# Ensure FastAPI routes use stable explainability outputs even when SHAP dependencies vary.
-import backend.main as _main
-import backend.explainability as _explainability
-
-
-def _safe_explain_risk(patient_analysis):  # pragma: no cover - test helper stub
-    explanation = _explainability.explain_risk(patient_analysis)
-    if not explanation.get("shap_values") and explanation.get("feature_names"):
-        explanation["shap_values"] = [0.0 for _ in explanation["feature_names"]]
-    return explanation
-
-
-_main.explain_risk = _safe_explain_risk
+except ModuleNotFoundError:
+    # backend.di doesn't exist until the DI PR is merged; that's fine.
+    pass
