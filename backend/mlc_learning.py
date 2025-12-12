@@ -50,7 +50,27 @@ class MLCLearning:
         self._rl_policy_prior: Optional[Any] = None
 
         logger.info("MLC Learning system initialized")
-    
+
+    async def record_feedback(self, patient_id: str, analysis: Dict[str, Any]) -> None:
+        """Persist analysis output for later learning cycles."""
+
+        feedback_snapshot = {
+            "patient_id": patient_id,
+            "analysis_timestamp": analysis.get("analysis_timestamp"),
+            "status": analysis.get("status"),
+            "alert_count": analysis.get("alert_count"),
+            "overall_risk_score": analysis.get("overall_risk_score"),
+            "highest_alert_severity": analysis.get("highest_alert_severity"),
+            "recorded_at": datetime.now().isoformat(),
+        }
+
+        self.feedback_history.append(feedback_snapshot)
+        logger.info(
+            "Recorded analysis feedback sample | patient_id=%s | total_samples=%d",
+            patient_id,
+            len(self.feedback_history),
+        )
+
     def _initialize_components(self):
         """Initialize basic learned components"""
         self.learned_components = {
