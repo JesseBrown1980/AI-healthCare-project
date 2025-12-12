@@ -451,7 +451,18 @@ def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
     critical_alerts = len(
         [a for a in normalized_alerts if a.get("severity") == "critical"]
     )
+    highest_alert_severity = analysis.get("highest_alert_severity") or PatientAnalyzer._highest_alert_severity(alerts)
     risk_scores = analysis.get("risk_scores") or {}
+    overall_risk_score = analysis.get("overall_risk_score")
+    if overall_risk_score is None and risk_scores:
+        overall_risk_score = PatientAnalyzer._derive_overall_risk_score(risk_scores)
+    patient_summary = analysis.get("summary") or {}
+    patient_data = analysis.get("patient_data") or {}
+    patient_name = (
+        patient_summary.get("patient_name")
+        or patient_data.get("patient", {}).get("name")
+        or analysis.get("patient_id")
+    )
     last_analysis = (
         analysis.get("analysis_timestamp")
         or analysis.get("timestamp")
@@ -461,6 +472,9 @@ def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "patient_id": analysis.get("patient_id"),
+        "patient_name": patient_name,
+        "overall_risk_score": overall_risk_score,
+        "highest_alert_severity": highest_alert_severity,
         "critical_alerts": critical_alerts,
         "cardiovascular_risk": risk_scores.get("cardiovascular_risk"),
         "readmission_risk": risk_scores.get("readmission_risk"),
@@ -472,8 +486,14 @@ def _extract_summary_from_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
 async def _get_patient_summary(
     patient_id: str,
     auth: TokenContext,
+    *,
+    use_request_context: bool = True,
 ) -> Dict[str, Any]:
-    """Retrieve (and cache) dashboard summary data for a patient."""
+    """Retrieve (and cache) dashboard summary data for a patient.
+    use_request_context allows callers that already hold a FHIR request context to
+    avoid nesting the context manager while still requiring the connector to be
+    initialized.
+    """
 
     cached = patient_summary_cache.get(patient_id)
     latest_analysis = _latest_analysis_for_patient(patient_id)
@@ -488,14 +508,20 @@ async def _get_patient_summary(
         if not patient_analyzer or not fhir_connector:
             raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
-        async with fhir_connector.request_context(
-            auth.access_token, auth.scopes, auth.patient
-        ):
-            latest_analysis = await patient_analyzer.analyze(
+        async def _run_analysis() -> Dict[str, Any]:
+            return await patient_analyzer.analyze(
                 patient_id=patient_id,
                 include_recommendations=False,
                 analysis_focus="dashboard_summary",
             )
+
+        if use_request_context:
+            async with fhir_connector.request_context(
+                auth.access_token, auth.scopes, auth.patient
+            ):
+                latest_analysis = await _run_analysis()
+        else:
+            latest_analysis = await _run_analysis()
 
     summary = _extract_summary_from_analysis(latest_analysis)
 
@@ -504,6 +530,23 @@ async def _get_patient_summary(
         "summary": summary,
     }
     return summary
+
+
+def _build_dashboard_entry_from_summary(
+    summary: Dict[str, Any], fallback_name: Optional[str]
+) -> Dict[str, Any]:
+    """Normalize cached summaries to the dashboard response shape."""
+
+    patient_name = summary.get("patient_name") or fallback_name or summary.get("patient_id")
+    latest_risk_score = summary.get("overall_risk_score") or summary.get("cardiovascular_risk")
+
+    return {
+        "patient_id": summary.get("patient_id"),
+        "name": patient_name,
+        "latest_risk_score": latest_risk_score,
+        "highest_alert_severity": summary.get("highest_alert_severity"),
+        "last_analyzed_at": summary.get("last_analysis"),
+    }
 
 
 def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -777,7 +820,7 @@ async def get_dashboard_patients(
 ):
     """Return a list of patients with risk and alert summaries for the dashboard."""
 
-    if not patient_analyzer or not fhir_connector:
+    if not patient_analyzer:
         raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
     patients = _dashboard_patient_list()
@@ -792,20 +835,18 @@ async def get_dashboard_patients(
         async with fhir_connector.request_context(
             auth.access_token, auth.scopes, auth.patient
         ):
-            analysis_tasks = [
-                patient_analyzer.analyze(
-                    patient_id=patient_id,
-                    include_recommendations=False,
-                    analysis_focus="dashboard_overview",
+            summary_tasks = [
+                _get_patient_summary(
+                    patient_id=patient_id, auth=auth, use_request_context=False
                 )
                 for patient_id in patient_ids
             ]
 
-            analyses = await asyncio.gather(*analysis_tasks)
+            summaries = await asyncio.gather(*summary_tasks)
 
         dashboard_entries = [
-            _build_dashboard_entry(analysis, fallback_name=patient.get("name"))
-            for analysis, patient in zip(analyses, patients)
+            _build_dashboard_entry_from_summary(summary, fallback_name=patient.get("name"))
+            for summary, patient in zip(summaries, patients)
         ]
 
         return dashboard_entries
@@ -1032,9 +1073,14 @@ async def dashboard_summary(
         return []
 
     summaries = []
-    for patient_id in patient_ids:
-        summary = await _get_patient_summary(patient_id, auth)
-        summaries.append(summary)
+    async with fhir_connector.request_context(
+        auth.access_token, auth.scopes, auth.patient
+    ):
+        for patient_id in patient_ids:
+            summary = await _get_patient_summary(
+                patient_id, auth, use_request_context=False
+            )
+            summaries.append(summary)
 
     def _timestamp_value(value: Optional[str]) -> datetime:
         try:
