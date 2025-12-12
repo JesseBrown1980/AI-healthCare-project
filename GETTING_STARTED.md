@@ -164,6 +164,14 @@ Or use test FHIR server (included with docker-compose):
 FHIR_SERVER_URL=http://localhost:8080/fhir
 ```
 
+No sandbox handy? You can run the analysis pipeline completely offline by turning on the built-in sample dataset:
+
+```env
+FHIR_USE_SAMPLE_DATA=true
+```
+
+When enabled, the FHIR connector skips network calls and serves a realistic demo patient with medications, conditions, observations, and encounters so the downstream analysis views keep working.
+
 ### 3. Try It Out!
 
 #### Via Web Interface
