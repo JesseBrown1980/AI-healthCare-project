@@ -1,4 +1,10 @@
-"""Lightweight desktop wrapper for the Streamlit UI using PyWebview."""
+"""Lightweight desktop wrapper for the Streamlit UI using PyWebview.
+
+Defaults to the Streamlit experience on port 3000 so the desktop shell
+opens a working window against the same port used by docker-compose and
+the Quick Start docs. Override `DESKTOP_APP_URL` if you want to point the
+wrapper at a different frontend (for example, a React dev server).
+"""
 
 import os
 import pathlib
