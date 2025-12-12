@@ -56,6 +56,9 @@ class MLCLearning:
 
         feedback_snapshot = {
             "patient_id": patient_id,
+            "query_id": analysis.get("query_id"),
+            "feedback_type": "analysis_snapshot",
+            "components_used": analysis.get("components_used", []),
             "analysis_timestamp": analysis.get("analysis_timestamp"),
             "status": analysis.get("status"),
             "alert_count": analysis.get("alert_count"),
