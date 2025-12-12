@@ -113,11 +113,6 @@ class PatientAnalyzer:
             focus=focus,
         )
 
-    async def _record_for_learning(self, patient_id: str, result: Dict[str, Any]) -> None:
-        if not self.mlc_learning:
-            return
-        await self.mlc_learning.record_feedback(patient_id, result)
-
     async def analyze(
         self,
         patient_id: str,
@@ -212,6 +207,10 @@ class PatientAnalyzer:
 
             # 8. APPLY MLC LEARNING
             logger.info("Step 8: Recording for meta-learning...")
+            # This hook is the only place where completed analyses flow into the
+            # optional meta-learning component; removing it would make the
+            # analyzer entirely observational with no feedback captured for
+            # adaptive tuning.
             await self._record_for_learning(patient_id, result)
 
             # 9. COMPILE FINAL ANALYSIS
@@ -257,9 +256,15 @@ class PatientAnalyzer:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-    async def _record_for_learning(self, patient_id: str, analysis: Dict):
+    async def _record_for_learning(self, patient_id: str, analysis: Dict[str, Any]):
         """Record analysis for MLC learning and feedback"""
+
+        if not self.mlc_learning:
+            logger.info("No MLC learning component configured; skipping record")
+            return
+
         logger.info("Recording analysis for MLC learning: %s", patient_id)
+        await self.mlc_learning.record_feedback(patient_id, analysis)
 
     def _add_to_history(self, analysis: Dict[str, Any]) -> None:
         """Add an analysis result to history while enforcing limits."""
