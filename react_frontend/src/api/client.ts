@@ -31,21 +31,39 @@ const parseResponse = async (response: Response): Promise<unknown> => {
   return response.text();
 };
 
+const mergeHeaders = (headers?: HeadersInit): Headers => {
+  const merged = new Headers({ Accept: "application/json" });
+
+  if (!headers) {
+    return merged;
+  }
+
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => merged.set(key, value));
+    return merged;
+  }
+
+  if (Array.isArray(headers)) {
+    headers.forEach(([key, value]) => merged.set(key, value));
+    return merged;
+  }
+
+  Object.entries(headers).forEach(([key, value]) => merged.set(key, value));
+  return merged;
+};
+
 export const request = async <T = unknown>(path: string, options: ApiClientOptions = {}): Promise<T> => {
   const { authToken, skipJsonContentType, headers, body, ...rest } = options;
 
-  const requestHeaders: HeadersInit = {
-    Accept: "application/json",
-    ...headers,
-  };
+  const requestHeaders = mergeHeaders(headers);
 
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   if (!skipJsonContentType && body && !isFormData) {
-    requestHeaders["Content-Type"] = "application/json";
+    requestHeaders.set("Content-Type", "application/json");
   }
 
   if (authToken) {
-    requestHeaders["Authorization"] = `Bearer ${authToken}`;
+    requestHeaders.set("Authorization", `Bearer ${authToken}`);
   }
 
   const response = await fetch(buildUrl(path), {
