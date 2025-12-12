@@ -2,6 +2,8 @@ import importlib
 import sys
 from pathlib import Path
 
+import pytest
+
 # Ensure the project root is on sys.path so tests can import package modules.
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -14,6 +16,7 @@ MODULE_ALIASES = [
     "security",
     "audit_service",
     "fhir_connector",
+    "fhir_http_client",
     "llm_engine",
     "rag_fusion",
     "s_lora_manager",
@@ -37,3 +40,44 @@ try:
 except ModuleNotFoundError:
     # backend.di doesn't exist until the DI PR is merged; that's fine.
     pass
+
+
+@pytest.fixture(autouse=True)
+def refresh_module_aliases():
+    """Ensure aliased modules reference the real backend implementations."""
+
+    for name in MODULE_ALIASES:
+        sys.modules.pop(name, None)
+        sys.modules.pop(f"backend.{name}", None)
+        sys.modules[name] = importlib.import_module(f"backend.{name}")
+
+    try:
+        sys.modules.pop("di", None)
+        sys.modules.pop("backend.di", None)
+        sys.modules["di"] = importlib.import_module("backend.di")
+    except ModuleNotFoundError:
+        pass
+
+    explainability = importlib.import_module("backend.explainability")
+    main_module = sys.modules.get("backend.main")
+    if main_module:
+        setattr(main_module, "explain_risk", explainability.explain_risk)
+
+    yield
+
+    for name in MODULE_ALIASES:
+        sys.modules.pop(name, None)
+        sys.modules.pop(f"backend.{name}", None)
+        sys.modules[name] = importlib.import_module(f"backend.{name}")
+
+    try:
+        sys.modules.pop("di", None)
+        sys.modules.pop("backend.di", None)
+        sys.modules["di"] = importlib.import_module("backend.di")
+    except ModuleNotFoundError:
+        sys.modules.pop("di", None)
+
+    explainability = importlib.import_module("backend.explainability")
+    main_module = sys.modules.get("backend.main")
+    if main_module:
+        setattr(main_module, "explain_risk", explainability.explain_risk)
