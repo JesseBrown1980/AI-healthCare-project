@@ -28,6 +28,7 @@ from security import TokenContext, auth_dependency, close_shared_async_client
 from audit_service import AuditService
 from pydantic import BaseModel, root_validator, validator
 from jose import jwt
+from di import ServiceContainer
 
 # Load environment variables
 load_dotenv()
@@ -127,90 +128,37 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("Initializing Healthcare AI Assistant...")
+    container: Optional[ServiceContainer] = None
     try:
         global fhir_client, fhir_connector, llm_engine, rag_fusion, s_lora_manager, mlc_learning, aot_reasoner, patient_analyzer
         global audit_service, notifier, analysis_job_manager
-
-        if analysis_history_limit <= 0:
-            raise ValueError("ANALYSIS_HISTORY_LIMIT must be a positive integer")
-
-        # Initialize core components
-        logger.info("Loading FHIR HTTP client and resource service...")
-        fhir_client = FhirHttpClient(
-            server_url=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir"),
-            vendor=os.getenv("EHR_VENDOR", "generic"),
-            client_id=os.getenv("SMART_CLIENT_ID", ""),
-            client_secret=os.getenv("SMART_CLIENT_SECRET", ""),
-            scope=os.getenv(
-                "SMART_SCOPE", "system/*.read patient/*.read user/*.read"
-            ),
-            auth_url=os.getenv("SMART_AUTH_URL") or None,
-            token_url=os.getenv("SMART_TOKEN_URL") or None,
-            well_known_url=os.getenv("SMART_WELL_KNOWN") or None,
-            audience=os.getenv("SMART_AUDIENCE") or None,
-            refresh_token=os.getenv("SMART_REFRESH_TOKEN") or None,
-        )
-        fhir_connector = FhirResourceService(fhir_client)
-        
-        logger.info("Loading LLM Engine...")
-        llm_engine = LLMEngine(
-            model_name=os.getenv("LLM_MODEL", "gpt-4"),
-            api_key=os.getenv("OPENAI_API_KEY", "")
-        )
-        
-        logger.info("Loading RAG-Fusion Component...")
-        rag_fusion = RAGFusion(
-            knowledge_base_path=os.getenv("KB_PATH", "./data/medical_kb"),
-            embedding_model=os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-        )
-        
-        logger.info("Loading S-LoRA Manager...")
-        s_lora_manager = SLoRAManager(
-            adapter_path=os.getenv("ADAPTER_PATH", "./models/adapters"),
-            base_model=os.getenv("BASE_MODEL", "meta-llama/Llama-2-7b-hf")
-        )
-        
-        logger.info("Loading MLC Learning System...")
-        mlc_learning = MLCLearning(
-            learning_rate=float(os.getenv("MLC_LEARNING_RATE", "0.001")),
-            feedback_history_path=os.getenv("FEEDBACK_PATH", "./data/feedback")
-        )
-        
-        logger.info("Loading Algorithm of Thought Reasoner...")
-        aot_reasoner = AoTReasoner(
-            reasoning_depth=int(os.getenv("REASONING_DEPTH", "3"))
-        )
-        
-        logger.info("Loading Notifier...")
-        notifier = Notifier()
-
-        logger.info("Initializing Patient Analyzer...")
-        patient_analyzer = PatientAnalyzer(
-            fhir_connector=fhir_connector,
-            llm_engine=llm_engine,
-            rag_fusion=rag_fusion,
-            s_lora_manager=s_lora_manager,
-            aot_reasoner=aot_reasoner,
-            mlc_learning=mlc_learning,
-            notifier=notifier,
+        container = ServiceContainer(
             notifications_enabled=notifications_enabled,
-            history_limit=analysis_history_limit,
-            history_ttl_seconds=analysis_history_ttl_seconds,
+            analysis_history_limit=analysis_history_limit,
+            analysis_history_ttl_seconds=analysis_history_ttl_seconds,
+            analysis_cache_ttl_seconds=analysis_cache_ttl_seconds,
         )
+        await container.startup()
+        app.state.container = container
 
-        analysis_job_manager = AnalysisJobManager(
-            ttl_seconds=analysis_cache_ttl_seconds
-        )
-
-        logger.info("Initializing Audit Service...")
-        audit_service = AuditService(fhir_connector=fhir_connector)
+        fhir_client = container.fhir_client
+        fhir_connector = container.fhir_connector
+        llm_engine = container.llm_engine
+        rag_fusion = container.rag_fusion
+        s_lora_manager = container.s_lora_manager
+        mlc_learning = container.mlc_learning
+        aot_reasoner = container.aot_reasoner
+        patient_analyzer = container.patient_analyzer
+        notifier = container.notifier
+        audit_service = container.audit_service
+        analysis_job_manager = container.analysis_job_manager
 
         # Initialize real-time update infrastructure
         global analysis_update_queue, active_websockets, broadcast_task
         analysis_update_queue = asyncio.Queue()
         active_websockets = {}
         broadcast_task = asyncio.create_task(_broadcast_analysis_updates())
-        
+
         logger.info("✓ Healthcare AI Assistant initialized successfully")
         
     except Exception as e:
@@ -235,7 +183,10 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
-    await close_shared_async_client()
+    if container:
+        await container.shutdown()
+    else:
+        await close_shared_async_client()
     logger.info("Shutdown complete")
 
 
