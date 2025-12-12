@@ -1,8 +1,9 @@
 import API_BASE_URL from "../config";
 
-export interface ApiClientOptions extends RequestInit {
+export interface ApiClientOptions extends Omit<RequestInit, "body"> {
   authToken?: string;
   skipJsonContentType?: boolean;
+  body?: unknown;
 }
 
 export class ApiError<T = unknown> extends Error {

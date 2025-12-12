@@ -13,6 +13,36 @@ export interface Recommendation {
   priority?: string;
 }
 
+export interface PatientSummary {
+  patient_name?: string;
+  age?: number;
+  gender?: string;
+  active_conditions_count?: number;
+  current_medications_count?: number;
+  narrative_summary?: string;
+  key_conditions?: string[];
+  key_medications?: string[];
+}
+
+export interface MedicationItem {
+  name?: string;
+  status?: string;
+}
+
+export interface MedicationReview {
+  total_medications?: number;
+  potential_issues?: string[];
+  medications?: MedicationItem[];
+}
+
+export interface AnalysisMetadata {
+  analysis_duration_seconds?: number;
+  model?: string;
+  correlation_id?: string;
+  specialty_used?: string;
+  include_recommendations?: boolean;
+}
+
 export interface DashboardPatient {
   patient_id: string;
   name?: string;
@@ -32,6 +62,7 @@ export interface DashboardSummary {
 }
 
 export interface AnalysisResult {
+  status?: string;
   patient_id: string;
   patient_data?: Record<string, unknown>;
   risk_scores?: Record<string, number>;
@@ -39,10 +70,14 @@ export interface AnalysisResult {
   highest_alert_severity?: string;
   alerts?: Alert[];
   recommendations?: Recommendation[];
-  summary?: Record<string, unknown>;
+  summary?: PatientSummary;
+  medication_review?: MedicationReview;
   analysis_timestamp?: string;
   last_analyzed_at?: string;
   notify_sent?: boolean;
+  analysis_duration_seconds?: number;
+  analysis_metadata?: AnalysisMetadata;
+  reasoning?: string | string[];
 }
 
 export interface QueryResult {
