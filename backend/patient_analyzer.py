@@ -5,7 +5,7 @@ Combines FHIR data, LLM intelligence, RAG knowledge, S-LoRA adaptation, MLC lear
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from .alert_service import AlertService
@@ -16,6 +16,10 @@ from .recommendation_service import RecommendationService
 from .risk_scoring_service import RiskScoringService
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_HISTORY_LIMIT = 200
+DEFAULT_HISTORY_TTL_SECONDS = 60 * 60 * 24
 
 
 class PatientAnalyzer:
@@ -40,6 +44,7 @@ class PatientAnalyzer:
         alert_service: Optional[AlertService] = None,
         notification_service: Optional[NotificationService] = None,
         history_limit: Optional[int] = None,
+        history_ttl_seconds: Optional[int] = None,
     ):
         """
         Initialize PatientAnalyzer with all components
@@ -71,10 +76,33 @@ class PatientAnalyzer:
             notifier, notifications_enabled
         )
 
-        self.analysis_history: List[Dict] = []
-        self.history_limit = history_limit
+        self.history_limit = self._validated_positive_value(
+            history_limit,
+            DEFAULT_HISTORY_LIMIT,
+            "history_limit",
+        )
+        self.history_ttl_seconds = self._validated_positive_value(
+            history_ttl_seconds,
+            DEFAULT_HISTORY_TTL_SECONDS,
+            "history_ttl_seconds",
+        )
+
+        self.analysis_history: Dict[str, List[Dict]] = {}
 
         logger.info("PatientAnalyzer initialized with all components")
+
+    @staticmethod
+    def _validated_positive_value(
+        value: Optional[int], default_value: int, name: str
+    ) -> int:
+        if value is None:
+            return default_value
+        if value <= 0:
+            logger.warning(
+                "%s must be positive; falling back to default %s", name, default_value
+            )
+            return default_value
+        return value
 
     async def _generate_summary(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
         if not self.patient_data_service:
@@ -86,10 +114,20 @@ class PatientAnalyzer:
             return []
         return await self.alert_service.identify_alerts(patient_data)
 
-    def _highest_alert_severity(self, alerts: List[Dict[str, Any]]) -> Optional[str]:
-        if not self.alert_service:
+    @staticmethod
+    def _highest_alert_severity(alerts: List[Dict[str, Any]]) -> Optional[str]:
+        """Return the highest alert severity from a list of alerts."""
+
+        return AlertService.highest_alert_severity(alerts)
+
+    @staticmethod
+    def _derive_overall_risk_score(risk_scores: Dict[str, Any]) -> Optional[float]:
+        """Fallback helper mirroring RiskScoringService logic for convenience."""
+
+        if not risk_scores:
             return None
-        return self.alert_service.highest_alert_severity(alerts)
+
+        return RiskScoringService.derive_overall_risk_score(risk_scores)
 
     async def _calculate_risk_scores(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
         if not self.risk_scoring_service:
@@ -267,32 +305,127 @@ class PatientAnalyzer:
         await self.mlc_learning.record_feedback(patient_id, analysis)
 
     def _add_to_history(self, analysis: Dict[str, Any]) -> None:
-        """Add an analysis result to history while enforcing limits."""
+        """Add an analysis result to history while enforcing limits and TTL."""
 
-        self.analysis_history.append(analysis)
+        patient_id = analysis.get("patient_id") or "unknown"
+        bucket = self.analysis_history.setdefault(patient_id, [])
+        bucket.append(analysis)
 
-        if self.history_limit is not None and self.history_limit > 0:
-            excess = len(self.analysis_history) - self.history_limit
-            if excess > 0:
-                del self.analysis_history[:excess]
+        removed = self._prune_history_for_patient(patient_id)
+        if removed:
+            logger.info(
+                "Pruned %s expired analyses for %s after adding new result",
+                removed,
+                patient_id,
+            )
+
+        stale_removed = self.prune_stale_history()
+        if stale_removed:
+            logger.info("Pruned %s expired analyses across all patients", stale_removed)
 
     def clear_history(self) -> None:
         """Remove all cached analyses to reclaim memory."""
 
         self.analysis_history.clear()
 
+    def get_history(self, patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return a copy of the analysis history for a patient or all patients."""
+
+        if patient_id is not None:
+            return list(self.analysis_history.get(patient_id, []))
+
+        all_entries: List[Dict[str, Any]] = []
+        for bucket in self.analysis_history.values():
+            all_entries.extend(bucket)
+
+        return sorted(all_entries, key=self._timestamp_sort_key)
+
+    def get_latest_analysis(self, patient_id: str) -> Optional[Dict[str, Any]]:
+        """Return the latest analysis for a specific patient."""
+
+        bucket = self.analysis_history.get(patient_id) or []
+        if not bucket:
+            return None
+        return bucket[-1]
+
+    def total_history_count(self) -> int:
+        """Return the total number of cached analyses across all patients."""
+
+        return sum(len(bucket) for bucket in self.analysis_history.values())
+
     def get_stats(self) -> Dict:
         """Get analyzer statistics"""
         return {
-            "total_analyses": len(self.analysis_history),
+            "total_analyses": self.total_history_count(),
             "successful_analyses": sum(
-                1 for a in self.analysis_history if a.get("status") == "completed"
+                1
+                for a in self.get_history()
+                if a.get("status") == "completed"
             ),
             "average_analysis_time": sum(
-                a.get("analysis_duration_seconds", 0) for a in self.analysis_history
+                a.get("analysis_duration_seconds", 0) for a in self.get_history()
             )
-            / max(len(self.analysis_history), 1),
+            / max(self.total_history_count(), 1),
         }
+
+    def prune_stale_history(self) -> int:
+        """Prune TTL-expired analyses across all patients."""
+
+        total_removed = 0
+        for patient_id in list(self.analysis_history.keys()):
+            total_removed += self._prune_history_for_patient(patient_id)
+        return total_removed
+
+    def _prune_history_for_patient(self, patient_id: str) -> int:
+        bucket = self.analysis_history.get(patient_id, [])
+        if not bucket:
+            return 0
+
+        removed = self._prune_by_limit(bucket)
+        removed += self._prune_by_ttl(bucket)
+        return removed
+
+    def _prune_by_limit(self, bucket: List[Dict[str, Any]]) -> int:
+        if self.history_limit is None or self.history_limit <= 0:
+            return 0
+        excess = len(bucket) - self.history_limit
+        if excess > 0:
+            del bucket[:excess]
+        return max(excess, 0)
+
+    def _prune_by_ttl(self, bucket: List[Dict[str, Any]]) -> int:
+        if not self.history_ttl_seconds:
+            return 0
+
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.history_ttl_seconds)
+        retained: List[Dict[str, Any]] = []
+        removed = 0
+        for entry in bucket:
+            timestamp = self._parse_timestamp(entry)
+            if timestamp and timestamp < cutoff:
+                removed += 1
+                continue
+            retained.append(entry)
+
+        if removed:
+            bucket[:] = retained
+        return removed
+
+    @staticmethod
+    def _parse_timestamp(entry: Dict[str, Any]) -> Optional[datetime]:
+        timestamp_value = entry.get("analysis_timestamp") or entry.get("timestamp")
+        if not timestamp_value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(timestamp_value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except (TypeError, ValueError):
+            return None
+
+    def _timestamp_sort_key(self, entry: Dict[str, Any]) -> datetime:
+        return self._parse_timestamp(entry) or datetime.min.replace(tzinfo=timezone.utc)
 
     @staticmethod
     def _calculate_age(birth_date_str: Optional[str]) -> Optional[int]:

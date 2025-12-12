@@ -68,6 +68,9 @@ demo_login_enabled: bool = os.getenv("ENABLE_DEMO_LOGIN", "false").lower() == "t
 demo_login_secret: str = os.getenv("DEMO_JWT_SECRET", "dev-secret-change-me")
 demo_login_expires_minutes: int = int(os.getenv("DEMO_JWT_EXPIRES", "15"))
 analysis_history_limit: int = int(os.getenv("ANALYSIS_HISTORY_LIMIT", "200"))
+analysis_history_ttl_seconds: int = int(
+    os.getenv("ANALYSIS_HISTORY_TTL_SECONDS", str(60 * 60 * 24))
+)
 analysis_cache_ttl_seconds: int = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", "300"))
 analysis_job_manager: Optional[AnalysisJobManager] = None
 
@@ -127,7 +130,10 @@ async def lifespan(app: FastAPI):
     try:
         global fhir_client, fhir_connector, llm_engine, rag_fusion, s_lora_manager, mlc_learning, aot_reasoner, patient_analyzer
         global audit_service, notifier, analysis_job_manager
-        
+
+        if analysis_history_limit <= 0:
+            raise ValueError("ANALYSIS_HISTORY_LIMIT must be a positive integer")
+
         # Initialize core components
         logger.info("Loading FHIR HTTP client and resource service...")
         fhir_client = FhirHttpClient(
@@ -189,6 +195,7 @@ async def lifespan(app: FastAPI):
             notifier=notifier,
             notifications_enabled=notifications_enabled,
             history_limit=analysis_history_limit,
+            history_ttl_seconds=analysis_history_ttl_seconds,
         )
 
         analysis_job_manager = AnalysisJobManager(
@@ -310,10 +317,7 @@ def _latest_analysis_for_patient(patient_id: str) -> Optional[Dict[str, Any]]:
     if not patient_analyzer:
         return None
 
-    for analysis in reversed(patient_analyzer.analysis_history):
-        if analysis.get("patient_id") == patient_id:
-            return analysis
-    return None
+    return patient_analyzer.get_latest_analysis(patient_id)
 
 
 def _dashboard_patient_list() -> List[Dict[str, Optional[str]]]:
@@ -589,12 +593,9 @@ def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List
     if not patient_analyzer:
         return alerts[:limit]
 
-    for analysis in reversed(patient_analyzer.analysis_history):
+    for analysis in reversed(patient_analyzer.get_history(patient_id=patient_id)):
         timestamp = analysis.get("analysis_timestamp") or analysis.get("timestamp")
         analysis_patient_id = analysis.get("patient_id")
-
-        if patient_id and analysis_patient_id and patient_id != analysis_patient_id:
-            continue
 
         patient_name = (
             (analysis.get("summary") or {}).get("patient_name")
@@ -742,7 +743,7 @@ async def clear_caches(
         analysis_job_manager.clear()
 
     if patient_analyzer:
-        cleared_analyses = len(patient_analyzer.analysis_history)
+        cleared_analyses = patient_analyzer.total_history_count()
         patient_analyzer.clear_history()
 
     return {
@@ -1118,7 +1119,7 @@ async def dashboard_summary(
     if not patient_ids:
         seen: set = set()
         patient_ids = []
-        for analysis in reversed(patient_analyzer.analysis_history):
+        for analysis in reversed(patient_analyzer.get_history()):
             pid = analysis.get("patient_id")
             if pid and pid not in seen:
                 seen.add(pid)
