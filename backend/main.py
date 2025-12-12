@@ -28,7 +28,7 @@ from security import TokenContext, auth_dependency, close_shared_async_client
 from audit_service import AuditService
 from pydantic import BaseModel, root_validator, validator
 from jose import jwt
-from backend.di.container import ServiceContainer
+from backend.di import ServiceContainer, get_container
 
 # Load environment variables
 load_dotenv()
@@ -668,7 +668,8 @@ async def _authenticate_websocket(websocket: WebSocket) -> TokenContext:
 async def health_check(
     request: Request,
     vendor: Optional[str] = Query(None, description="Target EHR vendor"),
-    auth: TokenContext = Depends(auth_dependency())
+    auth: TokenContext = Depends(auth_dependency()),
+    container: ServiceContainer = Depends(get_container),
 ):
     """
     Health check endpoint

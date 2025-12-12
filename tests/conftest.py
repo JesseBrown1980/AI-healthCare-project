@@ -81,3 +81,10 @@ def refresh_module_aliases():
     main_module = sys.modules.get("backend.main")
     if main_module:
         setattr(main_module, "explain_risk", explainability.explain_risk)
+
+
+@pytest.fixture(scope="session")
+def anyio_backend():
+    """Restrict anyio tests to the asyncio backend to avoid incompatible trio runs."""
+
+    yield "asyncio"
