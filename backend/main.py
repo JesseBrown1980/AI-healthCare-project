@@ -47,6 +47,7 @@ from patient_analyzer import PatientAnalyzer
 from patient_data_service import PatientDataService
 from notifier import Notifier
 from explainability import explain_risk
+from analysis_cache import AnalysisJobManager
 
 # Global instances
 fhir_client = None
@@ -67,6 +68,8 @@ demo_login_enabled: bool = os.getenv("ENABLE_DEMO_LOGIN", "false").lower() == "t
 demo_login_secret: str = os.getenv("DEMO_JWT_SECRET", "dev-secret-change-me")
 demo_login_expires_minutes: int = int(os.getenv("DEMO_JWT_EXPIRES", "15"))
 analysis_history_limit: int = int(os.getenv("ANALYSIS_HISTORY_LIMIT", "200"))
+analysis_cache_ttl_seconds: int = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", "300"))
+analysis_job_manager: Optional[AnalysisJobManager] = None
 
 # In-memory cache for patient dashboard summaries
 patient_summary_cache: Dict[str, Dict[str, Any]] = {}
@@ -123,7 +126,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Healthcare AI Assistant...")
     try:
         global fhir_client, fhir_connector, llm_engine, rag_fusion, s_lora_manager, mlc_learning, aot_reasoner, patient_analyzer
-        global audit_service, notifier
+        global audit_service, notifier, analysis_job_manager
         
         # Initialize core components
         logger.info("Loading FHIR HTTP client and resource service...")
@@ -186,6 +189,10 @@ async def lifespan(app: FastAPI):
             notifier=notifier,
             notifications_enabled=notifications_enabled,
             history_limit=analysis_history_limit,
+        )
+
+        analysis_job_manager = AnalysisJobManager(
+            ttl_seconds=analysis_cache_ttl_seconds
         )
 
         logger.info("Initializing Audit Service...")
@@ -504,24 +511,47 @@ async def _get_patient_summary(
     ):
         return cached["summary"]
 
-    if not latest_analysis:
-        if not patient_analyzer or not fhir_connector:
-            raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+    if not patient_analyzer or not fhir_connector:
+        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
-        async def _run_analysis() -> Dict[str, Any]:
-            return await patient_analyzer.analyze(
-                patient_id=patient_id,
-                include_recommendations=False,
-                analysis_focus="dashboard_summary",
-            )
+    if latest_analysis:
+        summary = _extract_summary_from_analysis(latest_analysis)
+        patient_summary_cache[patient_id] = {
+            "analysis_timestamp": summary["last_analysis"],
+            "summary": summary,
+        }
+        return summary
 
+    analysis_key = None
+    if analysis_job_manager:
+        analysis_key = analysis_job_manager.cache_key(
+            patient_id=patient_id,
+            include_recommendations=False,
+            specialty=None,
+            analysis_focus="dashboard_summary",
+        )
+
+    async def _run_analysis() -> Dict[str, Any]:
+        return await patient_analyzer.analyze(
+            patient_id=patient_id,
+            include_recommendations=False,
+            analysis_focus="dashboard_summary",
+        )
+
+    async def _run_with_context() -> Dict[str, Any]:
         if use_request_context:
             async with fhir_connector.request_context(
                 auth.access_token, auth.scopes, auth.patient
             ):
-                latest_analysis = await _run_analysis()
-        else:
-            latest_analysis = await _run_analysis()
+                return await _run_analysis()
+        return await _run_analysis()
+
+    if analysis_key and analysis_job_manager:
+        latest_analysis, _ = await analysis_job_manager.get_or_create(
+            analysis_key, _run_with_context
+        )
+    else:
+        latest_analysis = await _run_with_context()
 
     summary = _extract_summary_from_analysis(latest_analysis)
 
@@ -708,6 +738,9 @@ async def clear_caches(
     patient_summary_cache.clear()
 
     cleared_analyses = 0
+    if analysis_job_manager:
+        analysis_job_manager.clear()
+
     if patient_analyzer:
         cleared_analyses = len(patient_analyzer.analysis_history)
         patient_analyzer.clear_history()
@@ -716,6 +749,7 @@ async def clear_caches(
         "status": "cleared",
         "analysis_history_cleared": cleared_analyses,
         "summary_cache_entries_cleared": cleared_summaries,
+        "analysis_cache_cleared": analysis_job_manager is not None,
     }
 
 
@@ -935,16 +969,36 @@ async def analyze_patient(
         requested_specialty = analysis.specialty if analysis else specialty
         should_notify = analysis.notify if analysis and analysis.notify is not None else notify
 
-        async with fhir_connector.request_context(
-            auth.access_token, auth.scopes, auth.patient
-        ):
-            result = await patient_analyzer.analyze(
+        force_refresh = bool(notifications_enabled and should_notify)
+        analysis_key = None
+
+        if analysis_job_manager:
+            analysis_key = analysis_job_manager.cache_key(
                 patient_id=patient_id,
                 include_recommendations=include_recs,
                 specialty=requested_specialty,
-                notify=bool(notifications_enabled and should_notify),
-                correlation_id=correlation_id,
+                analysis_focus=None,
             )
+
+        async def _run_analysis() -> Dict[str, Any]:
+            async with fhir_connector.request_context(
+                auth.access_token, auth.scopes, auth.patient
+            ):
+                return await patient_analyzer.analyze(
+                    patient_id=patient_id,
+                    include_recommendations=include_recs,
+                    specialty=requested_specialty,
+                    notify=bool(notifications_enabled and should_notify),
+                    correlation_id=correlation_id,
+                )
+
+        if analysis_job_manager and analysis_key:
+            result, from_cache = await analysis_job_manager.get_or_create(
+                analysis_key, _run_analysis, force_refresh=force_refresh
+            )
+        else:
+            result = await _run_analysis()
+            from_cache = False
 
         # Cache and broadcast the latest dashboard summary for real-time updates
         summary = _extract_summary_from_analysis(result)
@@ -952,7 +1006,8 @@ async def analyze_patient(
             "analysis_timestamp": summary["last_analysis"],
             "summary": summary,
         }
-        await _queue_analysis_update(summary)
+        if not from_cache:
+            await _queue_analysis_update(summary)
 
         if audit_service:
             await audit_service.record_event(
