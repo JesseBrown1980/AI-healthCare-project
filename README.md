@@ -205,6 +205,7 @@ docker-compose up -d
 
 - Use `ANALYSIS_HISTORY_LIMIT` to cap how many recent analyses are retained in memory (default: 200). Older entries are dropped automatically to keep memory bounded for long-running processes.
 - Call `POST /api/v1/cache/clear` to flush both the in-memory analysis history and the patient dashboard summary cache. This is useful after load tests or when refreshing demo data without restarting the service.
+- Set `ANALYSIS_CACHE_TTL_SECONDS` (default: 300) to reuse completed analyses for a short window and de-duplicate concurrent requests for the same patient/specialty combination. This reduces repeated FHIR/LLM calls during dashboard refreshes without introducing a full job queue.
 - For horizontal scaling or Kubernetes deployments, move these caches to a shared store (database, Redis, etc.) so state is consistent across processes. The current single-process cache is intended for local and demo use.
 
 ---
