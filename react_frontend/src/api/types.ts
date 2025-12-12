@@ -18,6 +18,7 @@ export interface DashboardPatient {
   name?: string;
   latest_risk_score?: number;
   highest_alert_severity?: string;
+  specialty?: string;
   last_analyzed_at?: string | null;
 }
 
