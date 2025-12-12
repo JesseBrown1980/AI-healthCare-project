@@ -5,7 +5,9 @@ import pathlib
 
 import webview
 
-APP_URL = os.getenv("DESKTOP_APP_URL", "http://localhost:3000")
+# Default to Streamlit's typical port (8501) while still allowing overrides for
+# other frontends (e.g., a React dev server on port 3000) via DESKTOP_APP_URL.
+APP_URL = os.getenv("DESKTOP_APP_URL", "http://localhost:8501")
 ICON_PATH = pathlib.Path(__file__).parent / "icon.png"
 
 
