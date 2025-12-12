@@ -6,11 +6,20 @@ import type {
   DashboardSummary,
   FeedbackResponse,
   HealthStatus,
+  LoginRequest,
+  LoginResponse,
   QueryResult,
 } from "./types";
 import { getEndpointPath } from "./endpoints";
 
 export { request, ApiError };
+
+export const login = async (payload: LoginRequest): Promise<LoginResponse> => {
+  return request<LoginResponse>(getEndpointPath("authLogin"), {
+    method: "POST",
+    body: payload,
+  });
+};
 
 export const getDashboardPatients = async (): Promise<DashboardPatient[]> => {
   return request<DashboardPatient[]>(getEndpointPath("dashboardPatients"));
