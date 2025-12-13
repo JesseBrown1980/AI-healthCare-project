@@ -37,6 +37,7 @@ from backend.di import (
     get_container,
     get_fhir_connector,
     get_llm_engine,
+    get_notifier,
     get_patient_analyzer,
     get_rag_fusion,
     get_s_lora_manager,
@@ -739,7 +740,10 @@ async def clear_caches(
 
 
 def _register_device_token(
-    registration: DeviceRegistration, request: Request
+    registration: DeviceRegistration,
+    request: Request,
+    notifier: Notifier,
+    audit_service: Optional[AuditService] = None,
 ) -> Dict[str, Any]:
     if not notifier:
         raise HTTPException(status_code=503, detail="Notifier not initialized")
@@ -761,10 +765,11 @@ async def register_device(
     registration: DeviceRegistration,
     request: Request,
     auth: TokenContext = Depends(auth_dependency()),
-):
+    notifier: Notifier = Depends(get_notifier),
+): 
     """Register a device token for push notifications."""
 
-    return _register_device_token(registration, request)
+    return _register_device_token(registration, request, notifier)
 
 
 @app.post("/api/v1/notifications/register")
@@ -772,10 +777,11 @@ async def register_push_token(
     registration: DeviceRegistration,
     request: Request,
     auth: TokenContext = Depends(auth_dependency()),
-):
+    notifier: Notifier = Depends(get_notifier),
+): 
     """Compatibility endpoint for registering Expo push tokens."""
 
-    return _register_device_token(registration, request)
+    return _register_device_token(registration, request, notifier)
 
 
 @app.get("/api/v1/patients")

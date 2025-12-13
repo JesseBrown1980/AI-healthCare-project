@@ -262,6 +262,7 @@ async def test_register_device_stores_tokens(monkeypatch):
         main.DeviceRegistration(device_token="abc123", platform="ios"),
         request,
         auth=auth,
+        notifier=notifier,
     )
 
     assert result["status"] == "registered"

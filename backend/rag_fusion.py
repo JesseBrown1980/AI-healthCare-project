@@ -47,6 +47,13 @@ class RAGFusion:
         except ImportError:
             logger.warning("sentence-transformers not installed. Using mock embeddings.")
             self.embeddings = None
+        except Exception as exc:
+            logger.warning(
+                "Unable to initialize embedding model '%s': %s. Using mock embeddings instead.",
+                self.embedding_model,
+                exc,
+            )
+            self.embeddings = None
     
     def _load_knowledge_base(self):
         """Load medical knowledge base"""
