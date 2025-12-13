@@ -5,6 +5,8 @@ import sys
 
 from fastapi.testclient import TestClient
 
+from backend.di import get_analysis_job_manager, get_patient_analyzer
+
 security_module = importlib.import_module("backend.security")
 sys.modules["security"] = security_module
 audit_module = importlib.import_module("backend.audit_service")
@@ -46,6 +48,14 @@ class _StubAnalyzer:
         return sum(len(bucket) for bucket in self.analysis_history.values())
 
 
+class _StubAnalysisJobManager:
+    def __init__(self):
+        self.cleared = False
+
+    def clear(self) -> None:
+        self.cleared = True
+
+
 def _override_auth_dependency(route_path: str, token: TokenContext) -> None:
     route = next(route for route in app.routes if route.path == route_path)
     auth_dependency = route.dependant.dependencies[0].call
@@ -70,7 +80,10 @@ def test_cache_clear_endpoint_resets_caches(monkeypatch):
 
     _override_auth_dependency("/api/v1/cache/clear", stub_token)
 
-    monkeypatch.setattr("backend.main.patient_analyzer", _StubAnalyzer(entries=3), raising=False)
+    stub_analysis_manager = _StubAnalysisJobManager()
+    stub_analyzer = _StubAnalyzer(entries=3)
+    app.dependency_overrides[get_analysis_job_manager] = lambda: stub_analysis_manager
+    app.dependency_overrides[get_patient_analyzer] = lambda: stub_analyzer
     monkeypatch.setattr("backend.main.audit_service", None, raising=False)
 
     with TestClient(app) as client:
