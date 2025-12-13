@@ -31,8 +31,12 @@ from jose import jwt
 from backend.di import (
     ServiceContainer,
     get_analysis_job_manager,
+    get_aot_reasoner,
     get_container,
+    get_fhir_connector,
+    get_llm_engine,
     get_patient_analyzer,
+    get_rag_fusion,
     get_s_lora_manager,
 )
 
@@ -1322,7 +1326,11 @@ async def medical_query(
     request: Request,
     question: str,
     patient_id: Optional[str] = None,
-    include_reasoning: bool = True
+    include_reasoning: bool = True,
+    llm_engine: LLMEngine = Depends(get_llm_engine),
+    rag_fusion: RAGFusion = Depends(get_rag_fusion),
+    aot_reasoner: AoTReasoner = Depends(get_aot_reasoner),
+    fhir_connector: FhirResourceService = Depends(get_fhir_connector),
 ):
     """
     Query the AI for medical insights and recommendations
@@ -1332,15 +1340,22 @@ async def medical_query(
     )
 
     try:
-        if not llm_engine or not rag_fusion:
-            raise HTTPException(status_code=503, detail="AI engine not initialized")
-        
         logger.info(f"Processing medical query: {question}")
-        
+
         # Get patient context if provided
         patient_context = None
         if patient_id:
-            patient_context = await fhir_connector.get_patient(patient_id)
+            (
+                access_token,
+                scopes,
+                _existing_patient,
+                user_context,
+            ) = fhir_connector.client.get_effective_context()
+
+            async with fhir_connector.request_context(
+                access_token, scopes, patient_id, user_context
+            ):
+                patient_context = await fhir_connector.get_patient(patient_id)
         
         # Generate response with RAG and AoT
         response = await llm_engine.query_with_rag(
