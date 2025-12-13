@@ -1,4 +1,4 @@
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 
 from backend.analysis_cache import AnalysisJobManager
 from backend.audit_service import AuditService
@@ -82,7 +82,7 @@ def get_aot_reasoner(
 def get_notifier(container: ServiceContainer = Depends(get_container)) -> Notifier:
     notifier = container.notifier
     if notifier is None:
-        raise RuntimeError("Notifier not initialized")
+        raise HTTPException(status_code=503, detail="Notifier not initialized")
     return notifier
 
 

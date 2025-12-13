@@ -743,7 +743,6 @@ def _register_device_token(
     registration: DeviceRegistration,
     request: Request,
     notifier: Notifier,
-    audit_service: Optional[AuditService] = None,
 ) -> Dict[str, Any]:
     if not notifier:
         raise HTTPException(status_code=503, detail="Notifier not initialized")
@@ -760,6 +759,7 @@ def _register_device_token(
     return {"status": "registered", "device": registered}
 
 
+@app.post("/api/v1/device/register")
 @app.post("/api/v1/register-device")
 async def register_device(
     registration: DeviceRegistration,
@@ -1607,6 +1607,9 @@ async def general_exception_handler(request: Request, exc: Exception):
 async def http_exception_handler(request: Request, exc: HTTPException):
     correlation_id = getattr(request.state, "correlation_id", uuid.uuid4().hex)
     logger.error("HTTPException [%s]: %s", correlation_id, exc.detail)
+
+    if exc.status_code == 503 and exc.detail == "Notifier not initialized":
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
     payload = {
         "status": "error",
