@@ -4,6 +4,11 @@ from backend.analysis_cache import AnalysisJobManager
 from backend.audit_service import AuditService
 from backend.fhir_resource_service import FhirResourceService
 from backend.llm_engine import LLMEngine
+from backend.rag_fusion import RAGFusion
+from backend.s_lora_manager import SLoRAManager
+from backend.mlc_learning import MLCLearning
+from backend.aot_reasoner import AoTReasoner
+from backend.notifier import Notifier
 from backend.patient_analyzer import PatientAnalyzer
 from .container import ServiceContainer
 
@@ -38,6 +43,47 @@ def get_llm_engine(container: ServiceContainer = Depends(get_container)) -> LLME
     if engine is None:
         raise RuntimeError("LLM engine not initialized")
     return engine
+
+
+def get_rag_fusion(container: ServiceContainer = Depends(get_container)) -> RAGFusion:
+    rag_fusion = container.rag_fusion
+    if rag_fusion is None:
+        raise RuntimeError("RAG Fusion not initialized")
+    return rag_fusion
+
+
+def get_s_lora_manager(
+    container: ServiceContainer = Depends(get_container),
+) -> SLoRAManager:
+    s_lora_manager = container.s_lora_manager
+    if s_lora_manager is None:
+        raise RuntimeError("S-LoRA manager not initialized")
+    return s_lora_manager
+
+
+def get_mlc_learning(
+    container: ServiceContainer = Depends(get_container),
+) -> MLCLearning:
+    mlc_learning = container.mlc_learning
+    if mlc_learning is None:
+        raise RuntimeError("MLC Learning not initialized")
+    return mlc_learning
+
+
+def get_aot_reasoner(
+    container: ServiceContainer = Depends(get_container),
+) -> AoTReasoner:
+    aot_reasoner = container.aot_reasoner
+    if aot_reasoner is None:
+        raise RuntimeError("AoT Reasoner not initialized")
+    return aot_reasoner
+
+
+def get_notifier(container: ServiceContainer = Depends(get_container)) -> Notifier:
+    notifier = container.notifier
+    if notifier is None:
+        raise RuntimeError("Notifier not initialized")
+    return notifier
 
 
 def get_analysis_job_manager(
