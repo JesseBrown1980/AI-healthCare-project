@@ -1,6 +1,7 @@
+import asyncio
 import logging
 import os
-from typing import Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 from backend.audit_service import AuditService
 from backend.fhir_http_client import FhirHttpClient
@@ -15,6 +16,10 @@ from backend.patient_analyzer import PatientAnalyzer
 from backend.analysis_cache import AnalysisJobManager
 from backend.security import close_shared_async_client
 from backend.state.user_store import UserStateStore
+
+if TYPE_CHECKING:
+    from fastapi import WebSocket
+    from backend.security import TokenContext
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +50,9 @@ class ServiceContainer:
         self.analysis_job_manager: Optional[AnalysisJobManager] = None
         self.audit_service: Optional[AuditService] = None
         self.user_state_store: Optional[UserStateStore] = None
+        self.analysis_update_queue: Optional[asyncio.Queue] = None
+        self.active_websockets: Dict["WebSocket", "TokenContext"] = {}
+        self.broadcast_task: Optional[asyncio.Task] = None
 
     async def startup(self) -> None:
         logger.info("Loading FHIR HTTP client and resource service...")
@@ -129,6 +137,9 @@ class ServiceContainer:
                 )
             ),
         )
+        self.analysis_update_queue = asyncio.Queue()
+        self.active_websockets = {}
+        self.broadcast_task = None
 
     async def shutdown(self) -> None:
         if self.fhir_client and self.fhir_client.session:

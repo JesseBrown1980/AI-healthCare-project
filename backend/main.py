@@ -37,6 +37,7 @@ from backend.di import (
     get_container,
     get_fhir_connector,
     get_llm_engine,
+    get_notifier,
     get_patient_analyzer,
     get_rag_fusion,
     get_s_lora_manager,
@@ -74,9 +75,6 @@ patient_analyzer = None
 notifier = None
 audit_service = None
 container: Optional[ServiceContainer] = None
-analysis_update_queue: Optional[asyncio.Queue] = None
-active_websockets: Dict[WebSocket, TokenContext] = {}
-broadcast_task: Optional[asyncio.Task] = None
 notifications_enabled: bool = os.getenv("ENABLE_NOTIFICATIONS", "false").lower() == "true"
 demo_login_enabled: bool = os.getenv("ENABLE_DEMO_LOGIN", "false").lower() == "true"
 demo_login_secret: str = os.getenv("DEMO_JWT_SECRET", "dev-secret-change-me")
@@ -170,10 +168,13 @@ async def lifespan(app: FastAPI):
         analysis_job_manager = container.analysis_job_manager
 
         # Initialize real-time update infrastructure
-        global analysis_update_queue, active_websockets, broadcast_task
-        analysis_update_queue = asyncio.Queue()
-        active_websockets = {}
-        broadcast_task = asyncio.create_task(_broadcast_analysis_updates())
+        if container.analysis_update_queue is None:
+            container.analysis_update_queue = asyncio.Queue()
+        if container.active_websockets is None:
+            container.active_websockets = {}
+        container.broadcast_task = asyncio.create_task(
+            _broadcast_analysis_updates(container)
+        )
 
         logger.info("✓ Healthcare AI Assistant initialized successfully")
 
@@ -186,18 +187,20 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Healthcare AI Assistant...")
     # Add cleanup code here if needed
-    if broadcast_task:
-        broadcast_task.cancel()
+    if container and container.broadcast_task:
+        container.broadcast_task.cancel()
         try:
-            await broadcast_task
+            await container.broadcast_task
         except asyncio.CancelledError:
             pass
 
-    for websocket in list(active_websockets.keys()):
-        try:
-            await websocket.close(code=1001)
-        except Exception:
-            pass
+    if container and container.active_websockets is not None:
+        for websocket in list(container.active_websockets.keys()):
+            try:
+                await websocket.close(code=1001)
+            except Exception:
+                pass
+        container.active_websockets.clear()
 
     if container:
         await container.shutdown()
@@ -609,38 +612,50 @@ def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List
     return sorted(alerts, key=lambda a: a.get("timestamp", ""), reverse=True)[:limit]
 
 
-async def _broadcast_analysis_updates():
+async def _broadcast_analysis_updates(app_container: ServiceContainer) -> None:
     """Broadcast queued analysis updates to all connected WebSocket clients."""
 
-    while True:
-        update = await analysis_update_queue.get()
-        stale_connections = []
+    if not app_container.analysis_update_queue or app_container.active_websockets is None:
+        return
 
-        update_patient_id = None
-        if isinstance(update, dict):
-            data = update.get("data") or {}
-            update_patient_id = data.get("patient_id") or update.get("patient_id")
+    try:
+        while True:
+            update = await app_container.analysis_update_queue.get()
+            stale_connections = []
 
-        for websocket, token_context in list(active_websockets.items()):
-            if update_patient_id and token_context.patient and token_context.patient != update_patient_id:
-                continue
-            try:
-                await websocket.send_json(update)
-            except Exception:
-                stale_connections.append(websocket)
+            update_patient_id = None
+            if isinstance(update, dict):
+                data = update.get("data") or {}
+                update_patient_id = data.get("patient_id") or update.get("patient_id")
 
-        for websocket in stale_connections:
-            try:
-                active_websockets.pop(websocket, None)
-            except KeyError:
-                pass
+            for websocket, token_context in list(app_container.active_websockets.items()):
+                if (
+                    update_patient_id
+                    and token_context.patient
+                    and token_context.patient != update_patient_id
+                ):
+                    continue
+                try:
+                    await websocket.send_json(update)
+                except Exception:
+                    stale_connections.append(websocket)
+
+            for websocket in stale_connections:
+                try:
+                    app_container.active_websockets.pop(websocket, None)
+                except KeyError:
+                    pass
+    except asyncio.CancelledError:
+        pass
 
 
 async def _queue_analysis_update(summary: Dict[str, Any]) -> None:
     """Enqueue a dashboard summary update for WebSocket broadcast."""
 
-    if analysis_update_queue:
-        await analysis_update_queue.put({"event": "dashboard_update", "data": summary})
+    if container and container.analysis_update_queue:
+        await container.analysis_update_queue.put(
+            {"event": "dashboard_update", "data": summary}
+        )
 
 
 def _websocket_credentials_from_request(websocket: WebSocket) -> Optional[HTTPAuthorizationCredentials]:
@@ -725,7 +740,9 @@ async def clear_caches(
 
 
 def _register_device_token(
-    registration: DeviceRegistration, request: Request
+    registration: DeviceRegistration,
+    request: Request,
+    notifier: Notifier,
 ) -> Dict[str, Any]:
     if not notifier:
         raise HTTPException(status_code=503, detail="Notifier not initialized")
@@ -742,15 +759,17 @@ def _register_device_token(
     return {"status": "registered", "device": registered}
 
 
+@app.post("/api/v1/device/register")
 @app.post("/api/v1/register-device")
 async def register_device(
     registration: DeviceRegistration,
     request: Request,
     auth: TokenContext = Depends(auth_dependency()),
-):
+    notifier: Notifier = Depends(get_notifier),
+): 
     """Register a device token for push notifications."""
 
-    return _register_device_token(registration, request)
+    return _register_device_token(registration, request, notifier)
 
 
 @app.post("/api/v1/notifications/register")
@@ -758,10 +777,11 @@ async def register_push_token(
     registration: DeviceRegistration,
     request: Request,
     auth: TokenContext = Depends(auth_dependency()),
-):
+    notifier: Notifier = Depends(get_notifier),
+): 
     """Compatibility endpoint for registering Expo push tokens."""
 
-    return _register_device_token(registration, request)
+    return _register_device_token(registration, request, notifier)
 
 
 @app.get("/api/v1/patients")
@@ -1066,10 +1086,15 @@ async def analyze_patient(
 async def patient_updates(websocket: WebSocket):
     """Provide real-time dashboard updates via WebSocket."""
 
+    app_container = container
+    if not app_container or app_container.active_websockets is None:
+        await websocket.close(code=1011, reason="Service unavailable")
+        return
+
     token_context = await _authenticate_websocket(websocket)
 
     await websocket.accept()
-    active_websockets[websocket] = token_context
+    app_container.active_websockets[websocket] = token_context
 
     try:
         while True:
@@ -1080,7 +1105,8 @@ async def patient_updates(websocket: WebSocket):
     except Exception:
         pass
     finally:
-        active_websockets.pop(websocket, None)
+        if app_container.active_websockets is not None:
+            app_container.active_websockets.pop(websocket, None)
 
 
 @app.get("/api/v1/dashboard-summary")
@@ -1581,6 +1607,9 @@ async def general_exception_handler(request: Request, exc: Exception):
 async def http_exception_handler(request: Request, exc: HTTPException):
     correlation_id = getattr(request.state, "correlation_id", uuid.uuid4().hex)
     logger.error("HTTPException [%s]: %s", correlation_id, exc.detail)
+
+    if exc.status_code == 503 and exc.detail == "Notifier not initialized":
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
     payload = {
         "status": "error",

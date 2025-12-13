@@ -2,8 +2,12 @@ import sys
 import types
 from pathlib import Path
 
-import pytest
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
+
+import pytest
+from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
 
 # Ensure imports like `import security` inside backend.main work during tests
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +52,7 @@ from backend import main  # noqa: E402
 from backend.notifier import Notifier  # noqa: E402
 from backend.patient_analyzer import PatientAnalyzer as RealPatientAnalyzer  # noqa: E402
 from backend.security import TokenContext  # noqa: E402
+from backend.di import get_container  # noqa: E402
 
 
 class DummyNotifier:
@@ -199,6 +204,50 @@ async def test_patient_analyzer_skips_notifications_when_disabled(monkeypatch):
     assert notifier.sent_payload is None
 
 
+def test_registration_endpoints_return_503_when_notifier_missing():
+    app = main.app
+    original_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def dummy_lifespan(_app):
+        yield
+
+    app.router.lifespan_context = dummy_lifespan
+
+    class DummyContainer:
+        notifier = None
+
+    app.dependency_overrides[get_container] = lambda: DummyContainer()
+
+    def override_auth():
+        return TokenContext(access_token="", scopes=set(), clinician_roles=set())
+
+    for route in app.routes:
+        if isinstance(route, APIRoute) and route.path in {
+            "/api/v1/device/register",
+            "/api/v1/register-device",
+            "/api/v1/notifications/register",
+        }:
+            for dependency in route.dependant.dependencies:
+                if dependency.call.__module__ == "backend.security":
+                    app.dependency_overrides[dependency.call] = override_auth
+
+    try:
+        with TestClient(app) as client:
+            payload = {"device_token": "token-abc", "platform": "ios"}
+
+            response = client.post("/api/v1/device/register", json=payload)
+            assert response.status_code == 503
+            assert response.json() == {"detail": "Notifier not initialized"}
+
+            response = client.post("/api/v1/notifications/register", json=payload)
+            assert response.status_code == 503
+            assert response.json() == {"detail": "Notifier not initialized"}
+    finally:
+        app.dependency_overrides = {}
+        app.router.lifespan_context = original_lifespan
+
+
 class RecordingAnalyzer:
     def __init__(self):
         self.last_notify = None
@@ -262,6 +311,7 @@ async def test_register_device_stores_tokens(monkeypatch):
         main.DeviceRegistration(device_token="abc123", platform="ios"),
         request,
         auth=auth,
+        notifier=notifier,
     )
 
     assert result["status"] == "registered"
