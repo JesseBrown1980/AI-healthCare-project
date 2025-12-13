@@ -13,6 +13,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.params import Depends as DependsParam
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -31,6 +32,7 @@ from jose import jwt
 from backend.di import (
     ServiceContainer,
     get_analysis_job_manager,
+    get_audit_service,
     get_aot_reasoner,
     get_container,
     get_fhir_connector,
@@ -893,6 +895,10 @@ async def analyze_patient(
     specialty: Optional[str] = None,
     notify: Optional[bool] = False,
     analysis: Optional[AnalyzePatientRequest] = None,
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    fhir_connector: FhirResourceService = Depends(get_fhir_connector),
+    analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
+    audit_service: AuditService = Depends(get_audit_service),
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
@@ -905,13 +911,29 @@ async def analyze_patient(
     - include_recommendations: Include clinical decision support
     - specialty: Target medical specialty for analysis
     """
+    def _resolve_dependency(dependency, fallback):
+        return fallback if isinstance(dependency, DependsParam) else dependency
+
+    resolved_audit_service = _resolve_dependency(audit_service, globals().get("audit_service"))
+    resolved_patient_analyzer = _resolve_dependency(
+        patient_analyzer, globals().get("patient_analyzer")
+    )
+    resolved_fhir_connector = _resolve_dependency(
+        fhir_connector, globals().get("fhir_connector")
+    )
+    resolved_analysis_job_manager = _resolve_dependency(
+        analysis_job_manager, globals().get("analysis_job_manager")
+    )
+
     correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+        request.state,
+        "correlation_id",
+        resolved_audit_service.new_correlation_id() if resolved_audit_service else "",
     )
     patient_id: Optional[str] = fhir_patient_id
 
     try:
-        if not patient_analyzer or not fhir_connector:
+        if not resolved_patient_analyzer or not resolved_fhir_connector:
             raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
 
         payload_patient_id = None
@@ -941,8 +963,8 @@ async def analyze_patient(
         force_refresh = bool(notifications_enabled and should_notify)
         analysis_key = None
 
-        if analysis_job_manager:
-            analysis_key = analysis_job_manager.cache_key(
+        if resolved_analysis_job_manager:
+            analysis_key = resolved_analysis_job_manager.cache_key(
                 patient_id=patient_id,
                 include_recommendations=include_recs,
                 specialty=requested_specialty,
@@ -950,10 +972,10 @@ async def analyze_patient(
             )
 
         async def _run_analysis() -> Dict[str, Any]:
-            async with fhir_connector.request_context(
+            async with resolved_fhir_connector.request_context(
                 auth.access_token, auth.scopes, auth.patient
             ):
-                return await patient_analyzer.analyze(
+                return await resolved_patient_analyzer.analyze(
                     patient_id=patient_id,
                     include_recommendations=include_recs,
                     specialty=requested_specialty,
@@ -961,8 +983,8 @@ async def analyze_patient(
                     correlation_id=correlation_id,
                 )
 
-        if analysis_job_manager and analysis_key:
-            result, from_cache = await analysis_job_manager.get_or_create(
+        if resolved_analysis_job_manager and analysis_key:
+            result, from_cache = await resolved_analysis_job_manager.get_or_create(
                 analysis_key, _run_analysis, force_refresh=force_refresh
             )
         else:
@@ -978,8 +1000,8 @@ async def analyze_patient(
         if not from_cache:
             await _queue_analysis_update(summary)
 
-        if audit_service:
-            await audit_service.record_event(
+        if resolved_audit_service:
+            await resolved_audit_service.record_event(
                 action="E",
                 patient_id=patient_id,
                 user_context=auth,
@@ -996,8 +1018,8 @@ async def analyze_patient(
         logger.error(
             "FHIR connector error during analysis [%s]: %s", correlation_id, exc.message
         )
-        if audit_service:
-            await audit_service.record_event(
+        if resolved_audit_service:
+            await resolved_audit_service.record_event(
                 action="E",
                 patient_id=patient_id,
                 user_context=auth,
@@ -1014,8 +1036,8 @@ async def analyze_patient(
         }
         return JSONResponse(status_code=502, content=error_payload)
     except HTTPException as exc:
-        if audit_service:
-            await audit_service.record_event(
+        if resolved_audit_service:
+            await resolved_audit_service.record_event(
                 action="E",
                 patient_id=patient_id,
                 user_context=auth,
@@ -1027,8 +1049,8 @@ async def analyze_patient(
         raise
     except Exception as e:
         logger.error(f"Error analyzing patient [%s]: %s", correlation_id, str(e))
-        if audit_service:
-            await audit_service.record_event(
+        if resolved_audit_service:
+            await resolved_audit_service.record_event(
                 action="E",
                 patient_id=patient_id,
                 user_context=auth,
