@@ -44,7 +44,8 @@ for module_name in [
     module = importlib.import_module(f"backend.{module_name}")
     sys.modules[module_name] = module
 
-from backend.main import PatientAnalyzer, TokenContext, app
+from backend.di import get_patient_analyzer
+from backend.main import PatientAnalyzer, TokenContext, app, patient_summary_cache
 
 
 class _StubAnalyzer:
@@ -84,6 +85,7 @@ async def test_dashboard_endpoint_returns_list(monkeypatch):
         yield
 
     app.router.lifespan_context = noop_lifespan
+    patient_summary_cache.clear()
 
     monkeypatch.setenv("DASHBOARD_PATIENT_IDS", "p1,p2")
 
@@ -121,8 +123,10 @@ async def test_dashboard_endpoint_returns_list(monkeypatch):
     auth_dependency = dashboard_route.dependant.dependencies[0].call
     app.dependency_overrides[auth_dependency] = lambda: stub_token
 
+    stub_analyzer = _StubAnalyzer(responses)
     monkeypatch.setattr("backend.main.fhir_connector", _StubFHIRConnector(), raising=False)
-    monkeypatch.setattr("backend.main.patient_analyzer", _StubAnalyzer(responses), raising=False)
+    monkeypatch.setattr("backend.main.patient_analyzer", stub_analyzer, raising=False)
+    app.dependency_overrides[get_patient_analyzer] = lambda: stub_analyzer
     monkeypatch.setattr("backend.main.audit_service", None, raising=False)
 
     with TestClient(app) as client:

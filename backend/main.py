@@ -28,7 +28,13 @@ from security import TokenContext, auth_dependency, close_shared_async_client
 from audit_service import AuditService
 from pydantic import BaseModel, root_validator, validator
 from jose import jwt
-from backend.di import ServiceContainer, get_container, get_s_lora_manager
+from backend.di import (
+    ServiceContainer,
+    get_analysis_job_manager,
+    get_container,
+    get_patient_analyzer,
+    get_s_lora_manager,
+)
 
 # Load environment variables
 load_dotenv()
@@ -687,7 +693,9 @@ async def health_check(
 
 @app.post("/api/v1/cache/clear")
 async def clear_caches(
-    auth: TokenContext = Depends(auth_dependency({"system/*.read", "user/*.read"}))
+    auth: TokenContext = Depends(auth_dependency({"system/*.read", "user/*.read"})),
+    analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
 ):
     """Clear in-memory caches and analysis history for memory hygiene."""
 

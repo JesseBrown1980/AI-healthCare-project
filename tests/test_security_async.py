@@ -51,7 +51,10 @@ async def test_auth_dependency_uses_async_jwks(monkeypatch):
 
         token = jwt.encode({"sub": "test-user"}, "secret", algorithm="HS256", headers={"kid": "kid-1"})
 
-        async with httpx.AsyncClient(app=app, base_url="http://test") as client:
+        app_transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=app_transport, base_url="http://test"
+        ) as client:
             response = await client.get(
                 "/protected", headers={"Authorization": f"Bearer {token}"}
             )
