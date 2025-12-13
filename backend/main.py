@@ -28,7 +28,7 @@ from security import TokenContext, auth_dependency, close_shared_async_client
 from audit_service import AuditService
 from pydantic import BaseModel, root_validator, validator
 from jose import jwt
-from backend.di import ServiceContainer, get_container
+from backend.di import ServiceContainer, get_container, get_s_lora_manager
 
 # Load environment variables
 load_dotenv()
@@ -1430,7 +1430,9 @@ async def provide_feedback(
 
 
 @app.get("/api/v1/adapters")
-async def get_adapters_status(request: Request):
+async def get_adapters_status(
+    request: Request, s_lora_manager: SLoRAManager = Depends(get_s_lora_manager)
+):
     """
     Get S-LoRA adapter status and memory usage
     """
@@ -1439,9 +1441,6 @@ async def get_adapters_status(request: Request):
     )
 
     try:
-        if not s_lora_manager:
-            raise HTTPException(status_code=503, detail="S-LoRA manager not initialized")
-        
         status = await s_lora_manager.get_status()
         
         return {
@@ -1459,7 +1458,10 @@ async def get_adapters_status(request: Request):
 
 @app.post("/api/v1/adapters/activate")
 async def activate_adapter(
-    request: Request, adapter_name: str, specialty: Optional[str] = None
+    request: Request,
+    adapter_name: str,
+    specialty: Optional[str] = None,
+    s_lora_manager: SLoRAManager = Depends(get_s_lora_manager),
 ):
     """
     Activate a specific LoRA adapter for a specialty
@@ -1469,9 +1471,6 @@ async def activate_adapter(
     )
 
     try:
-        if not s_lora_manager:
-            raise HTTPException(status_code=503, detail="S-LoRA manager not initialized")
-        
         result = await s_lora_manager.activate_adapter(adapter_name, specialty)
         
         return {
