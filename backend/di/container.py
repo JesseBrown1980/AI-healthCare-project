@@ -15,6 +15,7 @@ from backend.notifier import Notifier
 from backend.patient_analyzer import PatientAnalyzer
 from backend.analysis_cache import AnalysisJobManager
 from backend.security import close_shared_async_client
+from backend.state.user_store import UserStateStore
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
@@ -48,6 +49,7 @@ class ServiceContainer:
         self.patient_analyzer: Optional[PatientAnalyzer] = None
         self.analysis_job_manager: Optional[AnalysisJobManager] = None
         self.audit_service: Optional[AuditService] = None
+        self.user_state_store: Optional[UserStateStore] = None
         self.analysis_update_queue: Optional[asyncio.Queue] = None
         self.active_websockets: Dict["WebSocket", "TokenContext"] = {}
         self.broadcast_task: Optional[asyncio.Task] = None
@@ -123,6 +125,18 @@ class ServiceContainer:
         logger.info("Initializing Audit Service...")
         self.audit_service = AuditService(fhir_connector=self.fhir_connector)
 
+        logger.info("Initializing per-user state store...")
+        self.user_state_store = UserStateStore(
+            analysis_history_limit=self.analysis_history_limit,
+            analysis_history_ttl_seconds=self.analysis_history_ttl_seconds,
+            analysis_cache_ttl_seconds=self.analysis_cache_ttl_seconds,
+            max_users=int(os.getenv("USER_STATE_MAX_USERS", "1000")),
+            state_ttl_seconds=int(
+                os.getenv(
+                    "USER_STATE_TTL_SECONDS", str(self.analysis_history_ttl_seconds)
+                )
+            ),
+        )
         self.analysis_update_queue = asyncio.Queue()
         self.active_websockets = {}
         self.broadcast_task = None

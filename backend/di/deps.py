@@ -10,6 +10,8 @@ from backend.mlc_learning import MLCLearning
 from backend.aot_reasoner import AoTReasoner
 from backend.notifier import Notifier
 from backend.patient_analyzer import PatientAnalyzer
+from backend.security import TokenContext
+from backend.state.user_store import UserStateStore
 from .container import ServiceContainer
 
 
@@ -102,3 +104,18 @@ def get_audit_service(
     if audit_service is None:
         raise RuntimeError("Audit service not initialized")
     return audit_service
+
+
+def get_user_state_store(
+    container: ServiceContainer = Depends(get_container),
+) -> UserStateStore:
+    store = container.user_state_store
+    if store is None:
+        raise RuntimeError("User state store not initialized")
+    return store
+
+
+def derive_user_key(auth: TokenContext) -> str:
+    """Return a stable identifier for user-specific state."""
+
+    return auth.subject or "anonymous"
