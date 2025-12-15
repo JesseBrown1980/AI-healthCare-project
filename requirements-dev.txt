@@ -1,0 +1,4 @@
+# Development and test dependencies
+# Pull in the main application requirements so tests have access to runtime libs (including httpx)
+-r requirements.txt
+httpx>=0.24,<1.0

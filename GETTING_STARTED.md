@@ -103,6 +103,15 @@ pip install -r requirements.txt
 streamlit run app.py --server.port 3000
 ```
 
+### Running the test suite
+
+From the project root, install the test dependencies and execute the tests:
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
 ### Mobile testing
 
 If you are running the mobile client against the local backend, enable demo login routes
