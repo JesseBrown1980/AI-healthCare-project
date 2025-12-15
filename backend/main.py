@@ -1251,6 +1251,8 @@ async def get_patient_fhir(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    fhir_connector: FhirResourceService = Depends(get_fhir_connector),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """
     Fetch patient's FHIR data from connected EHR
