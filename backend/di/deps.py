@@ -1,3 +1,5 @@
+from typing import Any, Dict
+
 from fastapi import Depends, HTTPException, Request
 
 from backend.analysis_cache import AnalysisJobManager
@@ -113,6 +115,12 @@ def get_user_state_store(
     if store is None:
         raise RuntimeError("User state store not initialized")
     return store
+
+
+def get_patient_summary_cache(
+    container: ServiceContainer = Depends(get_container),
+) -> Dict[str, Any]:
+    return container.patient_summary_cache
 
 
 def derive_user_key(auth: TokenContext) -> str:

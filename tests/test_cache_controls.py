@@ -5,7 +5,11 @@ import sys
 
 from fastapi.testclient import TestClient
 
-from backend.di import get_analysis_job_manager, get_patient_analyzer
+from backend.di import (
+    get_analysis_job_manager,
+    get_patient_analyzer,
+    get_patient_summary_cache,
+)
 
 security_module = importlib.import_module("backend.security")
 sys.modules["security"] = security_module
@@ -34,7 +38,7 @@ explainability_stub = importlib.import_module("types").SimpleNamespace(
 )
 sys.modules["explainability"] = explainability_stub
 
-from backend.main import TokenContext, app, patient_summary_cache
+from backend.main import TokenContext, app
 
 
 class _StubAnalyzer:
@@ -68,9 +72,7 @@ def test_cache_clear_endpoint_resets_caches(monkeypatch):
         yield
 
     app.router.lifespan_context = noop_lifespan
-
-    patient_summary_cache.clear()
-    patient_summary_cache.update({"p1": {"summary": {}}, "p2": {"summary": {}}})
+    patient_summary_cache = {"p1": {"summary": {}}, "p2": {"summary": {}}}
 
     stub_token = TokenContext(
         access_token="token",
@@ -84,6 +86,7 @@ def test_cache_clear_endpoint_resets_caches(monkeypatch):
     stub_analyzer = _StubAnalyzer(entries=3)
     app.dependency_overrides[get_analysis_job_manager] = lambda: stub_analysis_manager
     app.dependency_overrides[get_patient_analyzer] = lambda: stub_analyzer
+    app.dependency_overrides[get_patient_summary_cache] = lambda: patient_summary_cache
     monkeypatch.setattr("backend.main.audit_service", None, raising=False)
 
     with TestClient(app) as client:
