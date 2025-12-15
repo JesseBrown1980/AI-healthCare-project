@@ -562,13 +562,19 @@ def _build_dashboard_entry_from_summary(
 
 
 def _collect_recent_alerts(
-    limit: int, patient_analyzer: Optional[PatientAnalyzer], patient_id: Optional[str] = None
+    limit: int,
+    patient_analyzer: Optional[PatientAnalyzer],
+    patient_id: Optional[str] = None,
+    *,
+    roster_lookup: Optional[Dict[str, Optional[str]]] = None,
 ) -> List[Dict[str, Any]]:
     """Aggregate recent critical alerts across analysis history."""
 
     alerts: List[Dict[str, Any]] = []
 
-    roster_lookup = {p["patient_id"]: p.get("name") for p in _dashboard_patient_list()}
+    roster_lookup = roster_lookup or {
+        p["patient_id"]: p.get("name") for p in _dashboard_patient_list()
+    }
 
     if not patient_analyzer:
         return alerts[:limit]
@@ -933,8 +939,12 @@ async def get_alerts(
     )
 
     try:
+        roster_lookup = {p["patient_id"]: p.get("name") for p in _dashboard_patient_list()}
         alerts = _collect_recent_alerts(
-            limit, patient_analyzer=patient_analyzer, patient_id=auth.patient
+            limit,
+            patient_analyzer=patient_analyzer,
+            patient_id=auth.patient,
+            roster_lookup=roster_lookup,
         )
         return {"alerts": alerts}
     except Exception as exc:
