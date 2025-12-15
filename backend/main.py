@@ -566,15 +566,11 @@ def _collect_recent_alerts(
     patient_analyzer: Optional[PatientAnalyzer],
     patient_id: Optional[str] = None,
     *,
-    roster_lookup: Optional[Dict[str, Optional[str]]] = None,
+    roster_lookup: Dict[str, Optional[str]],
 ) -> List[Dict[str, Any]]:
     """Aggregate recent critical alerts across analysis history."""
 
     alerts: List[Dict[str, Any]] = []
-
-    roster_lookup = roster_lookup or {
-        p["patient_id"]: p.get("name") for p in _dashboard_patient_list()
-    }
 
     if not patient_analyzer:
         return alerts[:limit]

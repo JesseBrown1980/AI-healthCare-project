@@ -130,14 +130,11 @@ async def test_dashboard_endpoint_returns_list(monkeypatch):
     app.dependency_overrides[auth_dependency] = lambda: stub_token
 
     stub_analyzer = _StubAnalyzer(responses)
-    monkeypatch.setattr("backend.main.fhir_connector", _StubFHIRConnector(), raising=False)
-    monkeypatch.setattr("backend.main.patient_analyzer", stub_analyzer, raising=False)
     app.dependency_overrides[get_patient_analyzer] = lambda: stub_analyzer
     app.dependency_overrides[get_fhir_connector] = lambda: _StubFHIRConnector()
     app.dependency_overrides[get_analysis_job_manager] = lambda: None
     app.dependency_overrides[get_audit_service] = lambda: None
     app.dependency_overrides[get_patient_summary_cache] = lambda: patient_summary_cache
-    monkeypatch.setattr("backend.main.audit_service", None, raising=False)
 
     with TestClient(app) as client:
         response = client.get("/api/v1/patients/dashboard", headers={"Authorization": "Bearer token"})
