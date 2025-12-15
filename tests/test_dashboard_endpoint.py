@@ -44,8 +44,13 @@ for module_name in [
     module = importlib.import_module(f"backend.{module_name}")
     sys.modules[module_name] = module
 
-from backend.di import get_patient_analyzer
-from backend.di import get_patient_summary_cache
+from backend.di import (
+    get_analysis_job_manager,
+    get_audit_service,
+    get_fhir_connector,
+    get_patient_analyzer,
+    get_patient_summary_cache,
+)
 from backend.main import PatientAnalyzer, TokenContext, app
 
 
@@ -128,6 +133,9 @@ async def test_dashboard_endpoint_returns_list(monkeypatch):
     monkeypatch.setattr("backend.main.fhir_connector", _StubFHIRConnector(), raising=False)
     monkeypatch.setattr("backend.main.patient_analyzer", stub_analyzer, raising=False)
     app.dependency_overrides[get_patient_analyzer] = lambda: stub_analyzer
+    app.dependency_overrides[get_fhir_connector] = lambda: _StubFHIRConnector()
+    app.dependency_overrides[get_analysis_job_manager] = lambda: None
+    app.dependency_overrides[get_audit_service] = lambda: None
     app.dependency_overrides[get_patient_summary_cache] = lambda: patient_summary_cache
     monkeypatch.setattr("backend.main.audit_service", None, raising=False)
 

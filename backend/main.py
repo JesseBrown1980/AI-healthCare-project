@@ -279,7 +279,9 @@ def get_vendor_override(request: Request, default: str = "generic") -> str:
     return default
 
 
-def _latest_analysis_for_patient(patient_id: str) -> Optional[Dict[str, Any]]:
+def _latest_analysis_for_patient(
+    patient_id: str, patient_analyzer: Optional[PatientAnalyzer]
+) -> Optional[Dict[str, Any]]:
     """Return the most recent cached analysis for the patient."""
 
     if not patient_analyzer:
@@ -312,11 +314,15 @@ def _dashboard_patient_list() -> List[Dict[str, Optional[str]]]:
 
 
 def _build_patient_list_entry(
-    patient: Dict[str, Optional[str]], patient_data: Optional[Dict[str, Any]]
+    patient: Dict[str, Optional[str]],
+    patient_data: Optional[Dict[str, Any]],
+    patient_analyzer: Optional[PatientAnalyzer],
 ) -> Dict[str, Any]:
     """Normalize patient details for mobile patient list consumption."""
 
-    latest_analysis = _latest_analysis_for_patient(patient.get("patient_id", ""))
+    latest_analysis = _latest_analysis_for_patient(
+        patient.get("patient_id", ""), patient_analyzer
+    )
     analysis_patient_data = (latest_analysis or {}).get("patient_data") or {}
 
     patient_info = (
@@ -466,6 +472,9 @@ async def _get_patient_summary(
     patient_id: str,
     auth: TokenContext,
     *,
+    patient_analyzer: Optional[PatientAnalyzer],
+    fhir_connector: Optional[FhirResourceService],
+    analysis_job_manager: Optional[AnalysisJobManager],
     patient_summary_cache: Dict[str, Dict[str, Any]],
     use_request_context: bool = True,
 ) -> Dict[str, Any]:
@@ -476,7 +485,7 @@ async def _get_patient_summary(
     """
 
     cached = patient_summary_cache.get(patient_id)
-    latest_analysis = _latest_analysis_for_patient(patient_id)
+    latest_analysis = _latest_analysis_for_patient(patient_id, patient_analyzer)
 
     if cached and (
         not latest_analysis
@@ -552,7 +561,9 @@ def _build_dashboard_entry_from_summary(
     }
 
 
-def _collect_recent_alerts(limit: int, patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def _collect_recent_alerts(
+    limit: int, patient_analyzer: Optional[PatientAnalyzer], patient_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Aggregate recent critical alerts across analysis history."""
 
     alerts: List[Dict[str, Any]] = []
@@ -792,6 +803,9 @@ async def list_patients(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    fhir_connector: FhirResourceService = Depends(get_fhir_connector),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """Return patient roster formatted for the mobile client."""
 
@@ -830,7 +844,9 @@ async def list_patients(
                         exc,
                     )
 
-                roster.append(_build_patient_list_entry(patient, patient_data))
+                roster.append(
+                    _build_patient_list_entry(patient, patient_data, patient_analyzer)
+                )
 
         return {"patients": roster}
     except Exception as exc:
@@ -844,6 +860,10 @@ async def get_dashboard_patients(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    fhir_connector: FhirResourceService = Depends(get_fhir_connector),
+    analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
+    audit_service: AuditService = Depends(get_audit_service),
     patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(
         get_patient_summary_cache
     ),
@@ -869,6 +889,9 @@ async def get_dashboard_patients(
                 _get_patient_summary(
                     patient_id=patient_id,
                     auth=auth,
+                    patient_analyzer=patient_analyzer,
+                    fhir_connector=fhir_connector,
+                    analysis_job_manager=analysis_job_manager,
                     patient_summary_cache=patient_summary_cache,
                     use_request_context=False,
                 )
@@ -897,6 +920,8 @@ async def get_alerts(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """Return recent high-severity alerts for mobile notifications/feed."""
 
@@ -908,7 +933,9 @@ async def get_alerts(
     )
 
     try:
-        alerts = _collect_recent_alerts(limit, patient_id=auth.patient)
+        alerts = _collect_recent_alerts(
+            limit, patient_analyzer=patient_analyzer, patient_id=auth.patient
+        )
         return {"alerts": alerts}
     except Exception as exc:
         logger.error("Error collecting alert feed [%s]: %s", correlation_id, str(exc))
@@ -1141,6 +1168,9 @@ async def dashboard_summary(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    fhir_connector: FhirResourceService = Depends(get_fhir_connector),
+    analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
     patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(
         get_patient_summary_cache
     ),
@@ -1171,6 +1201,9 @@ async def dashboard_summary(
             summary = await _get_patient_summary(
                 patient_id,
                 auth,
+                patient_analyzer=patient_analyzer,
+                fhir_connector=fhir_connector,
+                analysis_job_manager=analysis_job_manager,
                 patient_summary_cache=patient_summary_cache,
                 use_request_context=False,
             )
