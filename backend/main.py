@@ -39,6 +39,7 @@ from backend.di import (
     get_llm_engine,
     get_notifier,
     get_patient_analyzer,
+    get_patient_summary_cache,
     get_rag_fusion,
     get_s_lora_manager,
 )
@@ -85,9 +86,6 @@ analysis_history_ttl_seconds: int = int(
 )
 analysis_cache_ttl_seconds: int = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", "300"))
 analysis_job_manager: Optional[AnalysisJobManager] = None
-
-# In-memory cache for patient dashboard summaries
-patient_summary_cache: Dict[str, Dict[str, Any]] = {}
 
 
 class DeviceRegistration(BaseModel):
@@ -468,6 +466,7 @@ async def _get_patient_summary(
     patient_id: str,
     auth: TokenContext,
     *,
+    patient_summary_cache: Dict[str, Dict[str, Any]],
     use_request_context: bool = True,
 ) -> Dict[str, Any]:
     """Retrieve (and cache) dashboard summary data for a patient.
@@ -717,6 +716,9 @@ async def clear_caches(
     auth: TokenContext = Depends(auth_dependency({"system/*.read", "user/*.read"})),
     analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
     patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(
+        get_patient_summary_cache
+    ),
 ):
     """Clear in-memory caches and analysis history for memory hygiene."""
 
@@ -842,6 +844,9 @@ async def get_dashboard_patients(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(
+        get_patient_summary_cache
+    ),
 ):
     """Return a list of patients with risk and alert summaries for the dashboard."""
 
@@ -862,7 +867,10 @@ async def get_dashboard_patients(
         ):
             summary_tasks = [
                 _get_patient_summary(
-                    patient_id=patient_id, auth=auth, use_request_context=False
+                    patient_id=patient_id,
+                    auth=auth,
+                    patient_summary_cache=patient_summary_cache,
+                    use_request_context=False,
                 )
                 for patient_id in patient_ids
             ]
@@ -919,6 +927,9 @@ async def analyze_patient(
     fhir_connector: FhirResourceService = Depends(get_fhir_connector),
     analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
     audit_service: AuditService = Depends(get_audit_service),
+    patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(
+        get_patient_summary_cache
+    ),
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
@@ -943,6 +954,11 @@ async def analyze_patient(
     )
     resolved_analysis_job_manager = _resolve_dependency(
         analysis_job_manager, globals().get("analysis_job_manager")
+    )
+    resolved_patient_summary_cache = (
+        patient_summary_cache
+        if not isinstance(patient_summary_cache, DependsParam)
+        else (container.patient_summary_cache if container else {})
     )
 
     correlation_id = getattr(
@@ -1013,7 +1029,7 @@ async def analyze_patient(
 
         # Cache and broadcast the latest dashboard summary for real-time updates
         summary = _extract_summary_from_analysis(result)
-        patient_summary_cache[patient_id] = {
+        resolved_patient_summary_cache[patient_id] = {
             "analysis_timestamp": summary["last_analysis"],
             "summary": summary,
         }
@@ -1125,6 +1141,9 @@ async def dashboard_summary(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(
+        get_patient_summary_cache
+    ),
 ):
     """Return a cached dashboard summary for multiple patients."""
 
@@ -1150,7 +1169,10 @@ async def dashboard_summary(
     ):
         for patient_id in patient_ids:
             summary = await _get_patient_summary(
-                patient_id, auth, use_request_context=False
+                patient_id,
+                auth,
+                patient_summary_cache=patient_summary_cache,
+                use_request_context=False,
             )
             summaries.append(summary)
 

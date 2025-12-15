@@ -9,6 +9,7 @@ from .deps import (
     get_mlc_learning,
     get_notifier,
     get_patient_analyzer,
+    get_patient_summary_cache,
     get_rag_fusion,
     get_s_lora_manager,
 )
@@ -26,4 +27,5 @@ __all__ = [
     "get_notifier",
     "get_analysis_job_manager",
     "get_audit_service",
+    "get_patient_summary_cache",
 ]

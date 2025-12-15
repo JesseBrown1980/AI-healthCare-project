@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from backend.audit_service import AuditService
 from backend.fhir_http_client import FhirHttpClient
@@ -53,6 +53,7 @@ class ServiceContainer:
         self.analysis_update_queue: Optional[asyncio.Queue] = None
         self.active_websockets: Dict["WebSocket", "TokenContext"] = {}
         self.broadcast_task: Optional[asyncio.Task] = None
+        self.patient_summary_cache: Dict[str, Any] = {}
 
     async def startup(self) -> None:
         logger.info("Loading FHIR HTTP client and resource service...")
