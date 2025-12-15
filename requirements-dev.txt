@@ -1,4 +1,8 @@
-# Development and test dependencies
-# Pull in the main application requirements so tests have access to runtime libs (including httpx)
+# Pull in runtime dependencies so development installs include the full application stack
 -r requirements.txt
+
+# Additional development and test dependencies
 httpx>=0.24,<1.0
+pytest>=7.4,<8.0
+pytest-asyncio>=0.21,<0.22
+pytest-cov>=4.1,<5.0
