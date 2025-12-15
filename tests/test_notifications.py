@@ -222,6 +222,7 @@ def test_registration_endpoints_return_503_when_notifier_missing():
 
     target_paths = {
         "/api/v1/device/register",
+        "/api/v1/register-device",
         "/api/v1/notifications/register",
     }
 
