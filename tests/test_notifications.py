@@ -207,6 +207,7 @@ async def test_patient_analyzer_skips_notifications_when_disabled(monkeypatch):
 def test_registration_endpoints_return_503_when_notifier_missing():
     app = main.app
     original_lifespan = app.router.lifespan_context
+    original_overrides = dict(app.dependency_overrides)
 
     @asynccontextmanager
     async def dummy_lifespan(_app):
@@ -214,20 +215,18 @@ def test_registration_endpoints_return_503_when_notifier_missing():
 
     app.router.lifespan_context = dummy_lifespan
 
-    class DummyContainer:
-        notifier = None
-
-    app.dependency_overrides[get_container] = lambda: DummyContainer()
+    app.dependency_overrides[get_container] = lambda: types.SimpleNamespace(notifier=None)
 
     def override_auth():
         return TokenContext(access_token="", scopes=set(), clinician_roles=set())
 
+    target_paths = {
+        "/api/v1/device/register",
+        "/api/v1/notifications/register",
+    }
+
     for route in app.routes:
-        if isinstance(route, APIRoute) and route.path in {
-            "/api/v1/device/register",
-            "/api/v1/register-device",
-            "/api/v1/notifications/register",
-        }:
+        if isinstance(route, APIRoute) and route.path in target_paths:
             for dependency in route.dependant.dependencies:
                 if dependency.call.__module__ == "backend.security":
                     app.dependency_overrides[dependency.call] = override_auth
@@ -236,15 +235,12 @@ def test_registration_endpoints_return_503_when_notifier_missing():
         with TestClient(app) as client:
             payload = {"device_token": "token-abc", "platform": "ios"}
 
-            response = client.post("/api/v1/device/register", json=payload)
-            assert response.status_code == 503
-            assert response.json() == {"detail": "Notifier not initialized"}
-
-            response = client.post("/api/v1/notifications/register", json=payload)
-            assert response.status_code == 503
-            assert response.json() == {"detail": "Notifier not initialized"}
+            for path in target_paths:
+                response = client.post(path, json=payload)
+                assert response.status_code == 503
+                assert response.json() == {"detail": "Notifier not initialized"}
     finally:
-        app.dependency_overrides = {}
+        app.dependency_overrides = original_overrides
         app.router.lifespan_context = original_lifespan
 
 
