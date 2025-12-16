@@ -37,6 +37,8 @@ from backend.di import (
     get_container,
     get_fhir_connector,
     get_llm_engine,
+    get_mlc_learning,
+    get_optional_mlc_learning,
     get_notifier,
     get_patient_analyzer,
     get_patient_summary_cache,
@@ -1534,7 +1536,7 @@ async def provide_feedback(
     query_id: str,
     feedback_type: str,  # "positive", "negative", "correction"
     corrected_text: Optional[str] = None,
-    mlc_learning: MLCLearning = Depends(get_mlc_learning),
+    mlc_learning: Optional[MLCLearning] = Depends(get_optional_mlc_learning),
     audit_service: AuditService = Depends(get_audit_service),
 ):
     """
@@ -1561,7 +1563,9 @@ async def provide_feedback(
             "message": "Feedback processed and learning model updated",
             "query_id": query_id
         }
-        
+    except HTTPException as exc:
+        logger.error("Error processing feedback [%s]: %s", correlation_id, str(exc))
+        raise exc
     except Exception as e:
         logger.error("Error processing feedback [%s]: %s", correlation_id, str(e))
         raise HTTPException(status_code=500, detail=str(e))

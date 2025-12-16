@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Request
 
@@ -72,6 +72,12 @@ def get_mlc_learning(
     if mlc_learning is None:
         raise HTTPException(status_code=503, detail="MLC Learning not initialized")
     return mlc_learning
+
+
+def get_optional_mlc_learning(
+    container: ServiceContainer = Depends(get_container),
+) -> Optional[MLCLearning]:
+    return container.mlc_learning
 
 
 def get_aot_reasoner(
