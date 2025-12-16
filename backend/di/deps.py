@@ -49,11 +49,23 @@ def get_llm_engine(container: ServiceContainer = Depends(get_container)) -> LLME
     return engine
 
 
+def get_optional_llm_engine(
+    container: ServiceContainer = Depends(get_container),
+) -> Optional[LLMEngine]:
+    return container.llm_engine
+
+
 def get_rag_fusion(container: ServiceContainer = Depends(get_container)) -> RAGFusion:
     rag_fusion = container.rag_fusion
     if rag_fusion is None:
         raise RuntimeError("RAG Fusion not initialized")
     return rag_fusion
+
+
+def get_optional_rag_fusion(
+    container: ServiceContainer = Depends(get_container),
+) -> Optional[RAGFusion]:
+    return container.rag_fusion
 
 
 def get_s_lora_manager(
@@ -63,6 +75,12 @@ def get_s_lora_manager(
     if s_lora_manager is None:
         raise RuntimeError("S-LoRA manager not initialized")
     return s_lora_manager
+
+
+def get_optional_s_lora_manager(
+    container: ServiceContainer = Depends(get_container),
+) -> Optional[SLoRAManager]:
+    return container.s_lora_manager
 
 
 def get_mlc_learning(

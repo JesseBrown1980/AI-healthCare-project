@@ -37,11 +37,14 @@ from backend.di import (
     get_container,
     get_fhir_connector,
     get_llm_engine,
+    get_optional_llm_engine,
     get_mlc_learning,
     get_optional_mlc_learning,
     get_notifier,
     get_patient_analyzer,
     get_patient_summary_cache,
+    get_optional_rag_fusion,
+    get_optional_s_lora_manager,
     get_rag_fusion,
     get_s_lora_manager,
 )
@@ -1629,10 +1632,10 @@ async def activate_adapter(
 @app.get("/api/v1/stats")
 async def get_system_stats(
     request: Request,
-    llm_engine: LLMEngine = Depends(get_llm_engine),
-    rag_fusion: RAGFusion = Depends(get_rag_fusion),
-    s_lora_manager: SLoRAManager = Depends(get_s_lora_manager),
-    mlc_learning: MLCLearning = Depends(get_mlc_learning),
+    llm_engine: Optional[LLMEngine] = Depends(get_optional_llm_engine),
+    rag_fusion: Optional[RAGFusion] = Depends(get_optional_rag_fusion),
+    s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
+    mlc_learning: Optional[MLCLearning] = Depends(get_optional_mlc_learning),
     audit_service: AuditService = Depends(get_audit_service),
 ):
     """
