@@ -5,13 +5,13 @@
 - `/api/v1/cache/clear` injects `analysis_job_manager` and `patient_analyzer` using DI providers and avoids globals for those dependencies.【F:backend/main.py†L700-L724】
 - `/api/v1/analyze-patient` requests analyzer, FHIR connector, analysis job manager, and audit service via DI, but still falls back to globals when the dependency is a `Depends` placeholder.【F:backend/main.py†L890-L927】
 - `/api/v1/query` injects `llm_engine`, `rag_fusion`, `aot_reasoner`, and `fhir_connector` via DI helpers.【F:backend/main.py†L1346-L1389】
+- Feedback and system stats endpoints resolve MLC learning, model managers, and audit service through DI instead of module globals.【F:backend/main.py†L1439-L1466】【F:backend/main.py†L1620-L1651】
 - Adapter management endpoints (`/api/v1/adapters`, `/api/v1/adapters/activate`) rely on `Depends(get_s_lora_manager)`.【F:backend/main.py†L1477-L1528】
 
 ## Endpoints still tied to globals
 - Device registration endpoints (`/api/v1/register-device`, `/api/v1/notifications/register`) call the module-level `notifier` directly inside `_register_device_token`.【F:backend/main.py†L727-L764】
 - Patient roster and dashboard endpoints (`/api/v1/patients`, `/api/v1/patients/dashboard`, `/api/v1/alerts`, `/api/v1/dashboard-summary`) depend on module globals like `patient_analyzer`, `fhir_connector`, `audit_service`, and `patient_summary_cache` for request handling and caching.【F:backend/main.py†L767-L888】【F:backend/main.py†L1086-L1157】
 - Patient FHIR fetch and explain routes (`/api/v1/patient/{patient_id}/fhir`, `/api/v1/patient/{patient_id}/explain`) directly reference global connectors, analyzer, and audit service instances.【F:backend/main.py†L1160-L1255】【F:backend/main.py†L1257-L1343】
-- Feedback and system stats endpoints reach into globals for `mlc_learning`, model managers, and audit service rather than DI-injected resources.【F:backend/main.py†L1440-L1558】
 - WebSocket handler `/ws/patient-updates` operates on module-level `active_websockets` without DI scoping.【F:backend/main.py†L1065-L1084】
 
 ## Shared mutable state

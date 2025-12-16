@@ -1533,7 +1533,9 @@ async def provide_feedback(
     request: Request,
     query_id: str,
     feedback_type: str,  # "positive", "negative", "correction"
-    corrected_text: Optional[str] = None
+    corrected_text: Optional[str] = None,
+    mlc_learning: MLCLearning = Depends(get_mlc_learning),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """
     Provide feedback for MLC (Meta-Learning for Compositionality) adaptation
@@ -1621,7 +1623,14 @@ async def activate_adapter(
 
 
 @app.get("/api/v1/stats")
-async def get_system_stats(request: Request):
+async def get_system_stats(
+    request: Request,
+    llm_engine: LLMEngine = Depends(get_llm_engine),
+    rag_fusion: RAGFusion = Depends(get_rag_fusion),
+    s_lora_manager: SLoRAManager = Depends(get_s_lora_manager),
+    mlc_learning: MLCLearning = Depends(get_mlc_learning),
+    audit_service: AuditService = Depends(get_audit_service),
+):
     """
     Get system statistics and performance metrics
     """
