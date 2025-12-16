@@ -52,7 +52,14 @@ from backend import main  # noqa: E402
 from backend.notifier import Notifier  # noqa: E402
 from backend.patient_analyzer import PatientAnalyzer as RealPatientAnalyzer  # noqa: E402
 from backend.security import TokenContext  # noqa: E402
-from backend.di import get_container  # noqa: E402
+from backend.di import (  # noqa: E402
+    get_analysis_job_manager,
+    get_audit_service,
+    get_container,
+    get_fhir_connector,
+    get_patient_analyzer,
+    get_patient_summary_cache,
+)
 
 
 class DummyNotifier:
@@ -264,44 +271,80 @@ class RecordingAnalyzer:
 @pytest.mark.anyio
 async def test_analyze_patient_respects_notify_flag(monkeypatch):
     recorder = RecordingAnalyzer()
-    monkeypatch.setattr(main, "notifications_enabled", False)
+    app = main.app
+    original_lifespan = app.router.lifespan_context
+    original_overrides = dict(app.dependency_overrides)
 
-    request = make_request_with_state("corr-000")
-    auth = TokenContext(access_token="token", scopes=set(), clinician_roles=set(), patient="p-3")
+    @asynccontextmanager
+    async def dummy_lifespan(_app):
+        yield
 
-    await main.analyze_patient(
-        request,
-        fhir_patient_id="p-3",
-        include_recommendations=True,
-        specialty=None,
-        notify=True,
-        patient_analyzer=recorder,
-        fhir_connector=FakeFHIRConnector(),
-        analysis_job_manager=None,
-        audit_service=None,
-        patient_summary_cache={},
-        auth=auth,
+    def override_auth():
+        return TokenContext(
+            access_token="token", scopes=set(), clinician_roles=set(), patient="p-3"
+        )
+
+    analyze_route = next(
+        route
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.path == "/api/v1/analyze-patient"
     )
 
-    assert recorder.last_notify is False
+    overrides = {
+        get_patient_analyzer: lambda: recorder,
+        get_fhir_connector: lambda: FakeFHIRConnector(),
+        get_analysis_job_manager: lambda: None,
+        get_audit_service: lambda: None,
+        get_patient_summary_cache: lambda: {},
+    }
 
-    monkeypatch.setattr(main, "notifications_enabled", True)
+    for dependency in analyze_route.dependant.dependencies:
+        if dependency.call.__module__ == "backend.security":
+            overrides[dependency.call] = override_auth
 
-    await main.analyze_patient(
-        request,
-        fhir_patient_id="p-3",
-        include_recommendations=True,
-        specialty=None,
-        notify=True,
-        patient_analyzer=recorder,
-        fhir_connector=FakeFHIRConnector(),
-        analysis_job_manager=None,
-        audit_service=None,
-        patient_summary_cache={},
-        auth=auth,
-    )
+    app.router.lifespan_context = dummy_lifespan
+    app.dependency_overrides.update(overrides)
 
-    assert recorder.last_notify is True
+    try:
+        monkeypatch.setattr(main, "notifications_enabled", False)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/analyze-patient",
+                params={"fhir_patient_id": "p-3", "notify": True},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "alerts": [],
+            "risk_scores": {},
+            "patient_id": "p-3",
+        }
+
+        first_notify = recorder.last_notify
+        recorder.last_notify = None
+
+        app.dependency_overrides[get_patient_summary_cache] = lambda: {}
+        monkeypatch.setattr(main, "notifications_enabled", True)
+
+        with TestClient(app) as client:
+            second_response = client.post(
+                "/api/v1/analyze-patient",
+                params={"fhir_patient_id": "p-3", "notify": True},
+            )
+
+        assert second_response.status_code == 200
+        assert second_response.json() == {
+            "alerts": [],
+            "risk_scores": {},
+            "patient_id": "p-3",
+        }
+
+        assert first_notify is False
+        assert recorder.last_notify is True
+    finally:
+        app.dependency_overrides = original_overrides
+        app.router.lifespan_context = original_lifespan
 
 
 @pytest.mark.anyio
