@@ -70,7 +70,7 @@ def get_mlc_learning(
 ) -> MLCLearning:
     mlc_learning = container.mlc_learning
     if mlc_learning is None:
-        raise RuntimeError("MLC Learning not initialized")
+        raise HTTPException(status_code=503, detail="MLC Learning not initialized")
     return mlc_learning
 
 
