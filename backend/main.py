@@ -1351,6 +1351,8 @@ async def explain_patient_risk(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """
     Generate SHAP explanations for a patient's baseline risk model.
