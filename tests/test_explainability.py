@@ -26,6 +26,7 @@ sys.modules.setdefault("patient_analyzer", patient_analyzer_stub)
 
 from backend.explainability import explain_risk
 from backend.main import app
+from backend.di import get_audit_service, get_patient_analyzer
 from backend.security import TokenContext
 
 
@@ -70,7 +71,7 @@ def test_explain_risk_outputs_reasonable_values():
     assert 0.0 <= explanation["risk_score"] <= 1.0
 
 
-def test_explain_endpoint_returns_success(monkeypatch):
+def test_explain_endpoint_returns_success():
     payload = _synthetic_patient()
 
     # Bypass expensive application startup
@@ -90,7 +91,6 @@ def test_explain_endpoint_returns_success(monkeypatch):
         route for route in app.routes if route.path == "/api/v1/patient/{patient_id}/explain"
     )
     auth_dependency = explain_route.dependant.dependencies[0].call
-    app.dependency_overrides[auth_dependency] = lambda: stub_token
 
     class _StubAnalyzer:
         def __init__(self, data: Dict[str, Any]):
@@ -102,18 +102,35 @@ def test_explain_endpoint_returns_success(monkeypatch):
             self.analysis_history.append(record)
             return record
 
-    monkeypatch.setattr("backend.main.patient_analyzer", _StubAnalyzer(payload), raising=False)
-    monkeypatch.setattr("backend.main.audit_service", None, raising=False)
+    class _StubAuditService:
+        def new_correlation_id(self):
+            return "corr-123"
 
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/v1/patient/test-patient/explain",
-            headers={"Authorization": "Bearer token"},
-        )
+        async def record_event(self, *_, **__):
+            return None
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "success"
-    assert body["patient_id"] == "test-patient"
-    assert body["shap_values"]
-    assert body["feature_names"] == EXPECTED_FEATURES
+    overrides = {
+        auth_dependency: lambda: stub_token,
+        get_patient_analyzer: lambda: _StubAnalyzer(payload),
+        get_audit_service: lambda: _StubAuditService(),
+    }
+
+    app.dependency_overrides.update(overrides)
+
+    try:
+        with TestClient(app) as client:
+            for path in (
+                "/api/v1/patient/test-patient/explain",
+                "/api/v1/explain/test-patient",
+            ):
+                response = client.get(path, headers={"Authorization": "Bearer token"})
+
+                assert response.status_code == 200
+                body = response.json()
+                assert body["status"] == "success"
+                assert body["patient_id"] == "test-patient"
+                assert body["shap_values"]
+                assert body["feature_names"] == EXPECTED_FEATURES
+    finally:
+        for key in overrides:
+            app.dependency_overrides.pop(key, None)
