@@ -264,8 +264,6 @@ class RecordingAnalyzer:
 @pytest.mark.anyio
 async def test_analyze_patient_respects_notify_flag(monkeypatch):
     recorder = RecordingAnalyzer()
-    monkeypatch.setattr(main, "patient_analyzer", recorder)
-    monkeypatch.setattr(main, "fhir_connector", FakeFHIRConnector())
     monkeypatch.setattr(main, "notifications_enabled", False)
 
     request = make_request_with_state("corr-000")
@@ -277,6 +275,11 @@ async def test_analyze_patient_respects_notify_flag(monkeypatch):
         include_recommendations=True,
         specialty=None,
         notify=True,
+        patient_analyzer=recorder,
+        fhir_connector=FakeFHIRConnector(),
+        analysis_job_manager=None,
+        audit_service=None,
+        patient_summary_cache={},
         auth=auth,
     )
 
@@ -290,6 +293,11 @@ async def test_analyze_patient_respects_notify_flag(monkeypatch):
         include_recommendations=True,
         specialty=None,
         notify=True,
+        patient_analyzer=recorder,
+        fhir_connector=FakeFHIRConnector(),
+        analysis_job_manager=None,
+        audit_service=None,
+        patient_summary_cache={},
         auth=auth,
     )
 
