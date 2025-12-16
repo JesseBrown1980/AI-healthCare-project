@@ -231,6 +231,11 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_correlation_id(request: Request, call_next):
+    container = getattr(request.state, "container", None) or getattr(
+        request.app.state, "container", None
+    )
+    audit_service = getattr(container, "audit_service", None) if container else None
+
     correlation_id = request.headers.get("X-Correlation-ID") or (
         audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
     )
@@ -1429,12 +1434,15 @@ async def medical_query(
     rag_fusion: RAGFusion = Depends(get_rag_fusion),
     aot_reasoner: AoTReasoner = Depends(get_aot_reasoner),
     fhir_connector: FhirResourceService = Depends(get_fhir_connector),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """
     Query the AI for medical insights and recommendations
     """
     correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+        request.state,
+        "correlation_id",
+        audit_service.new_correlation_id() if audit_service else "",
     )
 
     try:
