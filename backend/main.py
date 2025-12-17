@@ -38,6 +38,7 @@ from backend.di import (
     get_llm_engine,
     get_optional_llm_engine,
     get_mlc_learning,
+    get_optional_audit_service,
     get_optional_mlc_learning,
     get_notifier,
     get_patient_analyzer,
@@ -231,14 +232,17 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_correlation_id(request: Request, call_next):
-    container = getattr(request.app.state, "container", None) or getattr(
-        request.state, "container", None
-    )
+    container = getattr(getattr(request.app, "state", None), "container", None)
+    if not container:
+        container = getattr(request.state, "container", None)
+
     audit_service = getattr(container, "audit_service", None) if container else None
 
-    correlation_id = request.headers.get("X-Correlation-ID") or (
-        audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
-    )
+    correlation_id = request.headers.get("X-Correlation-ID")
+    if not correlation_id:
+        correlation_id = (
+            audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
+        )
     request.state.correlation_id = correlation_id
 
     response = await call_next(request)
@@ -1434,16 +1438,16 @@ async def medical_query(
     rag_fusion: RAGFusion = Depends(get_rag_fusion),
     aot_reasoner: AoTReasoner = Depends(get_aot_reasoner),
     fhir_connector: FhirResourceService = Depends(get_fhir_connector),
-    audit_service: Optional[AuditService] = Depends(get_audit_service),
+    audit_service: Optional[AuditService] = Depends(get_optional_audit_service),
 ):
     """
     Query the AI for medical insights and recommendations
     """
-    correlation_id = getattr(
-        request.state,
-        "correlation_id",
-        audit_service.new_correlation_id() if audit_service else "",
-    )
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if not correlation_id:
+        correlation_id = (
+            audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
+        )
 
     try:
         logger.info(f"Processing medical query: {question}")
