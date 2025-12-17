@@ -671,11 +671,12 @@ async def _broadcast_analysis_updates(app_container: ServiceContainer) -> None:
         pass
 
 
-async def _queue_analysis_update(summary: Dict[str, Any]) -> None:
+async def _queue_analysis_update(summary: Dict[str, Any], app: FastAPI | None = None) -> None:
     """Enqueue a dashboard summary update for WebSocket broadcast."""
 
-    if container and container.analysis_update_queue:
-        await container.analysis_update_queue.put(
+    app_container = getattr(getattr(app, "state", None), "container", None)
+    if app_container and app_container.analysis_update_queue:
+        await app_container.analysis_update_queue.put(
             {"event": "dashboard_update", "data": summary}
         )
 
@@ -1058,7 +1059,7 @@ async def analyze_patient(
             "summary": summary,
         }
         if not from_cache:
-            await _queue_analysis_update(summary)
+            await _queue_analysis_update(summary, app=request.app)
 
         if audit_service:
             await audit_service.record_event(
@@ -1126,7 +1127,7 @@ async def analyze_patient(
 async def patient_updates(websocket: WebSocket):
     """Provide real-time dashboard updates via WebSocket."""
 
-    app_container = container
+    app_container = getattr(getattr(websocket.app, "state", None), "container", None)
     if not app_container or app_container.active_websockets is None:
         await websocket.close(code=1011, reason="Service unavailable")
         return

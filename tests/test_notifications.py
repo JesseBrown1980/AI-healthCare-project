@@ -58,6 +58,7 @@ from backend.di import (  # noqa: E402
     get_container,
     get_fhir_connector,
     get_patient_analyzer,
+    get_notifier,
     get_patient_summary_cache,
 )
 
@@ -349,18 +350,50 @@ async def test_analyze_patient_respects_notify_flag(monkeypatch):
 
 @pytest.mark.anyio
 async def test_register_device_stores_tokens(monkeypatch):
+    app = main.app
     notifier = Notifier()
-    monkeypatch.setattr(main, "notifier", notifier)
 
-    request = make_request_with_state()
-    auth = TokenContext(access_token="token", scopes=set(), clinician_roles=set())
+    original_lifespan = app.router.lifespan_context
+    original_overrides = dict(app.dependency_overrides)
 
-    result = await main.register_device(
-        main.DeviceRegistration(device_token="abc123", platform="ios"),
-        request,
-        auth=auth,
-        notifier=notifier,
+    @asynccontextmanager
+    async def dummy_lifespan(_app):
+        yield
+
+    register_route = next(
+        route
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.path == "/api/v1/device/register"
     )
 
-    assert result["status"] == "registered"
-    assert notifier.registered_devices == [{"device_token": "abc123", "platform": "iOS"}]
+    def override_auth():
+        return TokenContext(access_token="token", scopes=set(), clinician_roles=set())
+
+    overrides = {get_notifier: lambda: notifier}
+
+    for dependency in register_route.dependant.dependencies:
+        if dependency.call.__module__ == "backend.security":
+            overrides[dependency.call] = override_auth
+
+    app.router.lifespan_context = dummy_lifespan
+    app.dependency_overrides.update(overrides)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/device/register",
+                json={"device_token": "abc123", "platform": "ios"},
+                headers={"Authorization": "Bearer token"},
+            )
+    finally:
+        app.dependency_overrides = original_overrides
+        app.router.lifespan_context = original_lifespan
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "registered",
+        "device": {"device_token": "abc123", "platform": "iOS"},
+    }
+    assert notifier.registered_devices == [
+        {"device_token": "abc123", "platform": "iOS"}
+    ]
