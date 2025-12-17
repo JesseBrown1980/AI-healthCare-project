@@ -132,6 +132,15 @@ def get_audit_service(
     return audit_service
 
 
+def get_optional_audit_service(request: Request) -> Optional[AuditService]:
+    """Return the audit service if available without raising."""
+
+    container = getattr(request.app.state, "container", None)
+    if not container:
+        return None
+    return container.audit_service
+
+
 def get_user_state_store(
     container: ServiceContainer = Depends(get_container),
 ) -> UserStateStore:
