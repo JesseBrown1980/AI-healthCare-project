@@ -233,9 +233,6 @@ app.add_middleware(
 @app.middleware("http")
 async def add_correlation_id(request: Request, call_next):
     container = getattr(getattr(request.app, "state", None), "container", None)
-    if not container:
-        container = getattr(request.state, "container", None)
-
     audit_service = getattr(container, "audit_service", None) if container else None
 
     correlation_id = request.headers.get("X-Correlation-ID")
