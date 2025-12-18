@@ -1566,7 +1566,9 @@ async def provide_feedback(
 
 @app.get("/api/v1/adapters")
 async def get_adapters_status(
-    request: Request, s_lora_manager: SLoRAManager = Depends(get_s_lora_manager)
+    request: Request,
+    s_lora_manager: SLoRAManager = Depends(get_s_lora_manager),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """
     Get S-LoRA adapter status and memory usage
@@ -1597,6 +1599,7 @@ async def activate_adapter(
     adapter_name: str,
     specialty: Optional[str] = None,
     s_lora_manager: SLoRAManager = Depends(get_s_lora_manager),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """
     Activate a specific LoRA adapter for a specialty
