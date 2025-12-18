@@ -24,6 +24,7 @@ pip install pytest black flake8 mypy
 - Follow PEP 8 style guide
 - Add docstrings to functions and classes
 - Write tests for new features
+- **Add tests for every new module or service** (e.g., container additions, AI pipelines)
 - Update documentation
 
 ### 4. Testing
@@ -116,6 +117,7 @@ Add screenshots
 
 ## Checklist
 - [ ] Tests pass
+- [ ] New modules/services include accompanying tests
 - [ ] Documentation updated
 - [ ] Code follows style guide
 ```
@@ -123,7 +125,7 @@ Add screenshots
 ## Review Process
 
 1. **Automated Checks**: Tests and linting must pass
-2. **Code Review**: At least one maintainer reviews
+2. **Code Review**: At least one maintainer reviews, ensuring any new module or service ships with corresponding tests to maintain coverage
 3. **Discussion**: Address feedback and suggestions
 4. **Merge**: Approved by maintainers
 
