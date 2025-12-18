@@ -661,10 +661,14 @@ def page_settings():
     st.title("⚙️ Settings")
     
     st.subheader("System Configuration")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**API Configuration**")
+        st.caption("Current API endpoint")
+        st.code(API_URL, language="bash")
+        if os.getenv("API_URL") is None:
+            st.warning("Using default API_URL. Set the API_URL environment variable to point to another backend.")
         api_status = make_api_call("/health")
         if api_status:
             st.success(f"✅ API Connected - {api_status.get('version', 'Unknown')}")
