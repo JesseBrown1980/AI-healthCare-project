@@ -88,3 +88,21 @@ def anyio_backend():
     """Restrict anyio tests to the asyncio backend to avoid incompatible trio runs."""
 
     yield "asyncio"
+
+
+@pytest.fixture
+def dependency_overrides_guard():
+    """Save and restore FastAPI dependency overrides for each test.
+
+    This prevents DI overrides from leaking between tests and keeps tests readable by
+    encouraging the standard save/update/restore pattern when injecting doubles.
+    """
+
+    from backend.main import app
+
+    original_overrides = dict(app.dependency_overrides)
+
+    try:
+        yield app.dependency_overrides
+    finally:
+        app.dependency_overrides = original_overrides

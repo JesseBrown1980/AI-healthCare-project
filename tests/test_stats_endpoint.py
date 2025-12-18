@@ -29,7 +29,7 @@ def _noop_lifespan(_app):
     return _lifespan
 
 
-def test_stats_endpoint_returns_none_when_services_missing():
+def test_stats_endpoint_returns_none_when_services_missing(dependency_overrides_guard):
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan(app)
 
@@ -40,7 +40,7 @@ def test_stats_endpoint_returns_none_when_services_missing():
         get_optional_mlc_learning: lambda: None,
         get_audit_service: lambda: None,
     }
-    app.dependency_overrides.update(overrides)
+    dependency_overrides_guard.update(overrides)
 
     try:
         with TestClient(app) as client:
@@ -54,11 +54,10 @@ def test_stats_endpoint_returns_none_when_services_missing():
             assert key in stats
             assert stats[key] is None
     finally:
-        app.dependency_overrides.clear()
         app.router.lifespan_context = original_lifespan
 
 
-def test_stats_endpoint_includes_stubbed_service_stats():
+def test_stats_endpoint_includes_stubbed_service_stats(dependency_overrides_guard):
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan(app)
 
@@ -70,7 +69,7 @@ def test_stats_endpoint_includes_stubbed_service_stats():
         get_optional_mlc_learning: lambda: None,
         get_audit_service: lambda: None,
     }
-    app.dependency_overrides.update(overrides)
+    dependency_overrides_guard.update(overrides)
 
     try:
         with TestClient(app) as client:
@@ -82,5 +81,4 @@ def test_stats_endpoint_includes_stubbed_service_stats():
         assert stats.get("llm") == stub_stats
         assert stats.get("rag") is None
     finally:
-        app.dependency_overrides.clear()
         app.router.lifespan_context = original_lifespan

@@ -46,12 +46,11 @@ def _override_dependencies():
     app.dependency_overrides[get_audit_service] = lambda: _StubAuditService()
 
 
-def _reset_overrides(original_lifespan):
-    app.dependency_overrides = {}
+def _restore_lifespan(original_lifespan):
     app.router.lifespan_context = original_lifespan
 
 
-def test_query_endpoint_returns_payload_and_correlation_header():
+def test_query_endpoint_returns_payload_and_correlation_header(dependency_overrides_guard):
     original_lifespan = app.router.lifespan_context
 
     @asynccontextmanager
@@ -69,7 +68,8 @@ def test_query_endpoint_returns_payload_and_correlation_header():
                 headers={"X-Correlation-ID": "test-correlation-id"},
             )
     finally:
-        _reset_overrides(original_lifespan)
+        dependency_overrides_guard.clear()
+        _restore_lifespan(original_lifespan)
 
     assert response.status_code == 200
     assert response.headers.get("X-Correlation-ID") == "test-correlation-id"

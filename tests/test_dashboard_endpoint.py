@@ -85,7 +85,8 @@ class _StubFHIRConnector:
 
 
 @pytest.mark.anyio
-async def test_dashboard_endpoint_returns_list(monkeypatch):
+async def test_dashboard_endpoint_returns_list(monkeypatch, dependency_overrides_guard):
+    original_lifespan = app.router.lifespan_context
     @asynccontextmanager
     async def noop_lifespan(_app):
         yield
@@ -127,17 +128,21 @@ async def test_dashboard_endpoint_returns_list(monkeypatch):
 
     dashboard_route = next(route for route in app.routes if route.path == "/api/v1/patients/dashboard")
     auth_dependency = dashboard_route.dependant.dependencies[0].call
-    app.dependency_overrides[auth_dependency] = lambda: stub_token
+    overrides = dependency_overrides_guard
+    overrides[auth_dependency] = lambda: stub_token
 
     stub_analyzer = _StubAnalyzer(responses)
-    app.dependency_overrides[get_patient_analyzer] = lambda: stub_analyzer
-    app.dependency_overrides[get_fhir_connector] = lambda: _StubFHIRConnector()
-    app.dependency_overrides[get_analysis_job_manager] = lambda: None
-    app.dependency_overrides[get_audit_service] = lambda: None
-    app.dependency_overrides[get_patient_summary_cache] = lambda: patient_summary_cache
+    overrides[get_patient_analyzer] = lambda: stub_analyzer
+    overrides[get_fhir_connector] = lambda: _StubFHIRConnector()
+    overrides[get_analysis_job_manager] = lambda: None
+    overrides[get_audit_service] = lambda: None
+    overrides[get_patient_summary_cache] = lambda: patient_summary_cache
 
-    with TestClient(app) as client:
-        response = client.get("/api/v1/patients/dashboard", headers={"Authorization": "Bearer token"})
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/patients/dashboard", headers={"Authorization": "Bearer token"})
+    finally:
+        app.router.lifespan_context = original_lifespan
 
     assert response.status_code == 200
     body = response.json()
