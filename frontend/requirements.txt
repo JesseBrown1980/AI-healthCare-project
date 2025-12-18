@@ -1,6 +1,11 @@
+# Core app dependencies
 streamlit==1.28.0
 plotly==5.18.0
 requests==2.31.0
+
+# Data processing
 pandas==2.1.0
 numpy==1.24.0
+
+# Environment variable loading
 python-dotenv==1.0.0
