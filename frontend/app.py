@@ -14,9 +14,9 @@ from typing import Optional, Dict, Any
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from dotenv import load_dotenv
+from frontend.utils.env_loader import load_environment
 
-load_dotenv()
+load_environment()  # BEGIN AI GENERATED: centralized env loading # END AI GENERATED
 
 # Configuration
 API_URL = os.getenv("API_URL", "http://localhost:8000/api/v1")
