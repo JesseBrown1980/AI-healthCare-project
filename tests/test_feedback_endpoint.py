@@ -24,12 +24,7 @@ def _override_dependencies(mlc_instance):
     app.dependency_overrides[get_audit_service] = lambda: _StubAuditService()
 
 
-def _reset_overrides(original_lifespan):
-    app.dependency_overrides = {}
-    app.router.lifespan_context = original_lifespan
-
-
-def test_feedback_endpoint_processes_feedback():
+def test_feedback_endpoint_processes_feedback(dependency_overrides_guard):
     original_lifespan = app.router.lifespan_context
 
     @asynccontextmanager
@@ -48,7 +43,8 @@ def test_feedback_endpoint_processes_feedback():
                 params={"query_id": "q-123", "feedback_type": "positive"},
             )
     finally:
-        _reset_overrides(original_lifespan)
+        dependency_overrides_guard.clear()
+        app.router.lifespan_context = original_lifespan
 
     assert response.status_code == 200
     assert response.json() == {
@@ -59,7 +55,7 @@ def test_feedback_endpoint_processes_feedback():
     assert stub_mlc.calls == [("q-123", "positive", None)]
 
 
-def test_feedback_endpoint_returns_503_when_learning_missing():
+def test_feedback_endpoint_returns_503_when_learning_missing(dependency_overrides_guard):
     original_lifespan = app.router.lifespan_context
 
     @asynccontextmanager
@@ -77,7 +73,8 @@ def test_feedback_endpoint_returns_503_when_learning_missing():
                 params={"query_id": "q-404", "feedback_type": "negative"},
             )
     finally:
-        _reset_overrides(original_lifespan)
+        dependency_overrides_guard.clear()
+        app.router.lifespan_context = original_lifespan
 
     assert response.status_code == 503
     body = response.json()

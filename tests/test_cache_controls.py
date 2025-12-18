@@ -67,7 +67,9 @@ def _override_auth_dependency(route_path: str, token: TokenContext) -> None:
     app.dependency_overrides[auth_dependency] = lambda: token
 
 
-def test_cache_clear_endpoint_resets_caches(monkeypatch):
+def test_cache_clear_endpoint_resets_caches(monkeypatch, dependency_overrides_guard):
+    original_lifespan = app.router.lifespan_context
+
     @asynccontextmanager
     async def noop_lifespan(_app):
         yield
@@ -85,13 +87,19 @@ def test_cache_clear_endpoint_resets_caches(monkeypatch):
 
     stub_analysis_manager = _StubAnalysisJobManager()
     stub_analyzer = _StubAnalyzer(entries=3)
-    app.dependency_overrides[get_analysis_job_manager] = lambda: stub_analysis_manager
-    app.dependency_overrides[get_patient_analyzer] = lambda: stub_analyzer
-    app.dependency_overrides[get_patient_summary_cache] = lambda: patient_summary_cache
-    app.dependency_overrides[get_audit_service] = lambda: None
+    overrides = {
+        get_analysis_job_manager: lambda: stub_analysis_manager,
+        get_patient_analyzer: lambda: stub_analyzer,
+        get_patient_summary_cache: lambda: patient_summary_cache,
+        get_audit_service: lambda: None,
+    }
+    dependency_overrides_guard.update(overrides)
 
-    with TestClient(app) as client:
-        response = client.post("/api/v1/cache/clear", headers={"Authorization": "Bearer token"})
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/v1/cache/clear", headers={"Authorization": "Bearer token"})
+    finally:
+        app.router.lifespan_context = original_lifespan
 
     assert response.status_code == 200
     body = response.json()
