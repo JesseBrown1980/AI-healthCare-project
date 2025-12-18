@@ -8,14 +8,18 @@ from streamlit import st_autorefresh
 import requests
 from requests import HTTPError, RequestException
 import json
+import os
 from datetime import datetime
 from typing import Optional, Dict, Any
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configuration
-API_URL = "http://localhost:8000/api/v1"
+API_URL = os.getenv("API_URL", "http://localhost:8000/api/v1")
 st.set_page_config(
     page_title="Healthcare AI Assistant",
     page_icon="🩺",  # Update to a base64 data URI for custom PNG if desired
