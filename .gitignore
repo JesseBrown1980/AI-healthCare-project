@@ -1,5 +1,7 @@
 # Environment Variables
+# BEGIN AI GENERATED: Ignore environment config
 .env
+# END AI GENERATED
 .env.local
 .env.*.local
 
