@@ -76,6 +76,7 @@ def make_api_call(
 
     try:
         url = f"{API_URL}{endpoint}"
+        method = method.upper()
         headers = {"Content-Type": "application/json"}
 
         if method == "GET":
@@ -83,6 +84,7 @@ def make_api_call(
         elif method == "POST":
             response = requests.post(url, headers=headers, json=data, timeout=timeout)
         else:
+            st.error(f"Unsupported HTTP method: {method}")
             return None
 
         response.raise_for_status()
