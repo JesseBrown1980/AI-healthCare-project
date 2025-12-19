@@ -469,7 +469,7 @@ def page_patient_analysis():
         update_navigation_params("Patient Analysis")
         with st.spinner("🔄 Analyzing patient..."):
             spec = None if specialty == "Auto-detect" else specialty.lower()
-            
+
             result = make_api_call(
                 "/analyze-patient",
                 method="POST",
@@ -479,85 +479,85 @@ def page_patient_analysis():
                     "specialty": spec
                 }
             )
-            
-            if result and result.get("status") == "completed":
-                
-                # SUMMARY TAB
-                st.success("✅ Analysis Complete")
-                
-                with st.expander("📋 Patient Summary", expanded=True):
-                    summary = result.get("summary", {})
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Patient Name", summary.get("patient_name", "N/A"))
-                    with col2:
-                        st.metric("Active Conditions", summary.get("active_conditions_count", 0))
-                    with col3:
-                        st.metric("Current Medications", summary.get("current_medications_count", 0))
-                    
-                    st.markdown(f"**Summary**: {summary.get('narrative_summary', '')}")
-                    
-                    if summary.get("key_conditions"):
-                        st.markdown(f"**Key Conditions**: {', '.join(summary.get('key_conditions', []))}")
-                    if summary.get("key_medications"):
-                        st.markdown(f"**Key Medications**: {', '.join(summary.get('key_medications', []))}")
-                
-                # ALERTS TAB
-                alerts = result.get("alerts", [])
-                if alerts:
-                    with st.expander(f"⚠️ Clinical Alerts ({len(alerts)})", expanded=True):
-                        for i, alert in enumerate(alerts, 1):
-                            display_alert(alert)
-                            st.markdown("---")
-                
-                # RISK SCORES TAB
-                with st.expander("📊 Risk Assessment", expanded=False):
-                    risk_scores = result.get("risk_scores", {})
-                    
-                    # Create risk chart
-                    risks = list(risk_scores.items())
-                    risk_names = [name.replace("_", " ").title() for name, _ in risks]
-                    risk_values = [value * 100 for _, value in risks]
-                    
-                    fig = go.Figure(data=[
-                        go.Bar(
-                            y=risk_names,
-                            x=risk_values,
-                            orientation='h',
-                            marker=dict(
-                                color=risk_values,
-                                colorscale='RdYlGn_r',
-                                cmin=0,
-                                cmax=100
-                            )
+
+        if result and result.get("status") == "completed":
+
+            # SUMMARY TAB
+            st.success("✅ Analysis Complete")
+
+            with st.expander("📋 Patient Summary", expanded=True):
+                summary = result.get("summary", {})
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Patient Name", summary.get("patient_name", "N/A"))
+                with col2:
+                    st.metric("Active Conditions", summary.get("active_conditions_count", 0))
+                with col3:
+                    st.metric("Current Medications", summary.get("current_medications_count", 0))
+
+                st.markdown(f"**Summary**: {summary.get('narrative_summary', '')}")
+
+                if summary.get("key_conditions"):
+                    st.markdown(f"**Key Conditions**: {', '.join(summary.get('key_conditions', []))}")
+                if summary.get("key_medications"):
+                    st.markdown(f"**Key Medications**: {', '.join(summary.get('key_medications', []))}")
+
+            # ALERTS TAB
+            alerts = result.get("alerts", [])
+            if alerts:
+                with st.expander(f"⚠️ Clinical Alerts ({len(alerts)})", expanded=True):
+                    for i, alert in enumerate(alerts, 1):
+                        display_alert(alert)
+                        st.markdown("---")
+
+            # RISK SCORES TAB
+            with st.expander("📊 Risk Assessment", expanded=False):
+                risk_scores = result.get("risk_scores", {})
+
+                # Create risk chart
+                risks = list(risk_scores.items())
+                risk_names = [name.replace("_", " ").title() for name, _ in risks]
+                risk_values = [value * 100 for _, value in risks]
+
+                fig = go.Figure(data=[
+                    go.Bar(
+                        y=risk_names,
+                        x=risk_values,
+                        orientation='h',
+                        marker=dict(
+                            color=risk_values,
+                            colorscale='RdYlGn_r',
+                            cmin=0,
+                            cmax=100
                         )
-                    ])
-                    fig.update_layout(
-                        xaxis_title="Risk Score (%)",
-                        height=400,
-                        margin=dict(l=200)
                     )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # MEDICATION REVIEW TAB
-                with st.expander("💊 Medication Review", expanded=False):
-                    med_review = result.get("medication_review", {})
-                    st.metric("Total Medications", med_review.get("total_medications", 0))
-                    
-                    if med_review.get("potential_issues"):
-                        st.warning("⚠️ Potential Issues:")
-                        for issue in med_review.get("potential_issues", []):
-                            st.markdown(f"- {issue}")
-                    
-                    if med_review.get("medications"):
-                        st.markdown("**Medications List:**")
-                        for med in med_review.get("medications", []):
-                            st.markdown(f"- {med.get('name')} ({med.get('status')})")
-                
-                # RECOMMENDATIONS TAB
-                if include_recs and result.get("recommendations"):
-                    with st.expander("💡 Clinical Recommendations", expanded=False):
-                        recs = result.get("recommendations", {})
+                ])
+                fig.update_layout(
+                    xaxis_title="Risk Score (%)",
+                    height=400,
+                    margin=dict(l=200)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            # MEDICATION REVIEW TAB
+            with st.expander("💊 Medication Review", expanded=False):
+                med_review = result.get("medication_review", {})
+                st.metric("Total Medications", med_review.get("total_medications", 0))
+
+                if med_review.get("potential_issues"):
+                    st.warning("⚠️ Potential Issues:")
+                    for issue in med_review.get("potential_issues", []):
+                        st.markdown(f"- {issue}")
+
+                if med_review.get("medications"):
+                    st.markdown("**Medications List:**")
+                    for med in med_review.get("medications", []):
+                        st.markdown(f"- {med.get('name')} ({med.get('status')})")
+
+            # RECOMMENDATIONS TAB
+            if include_recs and result.get("recommendations"):
+                with st.expander("💡 Clinical Recommendations", expanded=False):
+                    recs = result.get("recommendations", {})
                         
                         for i, rec in enumerate(recs.get("clinical_recommendations", []), 1):
                             st.markdown(f"**Recommendation {i}**")
@@ -609,7 +609,7 @@ def page_medical_query():
         include_reasoning = st.checkbox("Show Reasoning Chain", value=True)
     with col2:
         query_btn = st.button("Query AI", use_container_width=True)
-    
+
     if query_btn and question:
         with st.spinner("🔍 Querying medical knowledge..."):
             result = make_api_call(
@@ -621,30 +621,30 @@ def page_medical_query():
                     "include_reasoning": include_reasoning
                 }
             )
-            
-            if result and result.get("status") == "success":
-                st.success("✅ Response Generated")
-                
-                st.markdown("**Answer:**")
-                st.markdown(result.get("answer", ""))
-                
-                if include_reasoning and result.get("reasoning"):
-                    with st.expander("🔗 Reasoning Chain"):
-                        st.markdown(result.get("reasoning"))
-                
-                if result.get("sources"):
-                    with st.expander("📚 Evidence Sources"):
-                        for source in result.get("sources", []):
-                            st.markdown(f"- {source}")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Confidence", f"{result.get('confidence', 0)*100:.1f}%")
-                with col2:
-                    st.metric("Model", result.get("model", "Unknown"))
-            
-            else:
-                st.error("Failed to get response")
+
+        if result and result.get("status") == "success":
+            st.success("✅ Response Generated")
+
+            st.markdown("**Answer:**")
+            st.markdown(result.get("answer", ""))
+
+            if include_reasoning and result.get("reasoning"):
+                with st.expander("🔗 Reasoning Chain"):
+                    st.markdown(result.get("reasoning"))
+
+            if result.get("sources"):
+                with st.expander("📚 Evidence Sources"):
+                    for source in result.get("sources", []):
+                        st.markdown(f"- {source}")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Confidence", f"{result.get('confidence', 0)*100:.1f}%")
+            with col2:
+                st.metric("Model", result.get("model", "Unknown"))
+
+        else:
+            st.error("Failed to get response")
     
     elif query_btn:
         st.warning("Please enter a question")
@@ -680,7 +680,7 @@ def page_feedback():
     
     if st.button("Submit Feedback", use_container_width=True):
         if query_id:
-            with st.spinner("Processing feedback..."):
+            with st.spinner("📝 Processing feedback..."):
                 result = make_api_call(
                     "/feedback",
                     method="POST",
@@ -690,11 +690,11 @@ def page_feedback():
                         "corrected_text": corrected_text
                     }
                 )
-                
-                if result and result.get("status") == "success":
-                    st.success("✅ Feedback recorded! Thank you for helping improve the AI.")
-                else:
-                    st.error("Failed to submit feedback")
+
+            if result and result.get("status") == "success":
+                st.success("✅ Feedback recorded! Thank you for helping improve the AI.")
+            else:
+                st.error("Failed to submit feedback")
         else:
             st.warning("Please enter a Query ID")
 
