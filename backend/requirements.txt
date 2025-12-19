@@ -1,9 +1,8 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
-python-dotenv==1.0.0
+python-dotenv==1.0.0  # ensure same version as frontend
 httpx==0.25.0
-asyncio==3.4.3
 trio==0.22.2
 python-jose[cryptography]==3.3.0
 
