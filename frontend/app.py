@@ -24,7 +24,7 @@ st.set_page_config(
     page_title="Healthcare AI Assistant",
     page_icon="🩺",  # Update to a base64 data URI for custom PNG if desired
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # Custom styling
@@ -102,6 +102,35 @@ def make_api_call(
         st.error("An unexpected error occurred while contacting the API.")
         st.info(str(exc))
         return None
+
+
+def initialize_session_state():
+    """Initialize shared session state values."""
+    query_params = st.experimental_get_query_params()
+
+    if "selected_patient_id" not in st.session_state:
+        st.session_state["selected_patient_id"] = query_params.get("patient_id", [""])[0]
+
+    if "current_page" not in st.session_state:
+        st.session_state["current_page"] = query_params.get("page", ["Home"])[0]
+
+
+def set_patient_selection(patient_id: str):
+    """Persist selected patient ID in session state and query params."""
+    st.session_state["selected_patient_id"] = patient_id
+    st.experimental_set_query_params(
+        page=st.session_state.get("current_page", "Home"),
+        patient_id=patient_id,
+    )
+
+
+def update_navigation_params(page: str):
+    """Sync navigation changes to query params."""
+    st.session_state["current_page"] = page
+    st.experimental_set_query_params(
+        page=page,
+        patient_id=st.session_state.get("selected_patient_id", ""),
+    )
 
 
 def display_alert(alert: Dict):
@@ -396,8 +425,8 @@ def page_multi_patient_dashboard():
         card.markdown("---")
 
         if card.button("Open Analysis", key=f"open-analysis-{patient.get('id')}", use_container_width=True):
-            st.session_state["selected_patient_id"] = patient.get("id", "")
-            st.experimental_set_query_params(page="Patient Analysis", patient_id=patient.get("id", ""))
+            set_patient_selection(patient.get("id", ""))
+            update_navigation_params("Patient Analysis")
             st.experimental_rerun()
 
 def page_patient_analysis():
@@ -409,12 +438,16 @@ def page_patient_analysis():
     query_params = st.experimental_get_query_params()
     default_patient_id = st.session_state.get("selected_patient_id") or query_params.get("patient_id", [""])[0]
 
+    def handle_patient_id_change():
+        set_patient_selection(st.session_state.get("patient_id_input", ""))
+
     with col1:
         patient_id = st.text_input(
             "Enter Patient ID (FHIR)",
             placeholder="patient-12345",
             value=default_patient_id,
             key="patient_id_input",
+            on_change=handle_patient_id_change,
         )
     with col2:
         specialty = st.selectbox(
@@ -430,8 +463,10 @@ def page_patient_analysis():
         include_reasoning = st.checkbox("Include Reasoning", value=True)
     with col3:
         analyze_btn = st.button("Analyze Patient", use_container_width=True)
-    
+
     if analyze_btn and patient_id:
+        set_patient_selection(patient_id)
+        update_navigation_params("Patient Analysis")
         with st.spinner("🔄 Analyzing patient..."):
             spec = None if specialty == "Auto-detect" else specialty.lower()
             
@@ -551,10 +586,16 @@ def page_medical_query():
     """Medical query page"""
     st.title("🤔 Medical Query")
     st.markdown("Ask clinical questions and get evidence-based answers")
-    
+
+    def handle_query_patient_change():
+        set_patient_selection(st.session_state.get("medical_query_patient_id", ""))
+
     patient_id = st.text_input(
         "Patient ID (optional for context)",
-        placeholder="Leave empty for general query"
+        placeholder="Leave empty for general query",
+        value=st.session_state.get("selected_patient_id", ""),
+        key="medical_query_patient_id",
+        on_change=handle_query_patient_change,
     )
     
     question = st.text_area(
@@ -703,33 +744,31 @@ def page_settings():
 
 def main():
     """Main app"""
-    
+
+    initialize_session_state()
+
     # Sidebar navigation
     st.sidebar.title("🏥 Healthcare AI")
-    pages = [
-        "Home",
-        "Multi-Patient Dashboard",
-        "Patient Analysis",
-        "Medical Query",
-        "Feedback",
-        "Settings",
-    ]
+    pages = {
+        "Home": page_home,
+        "Multi-Patient Dashboard": page_multi_patient_dashboard,
+        "Patient Analysis": page_patient_analysis,
+        "Medical Query": page_medical_query,
+        "Feedback": page_feedback,
+        "Settings": page_settings,
+    }
 
-    query_params = st.experimental_get_query_params()
-    default_page = query_params.get("page", [pages[0]])[0]
-    if default_page not in pages:
-        default_page = pages[0]
+    current_page = st.session_state.get("current_page", "Home")
+    if current_page not in pages:
+        current_page = "Home"
 
     page = st.sidebar.radio(
         "Navigation",
-        pages,
-        index=pages.index(default_page),
+        list(pages.keys()),
+        index=list(pages.keys()).index(current_page),
     )
 
-    st.experimental_set_query_params(
-        page=page,
-        patient_id=query_params.get("patient_id", [""])[0],
-    )
+    update_navigation_params(page)
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### About")
@@ -748,18 +787,7 @@ def main():
     """)
     
     # Route to pages
-    if page == "Home":
-        page_home()
-    elif page == "Multi-Patient Dashboard":
-        page_multi_patient_dashboard()
-    elif page == "Patient Analysis":
-        page_patient_analysis()
-    elif page == "Medical Query":
-        page_medical_query()
-    elif page == "Feedback":
-        page_feedback()
-    elif page == "Settings":
-        page_settings()
+    pages[page]()
 
 
 if __name__ == "__main__":
