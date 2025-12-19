@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthCheckResponse(BaseModel):
@@ -104,10 +104,10 @@ class PatientFHIRResponse(BaseModel):
 class ExplainResponse(BaseModel):
     status: str
     patient_id: str
-    explanation: Dict[str, Any]
-    base_risk: Optional[float] = None
-    shap_values: Optional[List[Any]] = None
-    feature_names: Optional[List[str]] = None
+    feature_names: List[str] = Field(default_factory=list)
+    shap_values: List[float] = Field(default_factory=list)
+    base_value: Optional[float] = None
+    risk_score: Optional[float] = None
     model_type: Optional[str] = None
     correlation_id: Optional[str] = None
 
