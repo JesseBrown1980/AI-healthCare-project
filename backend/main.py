@@ -48,6 +48,24 @@ from backend.di import (
     get_rag_fusion,
     get_s_lora_manager,
 )
+from backend.models import (
+    ActivateAdapterResponse,
+    AdapterStatusResponse,
+    Alert,
+    AlertsResponse,
+    AnalyzePatientResponse,
+    CacheClearResponse,
+    DashboardEntry,
+    DashboardSummaryEntry,
+    DeviceRegistrationResponse,
+    ExplainResponse,
+    FeedbackResponse,
+    HealthCheckResponse,
+    PatientFHIRResponse,
+    PatientListResponse,
+    QueryResponse,
+    StatsResponse,
+)
 
 # Load environment variables
 load_dotenv()
@@ -714,7 +732,7 @@ async def _authenticate_websocket(websocket: WebSocket) -> TokenContext:
         raise WebSocketDisconnect(code=close_code)
 
 
-@app.get("/api/v1/health")
+@app.get("/api/v1/health", response_model=HealthCheckResponse)
 async def health_check(
     request: Request,
     vendor: Optional[str] = Query(None, description="Target EHR vendor"),
@@ -735,7 +753,7 @@ async def health_check(
     }
 
 
-@app.post("/api/v1/cache/clear")
+@app.post("/api/v1/cache/clear", response_model=CacheClearResponse)
 async def clear_caches(
     auth: TokenContext = Depends(auth_dependency({"system/*.read", "user/*.read"})),
     analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
@@ -785,8 +803,8 @@ def _register_device_token(
     return {"status": "registered", "device": registered}
 
 
-@app.post("/api/v1/device/register")
-@app.post("/api/v1/register-device")
+@app.post("/api/v1/device/register", response_model=DeviceRegistrationResponse)
+@app.post("/api/v1/register-device", response_model=DeviceRegistrationResponse)
 async def register_device(
     registration: DeviceRegistration,
     request: Request,
@@ -798,7 +816,7 @@ async def register_device(
     return _register_device_token(registration, request, notifier)
 
 
-@app.post("/api/v1/notifications/register")
+@app.post("/api/v1/notifications/register", response_model=DeviceRegistrationResponse)
 async def register_push_token(
     registration: DeviceRegistration,
     request: Request,
@@ -810,7 +828,7 @@ async def register_push_token(
     return _register_device_token(registration, request, notifier)
 
 
-@app.get("/api/v1/patients")
+@app.get("/api/v1/patients", response_model=PatientListResponse)
 async def list_patients(
     request: Request,
     auth: TokenContext = Depends(
@@ -867,7 +885,7 @@ async def list_patients(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.get("/api/v1/patients/dashboard")
+@app.get("/api/v1/patients/dashboard", response_model=List[DashboardEntry])
 async def get_dashboard_patients(
     request: Request,
     auth: TokenContext = Depends(
@@ -926,7 +944,7 @@ async def get_dashboard_patients(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.get("/api/v1/alerts")
+@app.get("/api/v1/alerts", response_model=AlertsResponse)
 async def get_alerts(
     request: Request,
     limit: int = Query(25, ge=1, le=200),
@@ -959,7 +977,7 @@ async def get_alerts(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/v1/analyze-patient")
+@app.post("/api/v1/analyze-patient", response_model=AnalyzePatientResponse)
 async def analyze_patient(
     request: Request,
     fhir_patient_id: Optional[str] = None,
@@ -1150,7 +1168,7 @@ async def patient_updates(websocket: WebSocket):
             app_container.active_websockets.pop(websocket, None)
 
 
-@app.get("/api/v1/dashboard-summary")
+@app.get("/api/v1/dashboard-summary", response_model=List[DashboardSummaryEntry])
 async def dashboard_summary(
     request: Request,
     patient_ids: Optional[List[str]] = Query(
@@ -1236,7 +1254,7 @@ async def dashboard_summary(
     return summaries
 
 
-@app.get("/api/v1/patient/{patient_id}/fhir")
+@app.get("/api/v1/patient/{patient_id}/fhir", response_model=PatientFHIRResponse)
 async def get_patient_fhir(
     request: Request,
     patient_id: str,
@@ -1335,8 +1353,10 @@ async def get_patient_fhir(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/patient/{patient_id}/explain")
-@app.get("/api/v1/explain/{patient_id}")
+@app.get(
+    "/api/v1/patient/{patient_id}/explain", response_model=ExplainResponse
+)
+@app.get("/api/v1/explain/{patient_id}", response_model=ExplainResponse)
 async def explain_patient_risk(
     request: Request,
     patient_id: str,
@@ -1426,7 +1446,7 @@ async def explain_patient_risk(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/v1/query")
+@app.post("/api/v1/query", response_model=QueryResponse)
 async def medical_query(
     request: Request,
     question: str,
@@ -1523,7 +1543,7 @@ async def medical_query(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/v1/feedback")
+@app.post("/api/v1/feedback", response_model=FeedbackResponse)
 async def provide_feedback(
     request: Request,
     query_id: str,
@@ -1564,7 +1584,7 @@ async def provide_feedback(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/adapters")
+@app.get("/api/v1/adapters", response_model=AdapterStatusResponse)
 async def get_adapters_status(
     request: Request,
     s_lora_manager: SLoRAManager = Depends(get_s_lora_manager),
@@ -1593,7 +1613,7 @@ async def get_adapters_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/v1/adapters/activate")
+@app.post("/api/v1/adapters/activate", response_model=ActivateAdapterResponse)
 async def activate_adapter(
     request: Request,
     adapter_name: str,
@@ -1622,7 +1642,7 @@ async def activate_adapter(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/stats")
+@app.get("/api/v1/stats", response_model=StatsResponse)
 async def get_system_stats(
     request: Request,
     llm_engine: Optional[LLMEngine] = Depends(get_optional_llm_engine),
