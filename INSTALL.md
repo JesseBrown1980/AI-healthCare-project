@@ -20,7 +20,7 @@
 - **GPU**: Optional but recommended for LLM features (NVIDIA CUDA 11.8+)
 
 ### Software Requirements
-- **Python**: 3.9 or higher
+- **Python**: 3.10–3.12 (ensures binary wheels for pandas/numpy; avoids source builds on 3.12)
 - **Docker**: 20.10+ (optional, for containerized deployment)
 - **Git**: For version control
 - **Node.js**: Optional today—required only when working on the upcoming React client. The shipped UI runs on Streamlit, so you can skip Node if you are not testing React features.
