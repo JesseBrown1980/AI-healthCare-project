@@ -93,7 +93,7 @@ Live knowledge integration ensures cutting-edge medical information:
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.10–3.12 (prebuilt wheels for all dependencies, including pandas)
 - Node.js 16+ and npm (optional; required only for the React frontend)
 - API keys for LLM service (OpenAI, Anthropic, or local LLaMA)
 - FHIR-compliant healthcare data source (or test data)
