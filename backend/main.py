@@ -977,7 +977,11 @@ async def get_alerts(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/v1/analyze-patient", response_model=AnalyzePatientResponse)
+@app.post(
+    "/api/v1/analyze-patient",
+    response_model=AnalyzePatientResponse,
+    response_model_exclude_none=True,
+)
 async def analyze_patient(
     request: Request,
     fhir_patient_id: Optional[str] = None,
@@ -1254,7 +1258,11 @@ async def dashboard_summary(
     return summaries
 
 
-@app.get("/api/v1/patient/{patient_id}/fhir", response_model=PatientFHIRResponse)
+@app.get(
+    "/api/v1/patient/{patient_id}/fhir",
+    response_model=PatientFHIRResponse,
+    response_model_exclude_none=True,
+)
 async def get_patient_fhir(
     request: Request,
     patient_id: str,

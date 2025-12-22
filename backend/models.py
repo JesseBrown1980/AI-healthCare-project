@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -63,7 +63,7 @@ class AlertsResponse(BaseModel):
 
 class AnalyzePatientResponse(BaseModel):
     patient_id: str
-    status: str
+    status: Optional[str] = None
     analysis_timestamp: Optional[str] = None
     last_analyzed_at: Optional[str] = None
     analysis_duration_seconds: Optional[float] = None
@@ -116,7 +116,7 @@ class QueryResponse(BaseModel):
     status: str
     question: str
     answer: Optional[str] = None
-    reasoning: Optional[str] = None
+    reasoning: Optional[Union[str, List[str]]] = None
     sources: Optional[List[Any]] = None
     confidence: Optional[float] = None
 
@@ -138,7 +138,7 @@ class AdapterStatusResponse(BaseModel):
 class ActivateAdapterResponse(BaseModel):
     status: str
     adapter: str
-    active: bool
+    active: Optional[Any] = None
 
 
 class StatsResponse(BaseModel):
