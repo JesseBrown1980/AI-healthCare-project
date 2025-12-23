@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  anomaly-detector:
+    build:
+      context: .
+      dockerfile: backend/anomaly_detector/Dockerfile
+    container_name: anomaly-detector
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    # Mount volumes for development (optional)
+    # volumes:
+    #   - ./backend/anomaly_detector:/app/backend/anomaly_detector

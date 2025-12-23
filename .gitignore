@@ -1,0 +1,10 @@
+
+*.pb
+*.tmp
+brain/
+One.pdf
+One_text.txt
+.gemini/
+.env
+__pycache__/
+*.pyc
