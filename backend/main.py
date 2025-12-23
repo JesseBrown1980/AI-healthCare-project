@@ -733,6 +733,19 @@ async def _authenticate_websocket(websocket: WebSocket) -> TokenContext:
         raise WebSocketDisconnect(code=close_code)
 
 
+@app.get("/health", response_model=HealthCheckResponse, include_in_schema=False)
+async def root_health() -> HealthCheckResponse:
+    """
+    Lightweight health check for container orchestration.
+    """
+    return {
+        "status": "healthy",
+        "service": "Healthcare AI Assistant",
+        "version": "1.0.0",
+        "vendor": "generic",
+    }
+
+
 @app.get("/api/v1/health", response_model=HealthCheckResponse)
 async def health_check(
     request: Request,

@@ -7,8 +7,11 @@ import pandas as pd
 import requests
 import streamlit as st
 import altair as alt
+from frontend.utils.env_loader import load_environment, get_api_url
 
-API_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000/api/v1")
+load_environment()  # BEGIN AI GENERATED: centralized env loading # END AI GENERATED
+
+API_URL = get_api_url()
 
 
 @st.cache_data(ttl=30)
