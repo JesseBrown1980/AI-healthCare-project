@@ -1,3 +1,4 @@
+
 # Environment Variables
 # BEGIN AI GENERATED: Ignore environment config
 .env
@@ -99,3 +100,10 @@ k8s/secrets.yml
 .project
 .pydevproject
 .settings/
+
+# Agent & Brain (Added from master)
+*.pb
+brain/
+One.pdf
+One_text.txt
+.gemini/

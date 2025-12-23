@@ -1,5 +1,4 @@
 version: "3.8"
-
 services:
   backend:
     build:
@@ -20,7 +19,7 @@ services:
     networks:
       - healthcare-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,8 +54,23 @@ services:
     networks:
       - healthcare-network
 
+  # [NEW] Anomaly Detection Service
+  anomaly-detector:
+    build:
+      context: .
+      dockerfile: backend/anomaly_detector/Dockerfile
+    container_name: anomaly-detector
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - healthcare-network
+
 volumes:
   fhir-data:
+
 
 networks:
   healthcare-network:
