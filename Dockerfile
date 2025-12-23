@@ -12,11 +12,10 @@ RUN apt-get update \
 
 # Install dependencies first for better layer caching
 COPY pyproject.toml ./
+COPY backend ./backend
+
 RUN pip install --no-cache-dir -U pip \
  && pip install --no-cache-dir -e .
-
-# Copy application code
-COPY backend ./backend
 
 EXPOSE 8000
 
