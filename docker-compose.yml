@@ -1,6 +1,60 @@
-version: '3.8'
-
+version: "3.8"
 services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      PORT: "8000"
+      FHIR_SERVER_URL: "${FHIR_SERVER_URL:-http://fhir:8080/fhir}"
+      LLM_MODEL: "${LLM_MODEL:-gpt-4}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      DEBUG: "${DEBUG:-False}"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - fhir
+    networks:
+      - healthcare-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    env_file:
+      - .env
+    environment:
+      API_BASE_URL: "${API_BASE_URL:-http://backend:8000}"
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    networks:
+      - healthcare-network
+
+  fhir:
+    image: nickspacemonkey/docker-hapi-fhir-mysql:latest
+    ports:
+      - "8080:8080"
+    environment:
+      MYSQL_ROOT_PASSWORD: "rootpassword"
+      MYSQL_DATABASE: "hapi"
+      MYSQL_USER: "hapi"
+      MYSQL_PASSWORD: "hapi"
+    volumes:
+      - fhir-data:/var/lib/mysql
+    networks:
+      - healthcare-network
+
+  # [NEW] Anomaly Detection Service
   anomaly-detector:
     build:
       context: .
@@ -11,6 +65,13 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
-    # Mount volumes for development (optional)
-    # volumes:
-    #   - ./backend/anomaly_detector:/app/backend/anomaly_detector
+    networks:
+      - healthcare-network
+
+volumes:
+  fhir-data:
+
+
+networks:
+  healthcare-network:
+    driver: bridge
