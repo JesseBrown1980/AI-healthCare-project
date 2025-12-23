@@ -14,12 +14,12 @@ from typing import Optional, Dict, Any
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from frontend.utils.env_loader import load_environment
+from frontend.utils.env_loader import load_environment, get_api_url
 
 load_environment()  # BEGIN AI GENERATED: centralized env loading # END AI GENERATED
 
 # Configuration
-API_URL = os.getenv("API_URL", "http://localhost:8000/api/v1")
+API_URL = get_api_url()
 st.set_page_config(
     page_title="Healthcare AI Assistant",
     page_icon="🩺",  # Update to a base64 data URI for custom PNG if desired
@@ -710,8 +710,13 @@ def page_settings():
         st.markdown("**API Configuration**")
         st.caption("Current API endpoint")
         st.code(API_URL, language="bash")
-        if os.getenv("API_URL") is None:
-            st.warning("Using default API_URL. Set the API_URL environment variable to point to another backend.")
+        if not any(
+            os.getenv(var) for var in ("API_BASE_URL", "API_URL", "BACKEND_API_URL")
+        ):
+            st.warning(
+                "Using default API URL. Set API_BASE_URL (preferred) or API_URL/BACKEND_API_URL "
+                "to point to another backend."
+            )
         api_status = make_api_call("/health")
         if api_status:
             st.success(f"✅ API Connected - {api_status.get('version', 'Unknown')}")

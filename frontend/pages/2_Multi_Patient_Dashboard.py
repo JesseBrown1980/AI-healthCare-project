@@ -6,8 +6,11 @@ import pandas as pd
 import requests
 import streamlit as st
 from streamlit import st_autorefresh
+from frontend.utils.env_loader import get_api_url, load_environment
 
-API_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000/api/v1")
+load_environment()  # BEGIN AI GENERATED: centralized env loading # END AI GENERATED
+
+API_URL = get_api_url()
 REFRESH_INTERVAL_MS = int(os.getenv("DASHBOARD_REFRESH_MS", "20000"))
 
 
