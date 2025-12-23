@@ -1,8 +1,5 @@
 from contextlib import asynccontextmanager
 
-import importlib
-import sys
-
 from fastapi.testclient import TestClient
 
 from backend.di import (
@@ -11,34 +8,6 @@ from backend.di import (
     get_patient_analyzer,
     get_patient_summary_cache,
 )
-
-security_module = importlib.import_module("backend.security")
-sys.modules["security"] = security_module
-audit_module = importlib.import_module("backend.audit_service")
-sys.modules["audit_service"] = audit_module
-for module_name in [
-    "fhir_connector",
-    "llm_engine",
-    "rag_fusion",
-    "s_lora_manager",
-    "mlc_learning",
-    "aot_reasoner",
-    "patient_analyzer",
-    "notifier",
-    "patient_data_service",
-    "recommendation_service",
-    "risk_scoring_service",
-    "alert_service",
-    "notification_service",
-]:
-    module = importlib.import_module(f"backend.{module_name}")
-    sys.modules[module_name] = module
-
-explainability_stub = importlib.import_module("types").SimpleNamespace(
-    explain_risk=lambda *_args, **_kwargs: {}
-)
-sys.modules["explainability"] = explainability_stub
-
 from backend.main import TokenContext, app
 
 

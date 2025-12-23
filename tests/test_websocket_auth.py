@@ -1,57 +1,11 @@
-import sys
-from types import ModuleType
-from pathlib import Path
-
 import pytest
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.testclient import TestClient
 from starlette.datastructures import Headers, QueryParams
 from starlette.websockets import WebSocketDisconnect
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-import backend.security as backend_security
-
-sys.modules.setdefault("security", backend_security)
-sys.modules.setdefault("backend.security", backend_security)
-
-
-def _stub_module(name: str, attributes: dict) -> None:
-    module = sys.modules.get(name) or ModuleType(name)
-    for attr_name, attr_value in attributes.items():
-        setattr(module, attr_name, attr_value)
-    sys.modules[name] = module
-    sys.modules[f"backend.{name}"] = module
-
-
-class _StubError(Exception):
-    pass
-
-
-_stub_module("audit_service", {"AuditService": type("AuditService", (), {})})
-_stub_module(
-    "fhir_connector",
-    {
-        "FHIRConnectorError": _StubError,
-        "FhirHttpClient": type("FhirHttpClient", (), {}),
-        "FhirResourceService": type("FhirResourceService", (), {}),
-    },
-)
-_stub_module("llm_engine", {"LLMEngine": type("LLMEngine", (), {})})
-_stub_module("rag_fusion", {"RAGFusion": type("RAGFusion", (), {})})
-_stub_module("s_lora_manager", {"SLoRAManager": type("SLoRAManager", (), {})})
-_stub_module("mlc_learning", {"MLCLearning": type("MLCLearning", (), {})})
-_stub_module("aot_reasoner", {"AoTReasoner": type("AoTReasoner", (), {})})
-_stub_module(
-    "patient_analyzer",
-    {
-        "PatientAnalyzer": type("PatientAnalyzer", (), {"_derive_overall_risk_score": staticmethod(lambda _: 0), "_highest_alert_severity": staticmethod(lambda alerts: None)}),
-    },
-)
-_stub_module("notifier", {"Notifier": type("Notifier", (), {})})
-_stub_module("explainability", {"explain_risk": lambda *_, **__: None})
+import backend.main as main
+from backend.security import TokenContext
 
 
 class _StubWebSocket:
@@ -62,9 +16,6 @@ class _StubWebSocket:
 
     async def close(self, code: int, reason: str | None = None):
         self.closed_with = (code, reason)
-
-import backend.main as main
-from backend.security import TokenContext
 
 
 def _fake_auth_dependency(required_scopes=None, required_roles=None):

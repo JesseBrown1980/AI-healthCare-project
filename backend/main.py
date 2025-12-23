@@ -4,6 +4,15 @@ Integrates FHIR data with advanced AI techniques (S-LoRA, MLC, RAG, AoT)
 """
 
 import asyncio
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+import logging
+import os
+import uuid
+from typing import Any, Dict, List, Optional
+
+import uvicorn
+from dotenv import load_dotenv
 from fastapi import (
     Depends,
     FastAPI,
@@ -16,18 +25,11 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
-from contextlib import asynccontextmanager
-import logging
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone, timedelta
-import uuid
-import uvicorn
-import os
-from dotenv import load_dotenv
-from security import TokenContext, auth_dependency, close_shared_async_client
-from audit_service import AuditService
-from pydantic import BaseModel, root_validator, validator
+# python-jose implementation used for JWT encoding/decoding
 from jose import jwt
+from pydantic import BaseModel, root_validator, validator
+from backend.analysis_cache import AnalysisJobManager
+from backend.audit_service import AuditService
 from backend.di import (
     ServiceContainer,
     get_analysis_job_manager,
@@ -48,6 +50,7 @@ from backend.di import (
     get_rag_fusion,
     get_s_lora_manager,
 )
+from backend.explainability import explain_risk
 from backend.models import (
     ActivateAdapterResponse,
     AdapterStatusResponse,
@@ -66,26 +69,17 @@ from backend.models import (
     QueryResponse,
     StatsResponse,
 )
+from backend.notifier import Notifier
+from backend.patient_analyzer import PatientAnalyzer
+from backend.patient_data_service import PatientDataService
+from backend.security import TokenContext, auth_dependency, close_shared_async_client
+from backend.fhir_connector import FHIRConnectorError, FhirHttpClient, FhirResourceService
+from backend.llm_engine import LLMEngine
+from backend.rag_fusion import RAGFusion
+from backend.s_lora_manager import SLoRAManager
+from backend.mlc_learning import MLCLearning
+from backend.aot_reasoner import AoTReasoner
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Import core modules (to be implemented)
-from fhir_connector import FHIRConnectorError, FhirHttpClient, FhirResourceService
-from llm_engine import LLMEngine
-from rag_fusion import RAGFusion
-from s_lora_manager import SLoRAManager
-from mlc_learning import MLCLearning
-from aot_reasoner import AoTReasoner
-from patient_analyzer import PatientAnalyzer
-from patient_data_service import PatientDataService
-from notifier import Notifier
-from explainability import explain_risk
-from analysis_cache import AnalysisJobManager
 
 # Global instances
 fhir_client = None
@@ -109,6 +103,13 @@ analysis_history_ttl_seconds: int = int(
 )
 analysis_cache_ttl_seconds: int = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", "300"))
 analysis_job_manager: Optional[AnalysisJobManager] = None
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class DeviceRegistration(BaseModel):
