@@ -6,6 +6,7 @@ and other modules can import backend.* modules.
 
 __all__ = [
     "aot_reasoner",
+    "explainability",
     "fhir_connector",
     "llm_engine",
     "mlc_learning",

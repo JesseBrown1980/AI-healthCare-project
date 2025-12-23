@@ -1,48 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager
-import asyncio
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-import importlib
-import sys
-import types
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-security_module = importlib.import_module("backend.security")
-sys.modules["security"] = security_module
-
-explainability_stub = types.ModuleType("explainability")
-explainability_stub.explain_risk = lambda *_args, **_kwargs: {
-    "feature_names": [],
-    "shap_values": [],
-    "risk_score": 0.0,
-    "base_value": 0.0,
-    "model_type": "logistic_regression",
-}
-sys.modules["explainability"] = explainability_stub
-
-for module_name in [
-    "audit_service",
-    "fhir_connector",
-    "llm_engine",
-    "rag_fusion",
-    "s_lora_manager",
-    "mlc_learning",
-    "aot_reasoner",
-    "patient_analyzer",
-    "notifier",
-]:
-    module = importlib.import_module(f"backend.{module_name}")
-    sys.modules[module_name] = module
 
 from backend.di import (
     get_analysis_job_manager,

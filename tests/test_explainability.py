@@ -1,32 +1,12 @@
-import sys
-import types
 from contextlib import asynccontextmanager
-from pathlib import Path
-
 from typing import Any, Dict
 
 import numpy as np
 from fastapi.testclient import TestClient
 
-ROOT = Path(__file__).resolve().parent.parent
-BACKEND_DIR = ROOT / "backend"
-for path in (ROOT, BACKEND_DIR):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
-
-patient_analyzer_stub = types.ModuleType("patient_analyzer")
-
-
-class PatientAnalyzer:  # pragma: no cover - import stub
-    pass
-
-
-patient_analyzer_stub.PatientAnalyzer = PatientAnalyzer
-sys.modules.setdefault("patient_analyzer", patient_analyzer_stub)
-
+from backend.di import get_audit_service, get_patient_analyzer
 from backend.explainability import explain_risk
 from backend.main import app
-from backend.di import get_audit_service, get_patient_analyzer
 from backend.security import TokenContext
 
 

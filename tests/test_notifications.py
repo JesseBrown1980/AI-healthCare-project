@@ -1,7 +1,4 @@
-import sys
 import types
-from pathlib import Path
-
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
@@ -9,58 +6,19 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-# Ensure imports like `import security` inside backend.main work during tests
-ROOT = Path(__file__).resolve().parent.parent
-BACKEND_DIR = ROOT / "backend"
-for path in (ROOT, BACKEND_DIR):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
-
-# Stub modules that backend.main expects so we can import without full dependencies
-patient_analyzer_stub = types.ModuleType("patient_analyzer")
-
-class PatientAnalyzer:  # pragma: no cover - import stub
-    pass
-
-patient_analyzer_stub.PatientAnalyzer = PatientAnalyzer
-sys.modules.setdefault("patient_analyzer", patient_analyzer_stub)
-
-shap_stub = types.ModuleType("shap")
-sys.modules.setdefault("shap", shap_stub)
-
-sklearn_stub = types.ModuleType("sklearn")
-linear_model_stub = types.ModuleType("sklearn.linear_model")
-
-
-class LogisticRegression:  # pragma: no cover - import stub
-    def __init__(self, *_, **__):
-        pass
-
-    def fit(self, *_, **__):
-        return self
-
-    def predict_proba(self, X):
-        return [[0.5, 0.5] for _ in range(len(X))]
-
-
-linear_model_stub.LogisticRegression = LogisticRegression
-sklearn_stub.linear_model = linear_model_stub
-sys.modules.setdefault("sklearn", sklearn_stub)
-sys.modules.setdefault("sklearn.linear_model", linear_model_stub)
-
-from backend import main  # noqa: E402
-from backend.notifier import Notifier  # noqa: E402
-from backend.patient_analyzer import PatientAnalyzer as RealPatientAnalyzer  # noqa: E402
-from backend.security import TokenContext  # noqa: E402
-from backend.di import (  # noqa: E402
+from backend import main
+from backend.di import (
     get_analysis_job_manager,
     get_audit_service,
     get_container,
     get_fhir_connector,
-    get_patient_analyzer,
     get_notifier,
+    get_patient_analyzer,
     get_patient_summary_cache,
 )
+from backend.notifier import Notifier
+from backend.patient_analyzer import PatientAnalyzer as RealPatientAnalyzer
+from backend.security import TokenContext
 
 
 class DummyNotifier:
