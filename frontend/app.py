@@ -558,15 +558,15 @@ def page_patient_analysis():
             if include_recs and result.get("recommendations"):
                 with st.expander("💡 Clinical Recommendations", expanded=False):
                     recs = result.get("recommendations", {})
-                        
-                        for i, rec in enumerate(recs.get("clinical_recommendations", []), 1):
-                            st.markdown(f"**Recommendation {i}**")
-                            display_recommendation(rec)
-                        
-                        if recs.get("priority_actions"):
-                            st.markdown("**Priority Actions:**")
-                            for action in recs.get("priority_actions", []):
-                                st.markdown(f"- [{action['severity'].upper()}] {action['action']}")
+
+                    for i, rec in enumerate(recs.get("clinical_recommendations", []), 1):
+                        st.markdown(f"**Recommendation {i}**")
+                        display_recommendation(rec)
+
+                    if recs.get("priority_actions"):
+                        st.markdown("**Priority Actions:**")
+                        for action in recs.get("priority_actions", []):
+                            st.markdown(f"- [{action['severity'].upper()}] {action['action']}")
                 
                 # PERFORMANCE METRICS
                 with st.expander("⏱️ Performance", expanded=False):
