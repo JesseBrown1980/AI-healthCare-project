@@ -169,12 +169,17 @@ class DocumentService:
         
         await self.database_service.save_ocr_extraction(ocr_data)
         
-        # Update document with OCR text
+        # Parse medical data from OCR text
+        logger.info("Parsing medical data from OCR text...")
+        parsed_data = self.medical_parser.parse(ocr_result.text)
+        
+        # Update document with OCR text and parsed data
         await self.database_service.update_document(
             document_id,
             {
                 "ocr_text": ocr_result.text,
                 "ocr_confidence": ocr_result.confidence,
+                "extracted_data": parsed_data,
                 "processed_at": datetime.now(timezone.utc),
             },
         )
@@ -184,6 +189,13 @@ class DocumentService:
             document_id,
             ocr_result.confidence * 100,
         )
+        logger.info(
+            "Extracted: %d lab values, %d medications, %d vital signs, %d conditions",
+            len(parsed_data.get("lab_values", [])),
+            len(parsed_data.get("medications", [])),
+            len(parsed_data.get("vital_signs", [])),
+            len(parsed_data.get("conditions", [])),
+        )
         
         return {
             "document_id": document_id,
@@ -191,6 +203,7 @@ class DocumentService:
             "confidence": ocr_result.confidence,
             "engine": ocr_result.engine,
             "word_count": len(ocr_result.text.split()),
+            "parsed_data": parsed_data,
         }
     
     async def link_document_to_patient(
