@@ -17,7 +17,8 @@ from sqlalchemy import (
     JSON,
     Index,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
+# UUID, JSONB, INET imported but not used - keeping for future PostgreSQL-specific features
+# from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 
@@ -94,7 +95,7 @@ class UserSession(Base):
     
     __tablename__ = "user_sessions"
     
-    session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    session_id = Column(String(36), primary_key=True)
     user_id = Column(String(255), nullable=False, index=True)
     token_hash = Column(String(255))
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)

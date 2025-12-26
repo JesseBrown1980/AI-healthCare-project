@@ -37,7 +37,9 @@ def get_database_url() -> str:
     # Use absolute path to avoid issues
     import pathlib
     db_path = pathlib.Path(__file__).parent.parent.parent / "healthcare_ai.db"
-    return f"sqlite+aiosqlite:///{db_path}"
+    # Convert Windows backslashes to forward slashes for URL compatibility
+    db_path_str = str(db_path).replace("\\", "/")
+    return f"sqlite+aiosqlite:///{db_path_str}"
 
 
 def get_redis_url() -> str:
