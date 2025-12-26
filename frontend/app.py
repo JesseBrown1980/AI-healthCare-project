@@ -4,12 +4,17 @@ Interactive dashboard for healthcare AI assistant
 """
 
 import streamlit as st
-from streamlit import st_autorefresh
+from streamlit_autorefresh import st_autorefresh
 import requests
 from requests import HTTPError, RequestException
 import json
 import os
-from datetime import datetime
+import sys
+
+# Add project root to sys.path to allow importing from 'frontend' package
+# sys.path hack removed - use installed package or python -m
+
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import pandas as pd
 import plotly.graph_objects as go
@@ -178,7 +183,7 @@ def fetch_multi_patient_data() -> list[Dict[str, Any]]:
             "cardio_risk": 0.78,
             "readmission_risk": 0.42,
             "active_alerts": 3,
-            "last_analysis": now.replace(hour=now.hour - 2, minute=now.minute - 10),
+            "last_analysis": now - timedelta(hours=2, minutes=10),
         },
         {
             "id": "P-1987",
@@ -188,7 +193,7 @@ def fetch_multi_patient_data() -> list[Dict[str, Any]]:
             "cardio_risk": 0.36,
             "readmission_risk": 0.28,
             "active_alerts": 1,
-            "last_analysis": now.replace(hour=now.hour - 5, minute=now.minute - 5),
+            "last_analysis": now - timedelta(hours=5, minutes=5),
         },
         {
             "id": "P-1520",
@@ -198,7 +203,7 @@ def fetch_multi_patient_data() -> list[Dict[str, Any]]:
             "cardio_risk": 0.91,
             "readmission_risk": 0.63,
             "active_alerts": 5,
-            "last_analysis": now.replace(hour=now.hour - 1, minute=now.minute - 32),
+            "last_analysis": now - timedelta(hours=1, minutes=32),
         },
         {
             "id": "P-2201",
@@ -208,7 +213,7 @@ def fetch_multi_patient_data() -> list[Dict[str, Any]]:
             "cardio_risk": 0.18,
             "readmission_risk": 0.19,
             "active_alerts": 0,
-            "last_analysis": now.replace(hour=now.hour - 7, minute=now.minute - 45),
+            "last_analysis": now - timedelta(hours=7, minutes=45),
         },
         {
             "id": "P-1755",
@@ -218,7 +223,7 @@ def fetch_multi_patient_data() -> list[Dict[str, Any]]:
             "cardio_risk": 0.67,
             "readmission_risk": 0.38,
             "active_alerts": 2,
-            "last_analysis": now.replace(hour=now.hour - 3, minute=now.minute - 20),
+            "last_analysis": now - timedelta(hours=3, minutes=20),
         },
     ]
 
