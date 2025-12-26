@@ -76,7 +76,7 @@ def _dashboard_patient_list() -> List[Dict[str, Optional[str]]]:
     return patients
 
 
-def _build_patient_list_entry(
+async def _build_patient_list_entry(
     patient: Dict[str, Optional[str]],
     patient_data: Optional[Dict[str, Any]],
     patient_analyzer: Optional[PatientAnalyzer],
@@ -318,7 +318,7 @@ async def list_patients(
                     )
 
                 roster.append(
-                    _build_patient_list_entry(patient, patient_data, patient_analyzer)
+                    await _build_patient_list_entry(patient, patient_data, patient_analyzer)
                 )
 
         return {"patients": roster}
