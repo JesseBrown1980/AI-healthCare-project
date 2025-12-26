@@ -124,7 +124,8 @@ class ServiceContainer:
         )
 
         logger.info("Initializing Audit Service...")
-        self.audit_service = AuditService(fhir_connector=self.fhir_connector)
+        # Database service will be injected later in main.py after initialization
+        self.audit_service = AuditService(fhir_connector=self.fhir_connector, database_service=None)
 
         logger.info("Initializing per-user state store...")
         self.user_state_store = UserStateStore(
