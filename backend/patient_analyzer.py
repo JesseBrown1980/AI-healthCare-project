@@ -6,7 +6,7 @@ Combines FHIR data, LLM intelligence, RAG knowledge, S-LoRA adaptation, MLC lear
 
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from .alert_service import AlertService
 from .fhir_connector import FHIRConnectorError
@@ -14,6 +14,9 @@ from .notification_service import NotificationService
 from .patient_data_service import PatientDataService
 from .recommendation_service import RecommendationService
 from .risk_scoring_service import RiskScoringService
+
+if TYPE_CHECKING:
+    from .database.service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,7 @@ class PatientAnalyzer:
         notification_service: Optional[NotificationService] = None,
         history_limit: Optional[int] = None,
         history_ttl_seconds: Optional[int] = None,
+        database_service: Optional["DatabaseService"] = None,
     ):
         """
         Initialize PatientAnalyzer with all components
@@ -87,9 +91,13 @@ class PatientAnalyzer:
             "history_ttl_seconds",
         )
 
+        self.database_service = database_service
         self.analysis_history: Dict[str, List[Dict]] = {}
 
-        logger.info("PatientAnalyzer initialized with all components")
+        if self.database_service:
+            logger.info("PatientAnalyzer initialized with database service")
+        else:
+            logger.info("PatientAnalyzer initialized with in-memory history (database service not provided)")
 
     @staticmethod
     def _validated_positive_value(
@@ -308,6 +316,54 @@ class PatientAnalyzer:
         """Add an analysis result to history while enforcing limits and TTL."""
 
         patient_id = analysis.get("patient_id") or "unknown"
+        
+        # Try to save to database first (if available)
+        if self.database_service:
+            try:
+                # Extract correlation_id and user_id from analysis if available
+                correlation_id = analysis.get("correlation_id")
+                user_id = analysis.get("user_id")
+                
+                # Prepare analysis data for database
+                analysis_data = {
+                    "analysis_data": analysis,
+                    "risk_scores": analysis.get("risk_scores", {}),
+                    "alerts": analysis.get("alerts", []),
+                    "recommendations": analysis.get("recommendations", []),
+                }
+                
+                # Save to database (async, but we're in sync context - will be handled by caller)
+                # For now, we'll save synchronously in a fire-and-forget manner
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If loop is running, create a task
+                        asyncio.create_task(
+                            self.database_service.save_analysis(
+                                patient_id=patient_id,
+                                analysis_data=analysis_data,
+                                user_id=user_id,
+                                correlation_id=correlation_id,
+                            )
+                        )
+                    else:
+                        # If no loop running, run it
+                        loop.run_until_complete(
+                            self.database_service.save_analysis(
+                                patient_id=patient_id,
+                                analysis_data=analysis_data,
+                                user_id=user_id,
+                                correlation_id=correlation_id,
+                            )
+                        )
+                except RuntimeError:
+                    # No event loop, skip database save
+                    pass
+            except Exception as e:
+                logger.warning("Failed to save analysis to database, falling back to in-memory: %s", str(e))
+        
+        # Also keep in-memory for backward compatibility and fast access
         bucket = self.analysis_history.setdefault(patient_id, [])
         bucket.append(analysis)
 
@@ -342,7 +398,31 @@ class PatientAnalyzer:
 
     def get_latest_analysis(self, patient_id: str) -> Optional[Dict[str, Any]]:
         """Return the latest analysis for a specific patient."""
-
+        
+        # Try database first (if available)
+        if self.database_service:
+            try:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If loop is running, we can't use run_until_complete
+                        # Fall back to in-memory for now
+                        pass
+                    else:
+                        # Try to get from database
+                        db_result = loop.run_until_complete(
+                            self.database_service.get_latest_analysis(patient_id)
+                        )
+                        if db_result:
+                            return db_result
+                except RuntimeError:
+                    # No event loop, fall back to in-memory
+                    pass
+            except Exception as e:
+                logger.debug("Failed to get analysis from database, using in-memory: %s", str(e))
+        
+        # Fall back to in-memory
         bucket = self.analysis_history.get(patient_id) or []
         if not bucket:
             return None
