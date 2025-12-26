@@ -126,8 +126,14 @@ async def lifespan(app: FastAPI):
         # Initialize Database
         logger.info("Initializing Database...")
         await init_database()
-        app.state.db_service = DatabaseService()
+        db_service = DatabaseService()
+        app.state.db_service = db_service
         logger.info("✓ Database initialized successfully")
+        
+        # Update PatientAnalyzer to use database service (if available)
+        if container.patient_analyzer and db_service:
+            container.patient_analyzer.database_service = db_service
+            logger.info("✓ PatientAnalyzer updated to use database service")
         
         # Initialize Anomaly Detector
         logger.info("Initializing Anomaly Detector...")

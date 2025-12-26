@@ -4,16 +4,22 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 from backend.security import TokenContext
+
+if TYPE_CHECKING:
+    from backend.database.service import DatabaseService
+
+logger = logging.getLogger(__name__)
 
 
 class AuditService:
     """Construct and submit FHIR audit artifacts for key operations."""
 
-    def __init__(self, fhir_connector) -> None:
+    def __init__(self, fhir_connector, database_service: Optional["DatabaseService"] = None) -> None:
         self.fhir_connector = fhir_connector
+        self.database_service = database_service
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
@@ -216,3 +222,25 @@ class AuditService:
                     )
         except Exception as exc:  # pragma: no cover - defensive logging
             self.logger.warning("Unable to submit audit artifacts: %s", exc)
+        
+        # Also log to database if available
+        if self.database_service:
+            try:
+                # Extract IP address and user agent from request if available
+                # (These would need to be passed in, but for now we'll use None)
+                await self.database_service.log_audit_event(
+                    correlation_id=correlation_id,
+                    user_id=user_context.subject if user_context else None,
+                    patient_id=patient_id,
+                    action=action,
+                    resource_type=event_type,
+                    outcome=outcome,
+                    ip_address=None,  # Could be extracted from request if passed
+                    user_agent=None,  # Could be extracted from request if passed
+                    details={
+                        "outcome_desc": outcome_desc,
+                        "fhir_audit_event": audit_event,
+                    },
+                )
+            except Exception as exc:
+                self.logger.warning("Unable to log audit event to database: %s", exc)
