@@ -16,6 +16,7 @@ from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.ocr import TextExtractor, OCRResult
+from backend.ocr.medical_parser import MedicalParser
 from backend.database import get_db_session, DatabaseService
 from backend.database.models import Document, OCRExtraction
 
@@ -41,8 +42,9 @@ class DocumentService:
         self.upload_dir = Path(upload_dir or "./uploads")
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize OCR
+        # Initialize OCR and parser
         self.text_extractor = TextExtractor()
+        self.medical_parser = MedicalParser()
         
         logger.info("Document service initialized (upload_dir: %s)", self.upload_dir)
     
