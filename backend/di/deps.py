@@ -103,7 +103,7 @@ def get_aot_reasoner(
 ) -> AoTReasoner:
     aot_reasoner = container.aot_reasoner
     if aot_reasoner is None:
-        raise RuntimeError("AoT Reasoner not initialized")
+        raise HTTPException(status_code=503, detail="AoT Reasoner not initialized")
     return aot_reasoner
 
 
