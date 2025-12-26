@@ -10,7 +10,8 @@ An intelligent healthcare data bridge that connects Electronic Health Record (EH
 - **Intelligent Summaries & Alerts**: Generate concise patient histories with red-flag alerts (abnormal labs, overdue screenings)
 - **Clinical Decision Support**: AI-driven recommendations with citations to medical guidelines
 - **Cross-App Communication**: Send insights and notifications to external applications and clinician interfaces
-- [NEW] **Edge-Level Anomaly Detection**: Graph Neural Network (GNN) models for detecting security anomalies in FHIR/API logs.
+- [NEW] **Edge-Level Anomaly Detection**: Graph Neural Network (GNN) models for detecting security anomalies in FHIR/API logs
+- [NEW] **Persistent Database Storage**: PostgreSQL with Redis caching for scalable, production-ready data storage
 - **Continuous Learning**: Adapt to corrections and feedback to improve recommendations over time
 
 ---
