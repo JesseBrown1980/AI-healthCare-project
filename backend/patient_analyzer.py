@@ -267,7 +267,7 @@ class PatientAnalyzer:
             result["last_analyzed_at"] = analysis_end.isoformat()
             result["status"] = "completed"
 
-            self._add_to_history(result)
+            await self._add_to_history(result)
 
             logger.info(
                 "Analysis completed for patient %s in %.2fs",
@@ -312,7 +312,7 @@ class PatientAnalyzer:
         logger.info("Recording analysis for MLC learning: %s", patient_id)
         await self.mlc_learning.record_feedback(patient_id, analysis)
 
-    def _add_to_history(self, analysis: Dict[str, Any]) -> None:
+    async def _add_to_history(self, analysis: Dict[str, Any]) -> None:
         """Add an analysis result to history while enforcing limits and TTL."""
 
         patient_id = analysis.get("patient_id") or "unknown"
@@ -332,34 +332,13 @@ class PatientAnalyzer:
                     "recommendations": analysis.get("recommendations", []),
                 }
                 
-                # Save to database (async, but we're in sync context - will be handled by caller)
-                # For now, we'll save synchronously in a fire-and-forget manner
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # If loop is running, create a task
-                        asyncio.create_task(
-                            self.database_service.save_analysis(
-                                patient_id=patient_id,
-                                analysis_data=analysis_data,
-                                user_id=user_id,
-                                correlation_id=correlation_id,
-                            )
-                        )
-                    else:
-                        # If no loop running, run it
-                        loop.run_until_complete(
-                            self.database_service.save_analysis(
-                                patient_id=patient_id,
-                                analysis_data=analysis_data,
-                                user_id=user_id,
-                                correlation_id=correlation_id,
-                            )
-                        )
-                except RuntimeError:
-                    # No event loop, skip database save
-                    pass
+                # Save to database (now properly async)
+                await self.database_service.save_analysis(
+                    patient_id=patient_id,
+                    analysis_data=analysis_data,
+                    user_id=user_id,
+                    correlation_id=correlation_id,
+                )
             except Exception as e:
                 logger.warning("Failed to save analysis to database, falling back to in-memory: %s", str(e))
         
@@ -396,29 +375,15 @@ class PatientAnalyzer:
 
         return sorted(all_entries, key=self._timestamp_sort_key)
 
-    def get_latest_analysis(self, patient_id: str) -> Optional[Dict[str, Any]]:
+    async def get_latest_analysis(self, patient_id: str) -> Optional[Dict[str, Any]]:
         """Return the latest analysis for a specific patient."""
         
         # Try database first (if available)
         if self.database_service:
             try:
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # If loop is running, we can't use run_until_complete
-                        # Fall back to in-memory for now
-                        pass
-                    else:
-                        # Try to get from database
-                        db_result = loop.run_until_complete(
-                            self.database_service.get_latest_analysis(patient_id)
-                        )
-                        if db_result:
-                            return db_result
-                except RuntimeError:
-                    # No event loop, fall back to in-memory
-                    pass
+                db_result = await self.database_service.get_latest_analysis(patient_id)
+                if db_result:
+                    return db_result
             except Exception as e:
                 logger.debug("Failed to get analysis from database, using in-memory: %s", str(e))
         

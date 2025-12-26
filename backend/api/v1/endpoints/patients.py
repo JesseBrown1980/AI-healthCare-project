@@ -39,7 +39,7 @@ notifications_enabled: bool = os.getenv("ENABLE_NOTIFICATIONS", "false").lower()
 
 # Helpers (kept in this file as private domain logic for these endpoints)
 
-def _latest_analysis_for_patient(
+async def _latest_analysis_for_patient(
     patient_id: str, patient_analyzer: Optional[PatientAnalyzer]
 ) -> Optional[Dict[str, Any]]:
     """
@@ -48,7 +48,7 @@ def _latest_analysis_for_patient(
     """
     if not patient_analyzer:
         return None
-    return patient_analyzer.get_latest_analysis(patient_id)
+    return await patient_analyzer.get_latest_analysis(patient_id)
 
 
 def _dashboard_patient_list() -> List[Dict[str, Optional[str]]]:
@@ -85,7 +85,7 @@ def _build_patient_list_entry(
     Build a patient list entry dictionary from patient info, data, and analysis.
     Combines patient demographics with latest analysis results.
     """
-    latest_analysis = _latest_analysis_for_patient(
+    latest_analysis = await _latest_analysis_for_patient(
         patient.get("patient_id", ""), patient_analyzer
     )
     analysis_patient_data = (latest_analysis or {}).get("patient_data") or {}
@@ -190,7 +190,7 @@ async def _get_patient_summary(
     use_request_context: bool = True,
 ) -> Dict[str, Any]:
     cached = patient_summary_cache.get(patient_id)
-    latest_analysis = _latest_analysis_for_patient(patient_id, patient_analyzer)
+    latest_analysis = await _latest_analysis_for_patient(patient_id, patient_analyzer)
 
     if cached and (
         not latest_analysis
