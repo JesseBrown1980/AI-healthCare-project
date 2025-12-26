@@ -63,7 +63,10 @@ class DatabaseService:
         self,
         patient_id: str,
     ) -> Optional[Dict[str, Any]]:
-        """Get latest analysis for a patient with caching."""
+        """Get latest analysis for a patient with caching.
+        
+        Returns analysis in the same format as in-memory storage for compatibility.
+        """
         # Try cache first
         if self.redis_client:
             cached = await self.redis_client.get(f"patient:analysis:{patient_id}:latest")
@@ -83,15 +86,33 @@ class DatabaseService:
             if not analysis:
                 return None
             
+            # Extract the nested analysis_data (which contains the full original analysis)
+            nested_analysis = analysis.analysis_data or {}
+            
+            # Reconstruct the flat structure expected by the rest of the codebase
+            # This matches the in-memory format from PatientAnalyzer.analyze()
             data = {
-                "patient_id": analysis.patient_id,
-                "analysis_timestamp": analysis.analysis_timestamp.isoformat(),
-                "analysis_data": analysis.analysis_data,
-                "risk_scores": analysis.risk_scores,
-                "alerts": analysis.alerts,
-                "recommendations": analysis.recommendations,
-                "user_id": analysis.user_id,
-                "correlation_id": analysis.correlation_id,
+                # Top-level fields from nested analysis
+                "patient_id": nested_analysis.get("patient_id") or analysis.patient_id,
+                "patient_data": nested_analysis.get("patient_data"),
+                "last_analyzed_at": nested_analysis.get("last_analyzed_at") or analysis.analysis_timestamp.isoformat(),
+                "analysis_timestamp": nested_analysis.get("analysis_timestamp") or analysis.analysis_timestamp.isoformat(),
+                "status": nested_analysis.get("status", "completed"),
+                "summary": nested_analysis.get("summary"),
+                "alert_count": nested_analysis.get("alert_count"),
+                "highest_alert_severity": nested_analysis.get("highest_alert_severity"),
+                "overall_risk_score": nested_analysis.get("overall_risk_score"),
+                "polypharmacy_risk": nested_analysis.get("polypharmacy_risk"),
+                "medication_review": nested_analysis.get("medication_review"),
+                "active_specialties": nested_analysis.get("active_specialties"),
+                "analysis_duration_seconds": nested_analysis.get("analysis_duration_seconds"),
+                # Fields that were stored separately in database
+                "risk_scores": analysis.risk_scores or nested_analysis.get("risk_scores", {}),
+                "alerts": analysis.alerts or nested_analysis.get("alerts", []),
+                "recommendations": analysis.recommendations or nested_analysis.get("recommendations", []),
+                # Metadata
+                "user_id": analysis.user_id or nested_analysis.get("user_id"),
+                "correlation_id": analysis.correlation_id or nested_analysis.get("correlation_id"),
             }
             
             # Cache result
