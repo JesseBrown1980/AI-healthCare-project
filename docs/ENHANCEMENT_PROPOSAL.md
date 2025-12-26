@@ -3,6 +3,7 @@
 ## Executive Summary
 
 This document outlines strategic enhancements to the Healthcare AI Assistant, focusing on:
+
 1. **OCR Integration** for document digitization
 2. **Database Architecture** for scalable data storage
 3. **GNN Enhancement** leveraging the existing edge-level classification models
@@ -12,6 +13,7 @@ This document outlines strategic enhancements to the Healthcare AI Assistant, fo
 ## 1. 📄 OCR Integration for Document Processing
 
 ### Use Cases
+
 - **Patient Document Upload**: Lab results, prescriptions, medical records, insurance cards
 - **Clinical Note Digitization**: Handwritten notes, scanned forms, faxed documents
 - **Medical Image Text Extraction**: X-ray reports, pathology reports with text overlays
@@ -20,13 +22,14 @@ This document outlines strategic enhancements to the Healthcare AI Assistant, fo
 ### Recommended OCR Solution: **Tesseract + EasyOCR Hybrid**
 
 **Why this combination:**
+
 - **Tesseract**: Industry standard, free, good for printed text
 - **EasyOCR**: Better for handwritten text, multi-language support
 - **Modern OCR APIs** (optional): Google Cloud Vision, AWS Textract for production
 
 ### Implementation Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │              Document Upload Service                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
@@ -60,7 +63,7 @@ This document outlines strategic enhancements to the Healthcare AI Assistant, fo
 
 ### Proposed Module Structure
 
-```
+```text
 backend/
 ├── document_service.py          # Main OCR orchestration
 ├── ocr/
@@ -96,6 +99,7 @@ GET /api/v1/patients/{id}/documents
 ### Integration with Existing System
 
 **Workflow:**
+
 1. Patient/clinician uploads document via frontend
 2. OCR service extracts text
 3. Medical parser identifies key data (lab values, medications, dates)
@@ -112,13 +116,14 @@ GET /api/v1/patients/{id}/documents
 ## 2. 💾 Database Architecture
 
 ### Current State
+
 - **Primary Storage**: FHIR Server (HAPI FHIR with MySQL in Docker)
 - **Local Cache**: SQLite (`healthcare_ai.db`) for development
 - **In-Memory**: Analysis history, patient summaries
 
 ### Recommended Production Architecture
 
-```
+```text
 ┌──────────────────────────────────────────────────────────┐
 │                    Application Layer                     │
 │              (FastAPI Backend Services)                   │
@@ -150,6 +155,7 @@ GET /api/v1/patients/{id}/documents
 **Tables:**
 
 1. **documents**
+
    ```sql
    CREATE TABLE documents (
        id UUID PRIMARY KEY,
@@ -168,6 +174,7 @@ GET /api/v1/patients/{id}/documents
    ```
 
 2. **analysis_history**
+
    ```sql
    CREATE TABLE analysis_history (
        id UUID PRIMARY KEY,
@@ -183,6 +190,7 @@ GET /api/v1/patients/{id}/documents
    ```
 
 3. **ocr_extractions**
+
    ```sql
    CREATE TABLE ocr_extractions (
        id UUID PRIMARY KEY,
@@ -197,6 +205,7 @@ GET /api/v1/patients/{id}/documents
    ```
 
 4. **user_sessions**
+
    ```sql
    CREATE TABLE user_sessions (
        session_id UUID PRIMARY KEY,
@@ -209,6 +218,7 @@ GET /api/v1/patients/{id}/documents
    ```
 
 5. **audit_logs**
+
    ```sql
    CREATE TABLE audit_logs (
        id UUID PRIMARY KEY,
@@ -228,6 +238,7 @@ GET /api/v1/patients/{id}/documents
 #### **Redis - Cache & Queue**
 
 **Use Cases:**
+
 - Patient summary cache (TTL: 5 minutes)
 - Analysis job queue
 - Session storage
@@ -235,7 +246,8 @@ GET /api/v1/patients/{id}/documents
 - Real-time dashboard updates
 
 **Keys:**
-```
+
+```text
 patient:summary:{patient_id}          # Cached patient summaries
 analysis:job:{job_id}                 # Analysis job status
 session:{session_id}                  # User session data
@@ -245,11 +257,13 @@ rate_limit:{user_id}:{endpoint}       # API rate limiting
 #### **Vector Database - RAG Embeddings**
 
 **For Medical Knowledge Base:**
+
 - Store embeddings of clinical guidelines
 - Semantic search for recommendations
 - Drug interaction database embeddings
 
 **Options:**
+
 - **Pinecone**: Managed, easy integration
 - **Milvus**: Self-hosted, open-source
 - **Qdrant**: Lightweight, good for healthcare data
@@ -291,7 +305,8 @@ Currently used for **network security** (API log analysis). Extend to:
    - Access pattern anomalies (HIPAA compliance)
 
 2. **Graph Construction from Patient Data**
-   ```
+
+   ```text
    Nodes: Patients, Medications, Conditions, Providers
    Edges: 
      - Patient → Medication (prescribed)
@@ -340,19 +355,22 @@ class EnhancedPatientAnalyzer(PatientAnalyzer):
 
 ### Phase 1: OCR Integration (2-3 weeks)
 
-**Week 1: Core OCR**
+#### Week 1: Core OCR
+
 - [ ] Install OCR dependencies (Tesseract, EasyOCR)
 - [ ] Create `document_service.py`
 - [ ] Implement basic text extraction
 - [ ] Add document upload endpoint
 
-**Week 2: Medical Parsing**
+#### Week 2: Medical Parsing
+
 - [ ] Build medical text parser
 - [ ] Extract lab values, medications, dates
 - [ ] Create FHIR resource mapper
 - [ ] Add document-to-patient linking
 
-**Week 3: Integration & Testing**
+#### Week 3: Integration & Testing
+
 - [ ] Integrate with patient analyzer
 - [ ] Add frontend upload UI
 - [ ] Test with sample documents
@@ -360,13 +378,15 @@ class EnhancedPatientAnalyzer(PatientAnalyzer):
 
 ### Phase 2: Database Migration (1-2 weeks)
 
-**Week 1: Schema Design**
+#### Week 1: Schema Design
+
 - [ ] Design PostgreSQL schema
 - [ ] Create migration scripts (Alembic)
 - [ ] Set up Redis for caching
 - [ ] Configure connection pooling
 
-**Week 2: Migration & Testing**
+#### Week 2: Migration & Testing
+
 - [ ] Migrate existing data
 - [ ] Update services to use new DB
 - [ ] Add database health checks
@@ -374,17 +394,20 @@ class EnhancedPatientAnalyzer(PatientAnalyzer):
 
 ### Phase 3: GNN Healthcare Extension (2-3 weeks)
 
-**Week 1: Graph Construction**
+#### Week 1: Graph Construction
+
 - [ ] Build patient-medication-condition graph
 - [ ] Create graph builder for clinical data
 - [ ] Add graph visualization
 
-**Week 2: Anomaly Detection**
+#### Week 2: Anomaly Detection
+
 - [ ] Train GNN on clinical anomalies
 - [ ] Add multi-class classification
 - [ ] Integrate with patient analyzer
 
-**Week 3: Testing & Optimization**
+#### Week 3: Testing & Optimization
+
 - [ ] Validate anomaly detection accuracy
 - [ ] Optimize for real-time analysis
 - [ ] Add explainability features
@@ -394,6 +417,7 @@ class EnhancedPatientAnalyzer(PatientAnalyzer):
 ## 5. 📦 Dependencies to Add
 
 ### OCR Dependencies
+
 ```txt
 # backend/requirements.txt additions
 pytesseract>=0.3.10
@@ -404,6 +428,7 @@ python-multipart>=0.0.6  # For file uploads
 ```
 
 ### Database Dependencies
+
 ```txt
 # Already have:
 sqlalchemy>=2.0.0
@@ -415,6 +440,7 @@ redis>=5.0.0           # Caching
 ```
 
 ### Vector Database (Optional)
+
 ```txt
 pinecone-client>=2.2.4  # Or
 milvus>=2.3.0           # Or
@@ -426,18 +452,21 @@ qdrant-client>=1.6.0
 ## 6. 🎯 Benefits Summary
 
 ### OCR Integration
+
 - ✅ **Eliminates manual data entry** - Saves hours per day
 - ✅ **Improves data accuracy** - Reduces transcription errors
 - ✅ **Faster patient onboarding** - Instant document processing
 - ✅ **Better FHIR compliance** - Structured data from unstructured sources
 
 ### Database Architecture
+
 - ✅ **Scalability** - Handle millions of patients
 - ✅ **Performance** - Fast queries with proper indexing
 - ✅ **Reliability** - ACID transactions, backups
 - ✅ **Audit Trail** - Complete compliance logging
 
 ### GNN Enhancement
+
 - ✅ **Advanced anomaly detection** - Already implemented!
 - ✅ **Clinical insights** - Detect unusual patterns
 - ✅ **Security** - Monitor access patterns
@@ -448,12 +477,14 @@ qdrant-client>=1.6.0
 ## 7. 🔒 Security & Compliance Considerations
 
 ### OCR
+
 - **HIPAA Compliance**: Encrypt documents at rest
 - **PII Handling**: Redact sensitive info before OCR
 - **Access Control**: Role-based document access
 - **Audit Logging**: Track all document access
 
 ### Database
+
 - **Encryption**: Encrypt sensitive fields (at rest & in transit)
 - **Backup Strategy**: Daily backups, point-in-time recovery
 - **Access Control**: Database-level permissions
@@ -469,4 +500,3 @@ qdrant-client>=1.6.0
 4. **Enhance GNN** - Leverage existing implementation
 
 Would you like me to start implementing any of these features?
-
