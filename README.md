@@ -142,7 +142,7 @@ Live knowledge integration ensures cutting-edge medical information:
    # Server runs on http://localhost:8000
    ```
 
-5. **Run the Streamlit UI (default frontend)**
+6. **Run the Streamlit UI (default frontend)**
    ```bash
    cd ../frontend
    python -m venv venv
@@ -153,7 +153,7 @@ Live knowledge integration ensures cutting-edge medical information:
    ```
    The Streamlit experience is the default user interface. Use it if you want the quickest path to a working UI without Node.js.
 
-6. **(Optional/in-progress) Run the React frontend**
+7. **(Optional/in-progress) Run the React frontend**
    ```bash
    cd ../react_frontend
    npm install
@@ -162,7 +162,7 @@ Live knowledge integration ensures cutting-edge medical information:
    ```
    The React client is currently a skeleton: no API calls are wired up yet and several components/pages are stubs. Use it only if you plan to build out the React experience yourself. For demos, deployments, or user testing, the Streamlit UI remains the only fully working frontend today.
 
-7. **Run the mobile app**
+8. **Run the mobile app**
    ```bash
    cd ../mobile
    npm install
