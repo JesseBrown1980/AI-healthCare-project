@@ -10,7 +10,8 @@ from backend.di import (
     get_patient_analyzer,
     get_patient_summary_cache,
 )
-from backend.main import TokenContext, app
+from backend.main import app
+from backend.security import TokenContext
 
 
 class _FakeFHIRConnector:

@@ -8,10 +8,11 @@ class TestAnomalyService(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_health_check(self):
-        # Since TestClient runs lifespan, the model should be initialized and return 200
-        response = self.client.get("/security/anomaly/health")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "ready")
+        # Using context manager to ensure lifespan (startup/shutdown) runs correctly
+        with TestClient(app) as client:
+            response = client.get("/security/anomaly/health")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "ready")
 
     def test_score_endpoint(self):
         # Mock payload
@@ -30,25 +31,26 @@ class TestAnomalyService(unittest.TestCase):
                     "timestamp": datetime.now().isoformat(),
                     "source_entity": "ip_10.0.0.1",
                     "destination_entity": "endpoint_login",
-                    "action": "POST",
+                    "action": "LOGIN",
                     "metadata": {}
                 }
             ]
         }
         
-        response = self.client.post("/security/anomaly/score", json=payload)
-        
-        # We expect a success
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIn("results", data)
-        self.assertEqual(len(data["results"]), 2)
-        
-        # Check structure of first result
-        res1 = data["results"][0]
-        self.assertEqual(res1["event_id"], "evt_1")
-        self.assertIsInstance(res1["anomaly_score"], float)
-        self.assertIn("is_anomaly", res1)
+        with TestClient(app) as client:
+            response = client.post("/security/anomaly/score", json=payload)
+            
+            # We expect a success
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn("results", data)
+            self.assertEqual(len(data["results"]), 2)
+            
+            # Check structure of first result
+            res1 = data["results"][0]
+            self.assertEqual(res1["event_id"], "evt_1")
+            self.assertIsInstance(res1["anomaly_score"], float)
+            self.assertIn("is_anomaly", res1)
 
 if __name__ == "__main__":
     unittest.main()

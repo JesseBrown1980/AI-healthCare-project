@@ -2,10 +2,8 @@ import asyncio
 
 import pytest
 
-from backend.services.patient_services import (
-    MedicationReviewService,
-    RiskScoringService,
-)
+from backend.risk_scoring_service import RiskScoringService
+
 
 
 def test_patient_services_risk_scoring_flags_polypharmacy_at_ten_medications():
@@ -24,7 +22,7 @@ def test_patient_services_risk_scoring_flags_polypharmacy_at_ten_medications():
 
 
 def test_medication_review_flags_polypharmacy_issue_at_ten_medications():
-    review_service = MedicationReviewService()
+    review_service = RiskScoringService()
     patient_data = {
         "patient": {"id": "boundary"},
         "medications": [{"medication": f"Rx{i}", "status": "active"} for i in range(10)],

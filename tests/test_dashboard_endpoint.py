@@ -13,7 +13,9 @@ from backend.di import (
     get_patient_analyzer,
     get_patient_summary_cache,
 )
-from backend.main import PatientAnalyzer, TokenContext, app
+from backend.main import app
+from backend.patient_analyzer import PatientAnalyzer
+from backend.security import TokenContext
 
 
 class _StubAnalyzer:

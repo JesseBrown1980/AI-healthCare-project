@@ -30,7 +30,8 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 
 | Module | Purpose | Key Features |
 |--------|---------|--------------|
-| `main.py` | FastAPI server | Lifecycle management, error handling |
+| `api/` | Modular Routers | `auth`, `patients`, `clinical`, `system` endpoints |
+| `main.py` | FastAPI Application | Global lifecycle, middleware, WebSockets |
 | `fhir_connector.py` | EHR integration | FHIR auth, resource parsing, normalization |
 | `llm_engine.py` | LLM interface | Multi-provider support (OpenAI, Anthropic, local) |
 | `rag_fusion.py` | Knowledge retrieval | Medical guidelines, drug DB, semantic search |
@@ -39,6 +40,7 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 | `aot_reasoner.py` | Reasoning engine | Chain-of-thought, multi-path reasoning |
 | `patient_analyzer.py` | Orchestration | Combines all components for analysis |
 | `explainability.py` | Model explainability | Baseline logistic regression, SHAP attributions |
+| `anomaly_detector/` | Anomaly Detection | GNN-based security monitoring (GSL, Prototype, Contrastive) |
 
 ### Frontend Interface (`/frontend/`)
 - **Streamlit Web Dashboard**: Interactive interface with:
@@ -135,6 +137,20 @@ A state-of-the-art **AI-driven healthcare application** that intelligently bridg
 - Works with any FHIR-compliant EHR
 - No custom integration per hospital
 - Standardized healthcare data handling
+
+### 6. **Edge-Level Anomaly Detection (GNN)** ⭐
+**Problem Solved**: Detect sophisticated security threats and anomalies in healthcare data flows.
+
+**Implementation**:
+- **GSL-GNN**: Most advanced model with 96.66% accuracy using Graph Structure Learning.
+- **Contrastive-GNN**: Achieves 94.71% accuracy using supervised contrastive loss.
+- **Prototype-GNN**: Achieves 94.24% accuracy using prototype-based classification.
+- Real-time graph construction from audit logs.
+
+**Impact**:
+- High-precision security monitoring.
+- Structural explainability for anomaly scores.
+- Proactive threat detection.
 
 ---
 
@@ -346,6 +362,7 @@ This project positions you as:
 - [ ] Regulatory compliance (FDA pathway)
 
 ### Phase 4: Monetization/Impact
+- [x] Edge-Level Anomaly Detection Service
 - [ ] Open source community (GitHub)
 - [ ] Healthcare provider partnerships
 - [ ] Clinical research collaborations

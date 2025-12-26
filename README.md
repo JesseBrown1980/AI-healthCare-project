@@ -10,6 +10,7 @@ An intelligent healthcare data bridge that connects Electronic Health Record (EH
 - **Intelligent Summaries & Alerts**: Generate concise patient histories with red-flag alerts (abnormal labs, overdue screenings)
 - **Clinical Decision Support**: AI-driven recommendations with citations to medical guidelines
 - **Cross-App Communication**: Send insights and notifications to external applications and clinician interfaces
+- [NEW] **Edge-Level Anomaly Detection**: Graph Neural Network (GNN) models for detecting security anomalies in FHIR/API logs.
 - **Continuous Learning**: Adapt to corrections and feedback to improve recommendations over time
 
 ---
@@ -75,17 +76,17 @@ Live knowledge integration ensures cutting-edge medical information:
 │  │ API Routes  │  │ Auth/Security│ │ Error Handling     │ │
 │  └─────────────┘  └─────────────┘  └────────────────────┘ │
 └──────────────────────┬──────────────────────────────────────┘
-          │            │            │
-          ▼            ▼            ▼
-┌──────────────────┐ ┌────────────────────┐ ┌──────────────┐
-│  FHIR Connector  │ │  LLM + RAG Engine  │ │ S-LoRA Mgmt  │
-│  (Healthcare)    │ │  (Reasoning)       │ │ (Efficiency) │
-└──────────────────┘ └────────────────────┘ └──────────────┘
-          │            │            │
-    ┌─────▼─────┐ ┌───▼──────┐ ┌──▼────────┐
-    │ EHR/FHIR  │ │ Medical  │ │ MLC Learn │
-    │ Servers   │ │ KB Index │ │ Feedback  │
-    └───────────┘ └──────────┘ └───────────┘
+          │            │            │            │
+          ▼            ▼            ▼            ▼
+┌──────────────────┐ ┌────────────────────┐ ┌──────────────┐ ┌────────────────────┐
+│  FHIR Connector  │ │  LLM + RAG Engine  │ │ S-LoRA Mgmt  │ │  Anomaly Detector  │
+│  (Healthcare)    │ │  (Reasoning)       │ │ (Efficiency) │ │  (GNN/Security)    │
+└──────────────────┘ └────────────────────┘ └──────────────┘ └────────────────────┘
+          │            │            │            │
+    ┌─────▼─────┐ ┌───▼──────┐ ┌──▼────────┐ ┌──▼───────┐
+    │ EHR/FHIR  │ │ Medical  │ │ MLC Learn │ │ API Logs │
+    │ Servers   │ │ KB Index │ │ Feedback  │ │ Audit DB │
+    └───────────┘ └──────────┘ └───────────┘ └──────────┘
 ```
 
 ---
@@ -310,6 +311,13 @@ SHAP (SHapley Additive exPlanations) assigns each feature a contribution score f
 - Risk score calculation that weights age, high-risk conditions (e.g., hypertension, diabetes, smoking status), and medication burden—including polypharmacy thresholds that surface deprescribing opportunities
 - Decision support generation
 
+#### `/backend/anomaly_detector/`
+- **Edge-Level GNN Anomaly Detection**:
+  - `PrototypeGNN`: State-of-the-art prototype-based learning for healthcare security (94.24% accuracy).
+  - `ContrastiveGNN`: Supervised contrastive learning for robust anomaly detection (94.71% accuracy).
+  - `GSLGNN`: Graph Structure Learning GNN – our most advanced model for capturing complex dependencies (96.66% accuracy).
+- Includes structural explainability via connection strength analysis.
+
 ### Data Models (`/models/`)
 - `FHIR_models.py`: Healthcare resource definitions
 - `request_models.py`: API request/response schemas
@@ -502,7 +510,8 @@ MIT License - See `LICENSE` file
 - [ ] Integration with major EHR systems (Epic, Cerner)
 - [ ] Mobile app (iOS/Android) for clinician alerts
 - [ ] Advanced MLC with reinforcement learning
-- [ ] Explainability dashboards with SHAP analysis
+- [x] Explainability dashboards with SHAP analysis
+- [x] Edge-Level Anomaly Detection (GNN Integration)
 - [ ] Real-time multi-patient dashboard
 - [ ] Regulatory approvals (FDA, CE marking)
 

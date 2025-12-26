@@ -38,10 +38,34 @@ class GraphBuilder:
             
         edge_index = torch.tensor([src_indices, dst_indices], dtype=torch.long)
         
-        # 2. Generate Dummy Node Features (in real app, use one-hot or semantic features)
-        # Simply random or constant for baseline
+        # 2. Generate Semantic Node Features
+        # Categorize entities and assign meaningful base features
         num_nodes = len(self.node_map)
-        # Using random features for now as placeholder
-        x = torch.randn((num_nodes, self.feature_dim))
+        x = torch.zeros((num_nodes, self.feature_dim))
         
+        # Define semantic categories and their base characteristics
+        # In a real app, these would be learnable or domain-driven
+        category_bases = {
+            "user": torch.ones(self.feature_dim) * 0.5,
+            "patient": torch.ones(self.feature_dim) * -0.5,
+            "ip": torch.tensor([1.0 if i % 2 == 0 else -1.0 for i in range(self.feature_dim)]),
+            "system": torch.zeros(self.feature_dim),
+            "unknown": torch.randn(self.feature_dim) * 0.1
+        }
+        
+        for entity_id, idx in self.node_map.items():
+            # Identity type based on prefix
+            category = "unknown"
+            if entity_id.startswith("user_"): category = "user"
+            elif entity_id.startswith("patient_"): category = "patient"
+            elif entity_id.startswith("ip_"): category = "ip"
+            elif entity_id.startswith("system_"): category = "system"
+            
+            base = category_bases[category]
+            
+            # Combine base with deterministic noise for uniqueness
+            torch.manual_seed(hash(entity_id) % (2**32))
+            noise = torch.randn(self.feature_dim) * 0.1
+            x[idx] = base + noise
+            
         return x, edge_index, edge_event_ids

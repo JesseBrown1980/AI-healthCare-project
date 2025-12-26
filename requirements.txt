@@ -1,5 +1,8 @@
-# Consolidated dependencies for backend services and tests
+# Backend dependencies
 -r backend/requirements.txt
+
+# Frontend dependencies
+-r frontend/requirements.txt
 
 # Explainability and modeling
 scikit-learn

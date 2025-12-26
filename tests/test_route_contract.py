@@ -15,6 +15,7 @@ CRITICAL_ROUTES = {
     "/api/v1/patient/{patient_id}/fhir",
     "/api/v1/patient/{patient_id}/explain",
     "/api/v1/explain/{patient_id}",
+    "/api/v1/analyze-patient",
 }
 
 

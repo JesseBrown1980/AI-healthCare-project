@@ -1,26 +1,25 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
+from fastapi.responses import JSONResponse
 from .config import settings
-from .models.gnn_baseline import EdgeLevelGNN
 from .api import router as api_router
+from .exceptions import AnomalyDetectionError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize Model using Singleton Service
-    print("Initializing Anomaly Detection Model...")
+    settings.logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     try:
         from .service import anomaly_service
         anomaly_service.initialize()
-        # Bind the model from service to app state for easy access in API
         app.state.model = anomaly_service.get_model()
         app.state.is_loaded = True
-        print("Model initialized and bound to app state.")
+        settings.logger.info("Model lifecycle initialized and bound to app state.")
     except Exception as e:
-        print(f"Failed to initialize model: {e}")
+        settings.logger.critical(f"Critical failure during service startup: {e}")
         app.state.is_loaded = False
         
     yield
-    print("Shutting down Anomaly Detection Service...")
+    settings.logger.info(f"Shutting down {settings.PROJECT_NAME}")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -47,6 +46,29 @@ async def root():
 
 # Include API Router
 app.include_router(api_router, prefix=settings.API_V1_STR, tags=["anomaly-detection"])
+
+@app.exception_handler(AnomalyDetectionError)
+async def anomaly_detection_exception_handler(request: Request, exc: AnomalyDetectionError):
+    settings.logger.error(f"Domain Error: {exc.message} | Detail: {exc.detail}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "AnomalyDetectionError",
+            "message": exc.message,
+            "detail": exc.detail
+        },
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    settings.logger.error(f"Unhandled Exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "InternalServerError",
+            "message": "An unexpected error occurred in the security processing pipeline."
+        },
+    )
 
 if __name__ == "__main__":
     import uvicorn

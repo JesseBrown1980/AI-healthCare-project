@@ -72,7 +72,7 @@ class RiskScoringService:
             review["medications"].append(med_review)
 
         # Identify deprescribing opportunities (simplified)
-        if review["total_medications"] > 10:
+        if review["total_medications"] >= 10:
             review["potential_issues"].append(
                 "Polypharmacy (>10 medications) - review for duplication"
             )

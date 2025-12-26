@@ -59,6 +59,23 @@ curl -X POST http://localhost:8000/api/v1/analyze-patient \
     "include_recommendations": true,
     "specialty": "cardiology"
   }'
+
+### 🛡️ Anomaly Detection
+```bash
+curl -X POST http://localhost:8000/api/v1/anomaly/score \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "event_id": "evt-001",
+        "source": "192.168.1.10",
+        "target": "patient_records",
+        "action": "READ",
+        "timestamp": "2023-10-27T10:00:00Z"
+      }
+    ]
+  }'
+```
 ```
 
 ### Medical Query
@@ -94,7 +111,15 @@ curl http://localhost:8000/api/v1/stats
 ```
 AI-healthCare-project/
 ├── backend/
-│   ├── main.py                 # FastAPI server
+│   ├── api/                    # Modular API Layer
+│   │   └── v1/
+│   │       ├── api.py          # Central V1 router
+│   │       └── endpoints/      # Domain-specific routers
+│   │           ├── auth.py
+│   │           ├── patients.py
+│   │           ├── clinical.py
+│   │           └── system.py
+│   ├── main.py                 # FastAPI application & WebSockets
 │   ├── fhir_connector.py        # EHR integration
 │   ├── llm_engine.py            # LLM interface
 │   ├── rag_fusion.py            # Knowledge retrieval
@@ -102,6 +127,7 @@ AI-healthCare-project/
 │   ├── mlc_learning.py          # Learning system
 │   ├── aot_reasoner.py          # Reasoning engine
 │   ├── patient_analyzer.py      # Orchestration
+│   ├── anomaly_detector/        # GNN security
 │   └── requirements.txt         # Python deps
 ├── frontend/
 │   ├── app.py                   # Streamlit UI

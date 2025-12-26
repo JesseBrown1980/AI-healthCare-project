@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi.testclient import TestClient
 
-from backend.di import get_audit_service, get_s_lora_manager
+from backend.di import get_audit_service, get_s_lora_manager, get_optional_s_lora_manager
 from backend.main import app
 
 
@@ -41,7 +41,7 @@ def test_get_adapters_returns_stubbed_status():
     stub_manager = _StubSLoRAManager(status_response=status_payload)
 
     overrides = {
-        get_s_lora_manager: lambda: stub_manager,
+        get_optional_s_lora_manager: lambda: stub_manager,
         get_audit_service: lambda: None,
     }
     app.dependency_overrides.update(overrides)

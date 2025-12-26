@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class HealthCheckResponse(BaseModel):
@@ -45,6 +45,7 @@ class DashboardEntry(BaseModel):
     latest_risk_score: Optional[float] = None
     highest_alert_severity: Optional[str] = None
     last_analyzed_at: Optional[str] = None
+    specialty: Optional[str] = None
 
 
 class Alert(BaseModel):
@@ -59,6 +60,24 @@ class Alert(BaseModel):
 
 class AlertsResponse(BaseModel):
     alerts: List[Alert]
+
+
+class AnalyzePatientRequest(BaseModel):
+    fhir_patient_id: Optional[str] = None
+    patient_id: Optional[str] = None  # Alias for fhir_patient_id
+    include_recommendations: bool = True
+    specialty: Optional[str] = None
+    use_cache: bool = True
+    notify: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_patient_ids(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Allow patient_id as alias for fhir_patient_id."""
+        if isinstance(values, dict):
+            if not values.get("fhir_patient_id") and values.get("patient_id"):
+                values["fhir_patient_id"] = values.get("patient_id")
+        return values
 
 
 class AnalyzePatientResponse(BaseModel):
@@ -145,3 +164,38 @@ class StatsResponse(BaseModel):
     status: str
     timestamp: str
     stats: Dict[str, Any]
+
+
+class DemoLoginRequest(BaseModel):
+    email: str
+    password: Optional[str] = None
+    patient: Optional[str] = None
+
+
+class DemoLoginResponse(BaseModel):
+    access_token: str
+    expires_in: int
+
+
+class DeviceRegistration(BaseModel):
+    device_token: str
+    platform: str = "unknown"
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_device_token(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Allow payloads that send push_token instead of device_token."""
+        if isinstance(values, dict):
+            if not values.get("device_token") and values.get("push_token"):
+                values["device_token"] = values["push_token"]
+        return values
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        normalized = value.strip().lower() if value else "unknown"
+        if normalized in {"ios", "android"}:
+            return "iOS" if normalized == "ios" else "Android"
+        if normalized in {"expo", "unknown", ""}:
+            return "Expo" if normalized == "expo" else "Unknown"
+        raise ValueError("platform must be iOS, Android, or Expo")

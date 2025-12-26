@@ -168,16 +168,19 @@ class GSLGNN(nn.Module):
         row, col = edge_index
         return torch.cat([node_embeddings[row], node_embeddings[col]], dim=1)
     
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, 
+                return_weights: bool = False) -> torch.Tensor:
         """
         Forward pass.
         
         Args:
             x: Node features [num_nodes, node_input_dim]
             edge_index: Graph connectivity [2, num_edges]
+            return_weights: If True, also return learned adjacency weights
             
         Returns:
             probabilities: Edge class probabilities [num_edges]
+            learned_adj (optional): Learned adjacency matrix [num_nodes, num_nodes]
         """
         num_nodes = x.shape[0]
         
@@ -208,10 +211,30 @@ class GSLGNN(nn.Module):
         probs = F.softmax(logits, dim=-1)
         
         if self.num_classes == 2:
-            return probs[:, 1]  # Return anomaly probability
-        return probs
+            scores = probs[:, 1]
+        else:
+            scores = probs
+            
+        if return_weights:
+            return scores, learned_adj
+        return scores
     
     def get_learned_graph(self, x: torch.Tensor, 
                           edge_index: torch.Tensor) -> torch.Tensor:
         """Return the learned adjacency matrix for visualization/analysis."""
         return self.gsl(x, edge_index)
+
+    def get_edge_importance(self, learned_adj: torch.Tensor, 
+                            edge_index: torch.Tensor) -> torch.Tensor:
+        """
+        Extract importance scores for specific edges from the learned adjacency.
+        
+        Args:
+            learned_adj: [num_nodes, num_nodes]
+            edge_index: [2, num_edges]
+            
+        Returns:
+            importance: [num_edges]
+        """
+        row, col = edge_index
+        return learned_adj[row, col]

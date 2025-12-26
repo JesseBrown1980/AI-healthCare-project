@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi.testclient import TestClient
 
 from backend.di import get_audit_service, get_fhir_connector
-from backend.main import TokenContext, app
+from backend.main import app
+from backend.security import TokenContext
 
 
 class _StubFhirConnector:
@@ -69,11 +70,13 @@ def test_get_patient_fhir_uses_injected_dependencies():
         app.router.lifespan_context = original_lifespan
 
     assert response.status_code == 200
-    assert response.json() == {
-        "status": "success",
-        "patient_id": "test-patient",
-        "data": {"resourceType": "Patient", "id": "test-patient"},
-    }
+    json_response = response.json()
+    assert json_response["status"] == "success"
+    assert json_response["patient_id"] == "test-patient"
+    assert json_response["data"] == {"resourceType": "Patient", "id": "test-patient"}
+    assert "correlation_id" in json_response
+    assert json_response.get("error_type") is None
+    assert json_response.get("message") is None
 
     assert stub_connector.context_calls == [("token", stub_token.scopes, None)]
     assert any(event.get("outcome") == "0" for event in stub_audit_service.events)

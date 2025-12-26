@@ -42,6 +42,7 @@ from backend.anomaly_detector.service import anomaly_service
 from jose import jwt
 from backend.analysis_cache import AnalysisJobManager
 from backend.audit_service import AuditService
+from backend.database import init_database, close_database, DatabaseService
 from backend.di import (
     ServiceContainer,
     get_container,
@@ -122,6 +123,12 @@ async def lifespan(app: FastAPI):
             _broadcast_analysis_updates(container)
         )
 
+        # Initialize Database
+        logger.info("Initializing Database...")
+        await init_database()
+        app.state.db_service = DatabaseService()
+        logger.info("✓ Database initialized successfully")
+        
         # Initialize Anomaly Detector
         logger.info("Initializing Anomaly Detector...")
         anomaly_service.initialize()
@@ -158,6 +165,9 @@ async def lifespan(app: FastAPI):
         await container.shutdown()
     else:
         await close_shared_async_client()
+    
+    # Close database connections
+    await close_database()
     logger.info("Shutdown complete")
 
 

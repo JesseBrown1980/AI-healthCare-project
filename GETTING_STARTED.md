@@ -250,6 +250,12 @@ Central orchestrator
 - Performs comprehensive analysis
 - Generates reports
 
+### 🛡️ Anomaly Detector (`backend/anomaly_detector/`)
+Edge-level security monitoring
+- Uses Graph Neural Networks (GNN) to detect anomalies in API logs
+- Multi-model support (GSL, Contrastive, Prototype)
+- Provides structural explainability for security events
+
 ---
 
 ## Working with Patients
@@ -544,6 +550,25 @@ curl -X POST http://localhost:8000/api/v1/feedback \
     "query_id":"q-789",
     "feedback_type":"correction",
     "corrected_text":"The correct answer is..."
+  }'
+```
+
+### Task 4: Security Monitoring (Anomaly Detection)
+
+```bash
+# Score a batch of API log events for anomalies
+curl -X POST http://localhost:8000/api/v1/anomaly/score \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "event_id": "evt-001",
+        "source": "192.168.1.10",
+        "target": "patient_records",
+        "action": "READ",
+        "timestamp": "2023-10-27T10:00:00Z"
+      }
+    ]
   }'
 ```
 

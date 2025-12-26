@@ -68,6 +68,13 @@
    - Recommendation synthesis
    - ~400 lines of code
 
+9. ✅ **Anomaly Detector** (`anomaly_detector/`)
+   - Edge-level security monitoring
+   - GNN-based threat detection (GSL, Contrastive, Prototype)
+   - Structural explainability for anomalies
+   - Real-time graph construction from API logs
+   - ~2,700 lines of code
+
 ### Frontend Interface
 
 ✅ **Streamlit Dashboard** (`frontend/app.py`)
@@ -153,8 +160,8 @@
 
 | Metric | Count |
 |--------|-------|
-| Python modules | 8 |
-| Lines of backend code | ~3,000+ |
+| Python modules | 9 |
+| Lines of backend code | ~5,700+ |
 | Lines of frontend code | ~600+ |
 | API endpoints | 10+ |
 | Medical specialties | 10 |
@@ -162,7 +169,7 @@
 | Total documentation lines | 2,500+ |
 | Docker configurations | 2 |
 | Data model definitions | 15+ |
-| Core AI techniques | 5 |
+| Core AI techniques | 6 |
 
 ---
 

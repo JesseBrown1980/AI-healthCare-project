@@ -209,6 +209,10 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
 ENABLE_NOTIFICATIONS=true
 # Push notifications expect a human-readable title/body payload for FCM display
 
+# Anomaly Detector Settings
+MODEL_TYPE=gsl  # Options: baseline, prototype, contrastive, gsl
+ANOMALY_THRESHOLD=0.8
+
 # Database
 DATABASE_URL=sqlite:///./healthcare_ai.db
 

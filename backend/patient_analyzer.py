@@ -353,6 +353,69 @@ class PatientAnalyzer:
 
         return sum(len(bucket) for bucket in self.analysis_history.values())
 
+    def collect_recent_alerts(
+        self,
+        limit: int,
+        patient_id: Optional[str] = None,
+        roster_lookup: Optional[Dict[str, str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Aggregate recent critical and high-severity alerts from analysis history.
+        """
+        alerts: List[Dict[str, Any]] = []
+        history = self.get_history(patient_id=patient_id)
+
+        for analysis in reversed(history):
+            timestamp = analysis.get("analysis_timestamp") or analysis.get("timestamp")
+            analysis_patient_id = analysis.get("patient_id")
+
+            patient_name = (
+                (analysis.get("summary") or {}).get("patient_name")
+                or (analysis.get("patient_data") or {})
+                .get("patient", {})
+                .get("name")
+                or (roster_lookup.get(analysis_patient_id) if roster_lookup else None)
+                or analysis_patient_id
+            )
+
+            for idx, alert in enumerate(analysis.get("alerts") or []):
+                normalized = alert if isinstance(alert, dict) else {"summary": str(alert)}
+                severity = (normalized.get("severity") or "").lower()
+
+                if severity not in {"critical", "high"}:
+                    continue
+
+                alerts.append(
+                    {
+                        "id": normalized.get("id")
+                        or f"{analysis_patient_id}-{idx}-{timestamp or len(alerts)}",
+                        "patient_id": analysis_patient_id,
+                        "patient_name": patient_name,
+                        "title": normalized.get("title")
+                        or normalized.get("type")
+                        or "Clinical Alert",
+                        "summary": normalized.get("summary")
+                        or normalized.get("description")
+                        or normalized.get("message")
+                        or str(alert),
+                        "severity": normalized.get("severity") or "critical",
+                        "timestamp": normalized.get("timestamp")
+                        or normalized.get("created_at")
+                        or timestamp
+                        or datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+
+                if len(alerts) >= limit:
+                    break
+
+            if len(alerts) >= limit:
+                break
+
+        return sorted(alerts, key=lambda a: a.get("timestamp", ""), reverse=True)[:limit]
+
+
+
     def get_stats(self) -> Dict:
         """Get analyzer statistics"""
         return {

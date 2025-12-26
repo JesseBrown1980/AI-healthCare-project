@@ -10,7 +10,9 @@ This service manages the GNN model lifecycle with support for multiple architect
 
 import os
 import torch
+import logging
 from .config import settings
+from .exceptions import ModelInitializationError, ConfigurationError
 
 
 def load_model(model_type: str = None):
@@ -62,8 +64,11 @@ def load_model(model_type: str = None):
         )
     
     else:
-        raise ValueError(f"Unknown model type: {model_type}. "
-                        f"Valid options: baseline, prototype, contrastive, gsl")
+        settings.logger.error(f"Unsupported model type requested: {model_type}")
+        raise ConfigurationError(
+            message=f"Unknown model type: {model_type}",
+            detail=f"Valid options are: baseline, prototype, contrastive, gsl"
+        )
 
 
 class AnomalyService:
@@ -88,18 +93,25 @@ class AnomalyService:
             return
 
         self.model_type = model_type or settings.MODEL_TYPE
-        print(f"[{settings.PROJECT_NAME}] Initializing {self.model_type.upper()} model...")
+        settings.logger.info(f"Initializing {self.model_type.upper()} model...")
         
-        self.model = load_model(self.model_type)
-        
-        # In production, load pre-trained weights here:
-        # weights_path = f"weights/{self.model_type}_model.pt"
-        # if os.path.exists(weights_path):
-        #     self.model.load_state_dict(torch.load(weights_path))
-        
-        self.model.eval()
-        self.is_initialized = True
-        print(f"[{settings.PROJECT_NAME}] {self.model_type.upper()} model initialized successfully.")
+        try:
+            self.model = load_model(self.model_type)
+            
+            # In production, load pre-trained weights here
+            # weights_path = f"weights/{self.model_type}_model.pt"
+            # if os.path.exists(weights_path):
+            #     self.model.load_state_dict(torch.load(weights_path))
+            
+            self.model.eval()
+            self.is_initialized = True
+            settings.logger.info(f"{self.model_type.upper()} model initialized successfully.")
+        except Exception as e:
+            settings.logger.error(f"Failed to initialize {self.model_type}: {e}")
+            raise ModelInitializationError(
+                message=f"Model {self.model_type} initialization failed",
+                detail=str(e)
+            )
 
     def get_model(self):
         if not self.is_initialized:

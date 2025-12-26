@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from backend.anomaly_detector.service import anomaly_service
 from backend.anomaly_detector.models.schemas import LogEvent
 from backend.anomaly_detector.models.graph_builder import GraphBuilder
-from datetime import datetime
+from datetime import datetime, timezone
 
 async def test_flow():
     print("--- Starting GNN Anomaly Service Verification ---")
@@ -20,23 +20,23 @@ async def test_flow():
     model = anomaly_service.get_model()
     
     if model is None:
-        print("❌ Model failed to initialize.")
+        print("[ERROR] Model failed to initialize.")
         return
-    print("✅ Model initialized.")
+    print("[OK] Model initialized.")
 
     # 2. Simulate Data
     print("[2] Simulating Audit Logs...")
     events = [
         LogEvent(
             event_id="evt_1",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source_entity="user_123",
             destination_entity="patient_record_abc",
             action="READ"
         ),
         LogEvent(
             event_id="evt_2",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source_entity="user_123",
             destination_entity="system_config",
             action="DELETE" # Suspicious
@@ -56,7 +56,7 @@ async def test_flow():
         scores = model(x, edge_index)
         print(f"   Raw Scores: {scores}")
         
-    print("✅ Verification Complete. Flow works end-to-end.")
+    print("[OK] Verification Complete. Flow works end-to-end.")
 
 if __name__ == "__main__":
     asyncio.run(test_flow())

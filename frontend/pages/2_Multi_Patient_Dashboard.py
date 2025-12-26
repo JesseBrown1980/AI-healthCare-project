@@ -5,7 +5,13 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import requests
 import streamlit as st
-from streamlit import st_autorefresh
+from streamlit_autorefresh import st_autorefresh
+import sys
+import os
+
+# Add project root to sys.path to allow importing from 'frontend' package
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 from frontend.utils.env_loader import get_api_url, load_environment
 
 load_environment()  # BEGIN AI GENERATED: centralized env loading # END AI GENERATED
@@ -112,7 +118,9 @@ def render_dashboard():
             return ["background-color: #fff1f2" for _ in row]
         return ["" for _ in row]
 
-    styled = dataframe.style.apply(highlight_rows, axis=1).format({"Risk Score": "{:.2f}"})
+    styled = dataframe.style.apply(highlight_rows, axis=1).format(
+        {"Risk Score": lambda x: "{:.2f}".format(x) if x is not None and isinstance(x, (int, float)) else "N/A"}
+    )
     st.dataframe(styled, use_container_width=True, height=320)
 
     st.markdown("---")
@@ -121,9 +129,12 @@ def render_dashboard():
         st.subheader("🚨 High Risk Patients")
         for patient in high_risk:
             last_seen = patient.get("parsed_last_analyzed")
+            risk_val = patient.get("latest_risk_score")
+            risk_str = f"{risk_val:.2f}" if risk_val is not None else "N/A"
+            
             st.write(
                 f"**{patient.get('name') or patient.get('patient_id')}** — Risk Score: "
-                f"{patient.get('latest_risk_score'):.2f} | Alerts: "
+                f"{risk_str} | Alerts: "
                 f"{(patient.get('highest_alert_severity') or 'none').title()} | "
                 f"Last analyzed: {last_seen.isoformat() if last_seen else 'unknown'}"
             )
