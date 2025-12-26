@@ -250,4 +250,135 @@ class DatabaseService:
             session.add(audit_log)
             await session.flush()
             return audit_log.id
+    
+    # ==================== Document Management ====================
+    
+    async def save_document(self, document_data: Dict[str, Any]) -> str:
+        """Save a document record."""
+        async with get_db_session() as session:
+            document = Document(
+                id=document_data["id"],
+                patient_id=document_data.get("patient_id"),
+                document_type=document_data.get("document_type"),
+                file_path=document_data["file_path"],
+                file_hash=document_data["file_hash"],
+                uploaded_at=document_data.get("uploaded_at", datetime.now(timezone.utc)),
+                created_by=document_data.get("created_by"),
+            )
+            session.add(document)
+            await session.flush()
+            return document.id
+    
+    async def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
+        """Get a document by ID."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Document).where(Document.id == document_id)
+            )
+            document = result.scalar_one_or_none()
+            
+            if not document:
+                return None
+            
+            return {
+                "id": document.id,
+                "patient_id": document.patient_id,
+                "document_type": document.document_type,
+                "file_path": document.file_path,
+                "file_hash": document.file_hash,
+                "ocr_text": document.ocr_text,
+                "ocr_confidence": document.ocr_confidence,
+                "extracted_data": document.extracted_data,
+                "fhir_resource_id": document.fhir_resource_id,
+                "uploaded_at": document.uploaded_at.isoformat() if document.uploaded_at else None,
+                "processed_at": document.processed_at.isoformat() if document.processed_at else None,
+                "created_by": document.created_by,
+            }
+    
+    async def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+        """Get a document by file hash (for duplicate detection)."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Document).where(Document.file_hash == file_hash)
+            )
+            document = result.scalar_one_or_none()
+            
+            if not document:
+                return None
+            
+            return {
+                "id": document.id,
+                "file_path": document.file_path,
+                "file_hash": document.file_hash,
+            }
+    
+    async def update_document(
+        self,
+        document_id: str,
+        updates: Dict[str, Any],
+    ) -> None:
+        """Update a document record."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Document).where(Document.id == document_id)
+            )
+            document = result.scalar_one_or_none()
+            
+            if not document:
+                raise ValueError(f"Document not found: {document_id}")
+            
+            for key, value in updates.items():
+                if hasattr(document, key):
+                    setattr(document, key, value)
+            
+            await session.flush()
+    
+    async def get_patient_documents(
+        self,
+        patient_id: str,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Get all documents for a patient."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Document)
+                .where(Document.patient_id == patient_id)
+                .order_by(desc(Document.uploaded_at))
+                .limit(limit)
+            )
+            documents = result.scalars().all()
+            
+            return [
+                {
+                    "id": doc.id,
+                    "document_type": doc.document_type,
+                    "file_path": doc.file_path,
+                    "ocr_text": doc.ocr_text,
+                    "ocr_confidence": doc.ocr_confidence,
+                    "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                    "processed_at": doc.processed_at.isoformat() if doc.processed_at else None,
+                }
+                for doc in documents
+            ]
+    
+    async def save_ocr_extraction(self, ocr_data: Dict[str, Any]) -> str:
+        """Save OCR extraction result.
+        
+        Note: The OCRExtraction model is designed for structured extractions
+        (lab values, medications, etc.). The raw OCR text is stored in Document.ocr_text.
+        This method can be used for future structured extractions.
+        """
+        async with get_db_session() as session:
+            extraction = OCRExtraction(
+                id=str(uuid4()),
+                document_id=ocr_data["document_id"],
+                extraction_type=ocr_data.get("extraction_type", "raw_text"),
+                field_name=ocr_data.get("field_name", "full_text"),
+                extracted_value=ocr_data.get("extracted_text", ""),
+                confidence=ocr_data.get("confidence", 0.0),
+                normalized_value=ocr_data.get("metadata"),
+            )
+            session.add(extraction)
+            await session.flush()
+            return extraction.id
 

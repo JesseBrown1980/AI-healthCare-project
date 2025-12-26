@@ -14,6 +14,7 @@ from backend.notifier import Notifier
 from backend.patient_analyzer import PatientAnalyzer
 from backend.security import TokenContext
 from backend.state.user_store import UserStateStore
+from backend.database import DatabaseService
 from .container import ServiceContainer
 
 
@@ -160,3 +161,8 @@ def derive_user_key(auth: TokenContext) -> str:
     """Return a stable identifier for user-specific state."""
 
     return auth.subject or "anonymous"
+
+
+def get_database_service(request: Request) -> Optional[DatabaseService]:
+    """Get database service from app state."""
+    return getattr(request.app.state, "db_service", None)
