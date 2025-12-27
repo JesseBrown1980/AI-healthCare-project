@@ -20,8 +20,28 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from windows_build.auto_update import UpdateChecker, UpdateService
-from windows_build.version import get_version
+# Import with error handling for testing
+try:
+    from windows_build.auto_update import UpdateChecker, UpdateService
+    from windows_build.version import get_version
+except ImportError:
+    # Fallback for direct execution
+    import importlib.util
+    auto_update_path = Path(__file__).parent / "auto_update.py"
+    version_path = Path(__file__).parent / "version.py"
+    
+    if auto_update_path.exists():
+        spec = importlib.util.spec_from_file_location("auto_update", auto_update_path)
+        auto_update = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(auto_update)
+        UpdateChecker = auto_update.UpdateChecker
+        UpdateService = auto_update.UpdateService
+    
+    if version_path.exists():
+        spec = importlib.util.spec_from_file_location("version", version_path)
+        version = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(version)
+        get_version = version.get_version
 
 logging.basicConfig(
     level=logging.INFO,

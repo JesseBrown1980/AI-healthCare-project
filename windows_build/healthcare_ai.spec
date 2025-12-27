@@ -9,7 +9,13 @@ from pathlib import Path
 block_cipher = None
 
 # Project paths
-project_root = Path(SPECPATH).parent.parent
+# SPECPATH is set by PyInstaller, fallback to current file location
+try:
+    project_root = Path(SPECPATH).parent.parent
+except NameError:
+    # Fallback if SPECPATH not defined
+    project_root = Path(__file__).resolve().parent.parent
+
 backend_path = project_root / "backend"
 frontend_path = project_root / "frontend"
 windows_build_path = project_root / "windows_build"
