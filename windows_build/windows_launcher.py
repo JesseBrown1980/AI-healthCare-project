@@ -13,6 +13,7 @@ from pathlib import Path
 import threading
 import subprocess
 import webbrowser
+from typing import Dict, Any
 
 # Add project root to path
 _project_root = Path(__file__).resolve().parent.parent
