@@ -20,7 +20,8 @@ class Settings:
     # Model Configuration
     MODEL_INPUT_DIM: int = 16  # Dimension of node features
     MODEL_HIDDEN_DIM: int = 32
-    MODEL_OUTPUT_DIM: int = 1  # Binary classification
+    MODEL_OUTPUT_DIM: int = 1  # Binary classification (legacy)
+    NUM_CLASSES: int = int(os.getenv("NUM_CLASSES", "4"))  # Multi-class: 0=normal, 1=medication, 2=lab, 3=clinical_pattern
     
     # Advanced Model Configs
     NUM_PROTOTYPES_PER_CLASS: int = 3
