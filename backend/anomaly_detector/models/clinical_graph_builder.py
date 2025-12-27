@@ -105,14 +105,24 @@ class ClinicalGraphBuilder:
             freq_map = {'daily': 1.0, 'twice': 0.8, 'weekly': 0.3, 'as_needed': 0.5}
             features[6] = freq_map.get(frequency.lower(), 0.0)
             
+            # High-risk medication flag (anticoagulants, opioids, etc.)
+            med_name = metadata.get('name', '').lower()
+            high_risk_meds = ['warfarin', 'digoxin', 'lithium', 'methotrexate', 'opioid', 'morphine']
+            features[7] = 1.0 if any(risk_med in med_name for risk_med in high_risk_meds) else -1.0
+            
         elif node_type == 'condition':
             # Severity encoding
             severity = metadata.get('severity', '').lower()
             severity_map = {'mild': 0.3, 'moderate': 0.6, 'severe': 1.0, 'critical': 1.5}
-            features[5] = severity_map.get(severity, 0.5)
+            features[5] = min(severity_map.get(severity, 0.5), 1.0)  # Cap at 1.0
             
             # Chronic vs acute
             features[6] = 1.0 if metadata.get('chronic', False) else -1.0
+            
+            # High-risk condition flag (MI, stroke, sepsis, etc.)
+            cond_name = metadata.get('name', '').lower()
+            high_risk_conditions = ['mi', 'stroke', 'sepsis', 'pulmonary_embolism', 'dvt', 'heart_failure']
+            features[7] = 1.0 if any(risk_cond in cond_name for risk_cond in high_risk_conditions) else -1.0
             
         elif node_type == 'lab_value':
             # Value normalization (if reference range available)
@@ -195,11 +205,15 @@ class ClinicalGraphBuilder:
             )
             
             # Create edge: patient -> medication (prescribed)
-            edges.append((patient_idx, med_idx, 'prescribed', 1.0))
+            # Weight based on recency (recent medications weighted higher)
+            start_date = self._extract_date(med, 'start')
+            recency_weight = self._calculate_recency_weight(start_date)
+            edges.append((patient_idx, med_idx, 'prescribed', recency_weight))
             edge_metadata.append({
                 'type': 'prescribed',
                 'medication_id': med_id,
-                'start_date': self._extract_date(med, 'start'),
+                'start_date': start_date,
+                'recency_weight': recency_weight,
             })
         
         # 3. Process conditions
@@ -225,11 +239,18 @@ class ClinicalGraphBuilder:
             )
             
             # Create edge: patient -> condition (diagnosed)
-            edges.append((patient_idx, cond_idx, 'diagnosed', 1.0))
+            # Weight based on recency and severity
+            onset_date = self._extract_date(condition, 'onset')
+            recency_weight = self._calculate_recency_weight(onset_date)
+            severity_weight = 1.2 if severity in ['severe', 'critical'] else 1.0
+            edge_weight = min(recency_weight * severity_weight, 1.0)
+            edges.append((patient_idx, cond_idx, 'diagnosed', edge_weight))
             edge_metadata.append({
                 'type': 'diagnosed',
                 'condition_id': cond_id,
-                'onset_date': self._extract_date(condition, 'onset'),
+                'onset_date': onset_date,
+                'recency_weight': recency_weight,
+                'severity': severity,
             })
         
         # 4. Process lab values and observations
@@ -258,11 +279,18 @@ class ClinicalGraphBuilder:
             )
             
             # Create edge: patient -> lab_value (measured)
-            edges.append((patient_idx, obs_idx, 'measured', 1.0))
+            # Weight higher for abnormal values and recent measurements
+            obs_date = self._extract_date(obs, 'effective')
+            recency_weight = self._calculate_recency_weight(obs_date)
+            abnormal_weight = 1.3 if abnormal else 1.0
+            edge_weight = min(recency_weight * abnormal_weight, 1.0)
+            edges.append((patient_idx, obs_idx, 'measured', edge_weight))
             edge_metadata.append({
                 'type': 'measured',
                 'observation_id': obs_id,
-                'date': self._extract_date(obs, 'effective'),
+                'date': obs_date,
+                'recency_weight': recency_weight,
+                'abnormal': abnormal,
             })
         
         # 5. Process providers (from encounters)
@@ -298,17 +326,81 @@ class ClinicalGraphBuilder:
         # 6. Create medication-medication interaction edges (if multiple medications)
         medication_nodes = [nid for nid, ntype in self.node_types.items() if ntype == 'medication']
         if len(medication_nodes) > 1:
-            # Simple interaction detection: connect all medications
-            # In production, this would use a drug interaction database
+            # Enhanced interaction detection with known drug interactions
+            known_interactions = self._get_known_drug_interactions()
+            medication_names = {
+                med_id: self.node_metadata[med_id].get('name', '').lower()
+                for med_id in medication_nodes
+            }
+            
             for i, med1_id in enumerate(medication_nodes):
                 for med2_id in medication_nodes[i+1:]:
                     med1_idx = self.node_map[med1_id]
                     med2_idx = self.node_map[med2_id]
-                    edges.append((med1_idx, med2_idx, 'interacts_with', 0.5))
+                    med1_name = medication_names[med1_id]
+                    med2_name = medication_names[med2_id]
+                    
+                    # Check for known interactions
+                    interaction_severity = self._check_drug_interaction(med1_name, med2_name, known_interactions)
+                    
+                    if interaction_severity:
+                        # Known interaction - higher weight
+                        weight = 0.9 if interaction_severity == 'high' else 0.7
+                        edges.append((med1_idx, med2_idx, 'interacts_with', weight))
+                        edge_metadata.append({
+                            'type': 'interacts_with',
+                            'medication1': med1_id,
+                            'medication2': med2_id,
+                            'interaction_severity': interaction_severity,
+                            'known_interaction': True,
+                        })
+                    else:
+                        # Potential interaction (polypharmacy) - lower weight
+                        edges.append((med1_idx, med2_idx, 'interacts_with', 0.3))
+                        edge_metadata.append({
+                            'type': 'interacts_with',
+                            'medication1': med1_id,
+                            'medication2': med2_id,
+                            'known_interaction': False,
+                            'polypharmacy': True,
+                        })
+        
+        # 6a. Create condition-medication treatment edges
+        condition_nodes = [nid for nid, ntype in self.node_types.items() if ntype == 'condition']
+        for cond_id in condition_nodes:
+            cond_name = self.node_metadata[cond_id].get('name', '').lower()
+            cond_idx = self.node_map[cond_id]
+            
+            # Check if any medications are commonly used to treat this condition
+            for med_id in medication_nodes:
+                med_name = self.node_metadata[med_id].get('name', '').lower()
+                if self._is_treatment_match(cond_name, med_name):
+                    med_idx = self.node_map[med_id]
+                    edges.append((cond_idx, med_idx, 'treats', 0.8))
                     edge_metadata.append({
-                        'type': 'interacts_with',
-                        'medication1': med1_id,
-                        'medication2': med2_id,
+                        'type': 'treats',
+                        'condition_id': cond_id,
+                        'medication_id': med_id,
+                        'treatment_match': True,
+                    })
+        
+        # 6b. Create medication-lab value relationships (medications that affect lab values)
+        lab_value_nodes = [nid for nid, ntype in self.node_types.items() if ntype == 'lab_value']
+        for lab_id in lab_value_nodes:
+            lab_code = self.node_metadata[lab_id].get('code', '').lower()
+            lab_idx = self.node_map[lab_id]
+            
+            # Check if any medications are known to affect this lab value
+            for med_id in medication_nodes:
+                med_name = self.node_metadata[med_id].get('name', '').lower()
+                if self._medication_affects_lab(med_name, lab_code):
+                    med_idx = self.node_map[med_id]
+                    edges.append((med_idx, lab_idx, 'affects', 0.6))
+                    edge_metadata.append({
+                        'type': 'affects',
+                        'medication_id': med_id,
+                        'lab_value_id': lab_id,
+                        'effect_type': 'known_effect',
                     })
         
         # 7. Build node features
@@ -463,4 +555,162 @@ class ClinicalGraphBuilder:
         elif field == 'period.start':
             return resource.get('period', {}).get('start')
         return None
+    
+    def _calculate_recency_weight(self, date_str: Optional[str]) -> float:
+        """
+        Calculate edge weight based on recency of the event.
+        More recent events get higher weights (closer to 1.0).
+        Older events get lower weights (closer to 0.3).
+        """
+        if not date_str:
+            return 0.5  # Default weight for missing dates
+        
+        try:
+            from datetime import datetime, timezone
+            event_date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            if event_date.tzinfo is None:
+                event_date = event_date.replace(tzinfo=timezone.utc)
+            
+            now = datetime.now(timezone.utc)
+            days_ago = (now - event_date).days
+            
+            # Weight decay: recent (0-30 days) = 1.0, older (365+ days) = 0.3
+            if days_ago <= 30:
+                return 1.0
+            elif days_ago <= 90:
+                return 0.8
+            elif days_ago <= 180:
+                return 0.6
+            elif days_ago <= 365:
+                return 0.4
+            else:
+                return 0.3
+        except Exception:
+            return 0.5  # Default on parsing error
+    
+    def _get_known_drug_interactions(self) -> Dict[Tuple[str, str], str]:
+        """
+        Returns a dictionary of known drug interactions.
+        Key: (drug1, drug2) tuple (normalized names)
+        Value: 'high', 'medium', or 'low' severity
+        """
+        return {
+            # High severity interactions
+            ('warfarin', 'nsaid'): 'high',
+            ('warfarin', 'aspirin'): 'high',
+            ('warfarin', 'ibuprofen'): 'high',
+            ('digoxin', 'amiodarone'): 'high',
+            ('lithium', 'diuretic'): 'high',
+            ('methotrexate', 'nsaid'): 'high',
+            
+            # Medium severity interactions
+            ('lisinopril', 'potassium'): 'medium',
+            ('ace_inhibitor', 'potassium'): 'medium',
+            ('metformin', 'dye'): 'medium',
+            ('metformin', 'contrast'): 'medium',
+            ('statins', 'grapefruit'): 'medium',
+            ('cyclosporine', 'grapefruit'): 'medium',
+            
+            # Common interactions
+            ('aspirin', 'nsaid'): 'medium',
+            ('aspirin', 'warfarin'): 'high',
+            ('beta_blocker', 'calcium_channel_blocker'): 'medium',
+        }
+    
+    def _check_drug_interaction(self, med1: str, med2: str, known_interactions: Dict[Tuple[str, str], str]) -> Optional[str]:
+        """Check if two medications have a known interaction"""
+        # Normalize medication names
+        med1_norm = med1.replace(' ', '_').replace('-', '_')
+        med2_norm = med2.replace(' ', '_').replace('-', '_')
+        
+        # Check both orderings
+        key1 = (med1_norm, med2_norm)
+        key2 = (med2_norm, med1_norm)
+        
+        if key1 in known_interactions:
+            return known_interactions[key1]
+        if key2 in known_interactions:
+            return known_interactions[key2]
+        
+        # Check for partial matches (e.g., "warfarin" in "warfarin_sodium")
+        for (drug1, drug2), severity in known_interactions.items():
+            if drug1 in med1_norm and drug2 in med2_norm:
+                return severity
+            if drug1 in med2_norm and drug2 in med1_norm:
+                return severity
+        
+        return None
+    
+    def _is_treatment_match(self, condition_name: str, medication_name: str) -> bool:
+        """
+        Check if a medication is commonly used to treat a condition.
+        This is a simplified heuristic - in production, use a medical knowledge base.
+        """
+        treatment_mappings = {
+            # Hypertension
+            'hypertension': ['lisinopril', 'amlodipine', 'metoprolol', 'hydrochlorothiazide', 'ace', 'arb'],
+            'high_blood_pressure': ['lisinopril', 'amlodipine', 'metoprolol', 'hydrochlorothiazide'],
+            
+            # Diabetes
+            'diabetes': ['metformin', 'insulin', 'glipizide', 'glyburide'],
+            'diabetes_mellitus': ['metformin', 'insulin'],
+            
+            # Heart conditions
+            'heart_failure': ['lisinopril', 'carvedilol', 'furosemide', 'digoxin'],
+            'atrial_fibrillation': ['warfarin', 'apixaban', 'rivaroxaban', 'metoprolol'],
+            
+            # Infections
+            'infection': ['antibiotic', 'amoxicillin', 'azithromycin'],
+            'pneumonia': ['antibiotic', 'amoxicillin', 'azithromycin'],
+        }
+        
+        condition_norm = condition_name.replace(' ', '_').replace('-', '_').lower()
+        med_norm = medication_name.replace(' ', '_').replace('-', '_').lower()
+        
+        for cond_key, meds in treatment_mappings.items():
+            if cond_key in condition_norm:
+                if any(med in med_norm for med in meds):
+                    return True
+        
+        return False
+    
+    def _medication_affects_lab(self, medication_name: str, lab_code: str) -> bool:
+        """
+        Check if a medication is known to affect a lab value.
+        This is a simplified heuristic - in production, use a medical knowledge base.
+        """
+        medication_norm = medication_name.replace(' ', '_').replace('-', '_').lower()
+        lab_norm = lab_code.replace(' ', '_').replace('-', '_').lower()
+        
+        # Known medication-lab effects
+        medication_lab_effects = {
+            # Medications affecting kidney function
+            'nsaid': ['creatinine', 'bun', 'egfr'],
+            'ace_inhibitor': ['creatinine', 'potassium'],
+            'arb': ['creatinine', 'potassium'],
+            'diuretic': ['creatinine', 'sodium', 'potassium'],
+            
+            # Medications affecting liver function
+            'statin': ['alt', 'ast', 'liver'],
+            'acetaminophen': ['alt', 'ast', 'liver'],
+            
+            # Medications affecting blood glucose
+            'steroid': ['glucose', 'blood_sugar'],
+            'prednisone': ['glucose', 'blood_sugar'],
+            
+            # Medications affecting INR/coagulation
+            'warfarin': ['inr', 'pt', 'coagulation'],
+            'heparin': ['inr', 'pt', 'coagulation'],
+            
+            # Medications affecting electrolytes
+            'diuretic': ['sodium', 'potassium', 'magnesium'],
+            'ace_inhibitor': ['potassium'],
+        }
+        
+        for med_key, affected_labs in medication_lab_effects.items():
+            if med_key in medication_norm:
+                if any(lab in lab_norm for lab in affected_labs):
+                    return True
+        
+        return False
 
