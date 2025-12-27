@@ -90,17 +90,42 @@ class OCRExtraction(Base):
     document = relationship("Document", back_populates="ocr_extractions")
 
 
+class User(Base):
+    """Store user account information with authentication credentials."""
+    
+    __tablename__ = "users"
+    
+    id = Column(String(36), primary_key=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)  # bcrypt hashed password
+    full_name = Column(String(255))
+    roles = Column(JSONColumn())  # List of roles: ['admin', 'clinician', 'viewer']
+    is_active = Column(Integer, default=1)  # 1 = active, 0 = inactive
+    is_verified = Column(Integer, default=0)  # Email verification status
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    last_login = Column(DateTime(timezone=True))
+    metadata = Column(JSONColumn())  # Additional user metadata
+    
+    # Relationships
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+
+
 class UserSession(Base):
     """Store user session data."""
     
     __tablename__ = "user_sessions"
     
     session_id = Column(String(36), primary_key=True)
-    user_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(255))
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     last_activity = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    ip_address = Column(String(45))
+    user_agent = Column(Text)
     metadata = Column(JSONColumn())
+    
+    # Relationships
+    user = relationship("User", back_populates="sessions")
 
 
 class AuditLog(Base):

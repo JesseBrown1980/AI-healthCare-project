@@ -1133,6 +1133,56 @@ def page_graph_visualization():
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
+                # Graph Statistics Dashboard
+                st.markdown("### 📊 Graph Statistics")
+                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                col_stat1.metric("Total Nodes", stats.get("total_nodes", 0))
+                col_stat2.metric("Total Edges", stats.get("total_edges", 0))
+                col_stat3.metric("Anomalies", anomaly_info.get("anomaly_count", 0) if anomaly_info else 0)
+                col_stat4.metric("Threshold", f"{threshold:.2f}")
+                
+                # Node Type Distribution Chart
+                st.markdown("#### Node Type Distribution")
+                node_types = stats.get("node_types", {})
+                if node_types:
+                    node_type_df = pd.DataFrame({
+                        'Type': [t.replace('_', ' ').title() for t in node_types.keys()],
+                        'Count': list(node_types.values())
+                    })
+                    fig_nodes = px.pie(
+                        node_type_df,
+                        values='Count',
+                        names='Type',
+                        title='Node Types in Graph',
+                        color_discrete_map={
+                            'Patient': '#4A90E2',
+                            'Medication': '#E94B3C',
+                            'Condition': '#F5A623',
+                            'Provider': '#7ED321',
+                            'Lab Value': '#9013FE',
+                        }
+                    )
+                    st.plotly_chart(fig_nodes, use_container_width=True)
+                
+                # Edge Type Distribution Chart
+                st.markdown("#### Edge Type Distribution")
+                edge_types = stats.get("edge_types", {})
+                if edge_types:
+                    edge_type_df = pd.DataFrame({
+                        'Type': [t.replace('_', ' ').title() for t in edge_types.keys()],
+                        'Count': list(edge_types.values())
+                    })
+                    fig_edges = px.bar(
+                        edge_type_df,
+                        x='Type',
+                        y='Count',
+                        title='Edge Types in Graph',
+                        color='Count',
+                        color_continuous_scale='Blues'
+                    )
+                    fig_edges.update_layout(xaxis_tickangle=-45)
+                    st.plotly_chart(fig_edges, use_container_width=True)
+                
                 # Display anomaly details
                 if anomaly_info and anomaly_info.get('anomaly_count', 0) > 0:
                     st.markdown("### 🚨 Detected Anomalies")
@@ -1140,8 +1190,19 @@ def page_graph_visualization():
                     anomaly_counts = anomaly_info.get('anomaly_type_counts', {})
                     if anomaly_counts:
                         st.markdown("**Anomaly Type Distribution:**")
-                        for anomaly_type, count in anomaly_counts.items():
-                            st.markdown(f"- **{anomaly_type.replace('_', ' ').title()}**: {count}")
+                        anomaly_df = pd.DataFrame({
+                            'Type': [t.replace('_', ' ').title() for t in anomaly_counts.keys()],
+                            'Count': list(anomaly_counts.values())
+                        })
+                        fig_anomalies = px.bar(
+                            anomaly_df,
+                            x='Type',
+                            y='Count',
+                            title='Anomaly Type Distribution',
+                            color='Count',
+                            color_continuous_scale='Reds'
+                        )
+                        st.plotly_chart(fig_anomalies, use_container_width=True)
                     
                     # Show detailed anomaly list
                     with st.expander("View Anomaly Details", expanded=False):
@@ -1154,8 +1215,8 @@ def page_graph_visualization():
                                 st.markdown(f"- Severity: {anomaly_info_edge.get('severity', 'low')}")
                                 st.markdown("---")
                 
-                # Display node/edge statistics
-                with st.expander("Graph Statistics", expanded=False):
+                # Display raw statistics
+                with st.expander("Raw Graph Statistics", expanded=False):
                     st.json({
                         "statistics": stats,
                         "anomaly_detection": anomaly_info

@@ -177,6 +177,28 @@ class DemoLoginResponse(BaseModel):
     expires_in: int
 
 
+class RegisterRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    password: str = Field(..., min_length=8, description="User password (min 8 characters)")
+    full_name: Optional[str] = Field(None, description="User's full name")
+    roles: Optional[List[str]] = Field(None, description="User roles (default: ['viewer'])")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if '@' not in v:
+            raise ValueError('Invalid email format')
+        return v.lower()
+
+
+class RegisterResponse(BaseModel):
+    id: str
+    email: str
+    full_name: Optional[str] = None
+    roles: List[str]
+    message: str = "User registered successfully"
+
+
 class DeviceRegistration(BaseModel):
     device_token: str
     platform: str = "unknown"

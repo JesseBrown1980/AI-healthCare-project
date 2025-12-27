@@ -14,7 +14,7 @@ from sqlalchemy import select, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .connection import get_db_session, get_redis_client
-from .models import AnalysisHistory, Document, OCRExtraction, UserSession, AuditLog
+from .models import AnalysisHistory, Document, OCRExtraction, UserSession, AuditLog, User
 
 logger = logging.getLogger(__name__)
 
