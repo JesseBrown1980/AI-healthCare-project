@@ -1221,6 +1221,9 @@ def page_graph_visualization():
                         "statistics": stats,
                         "anomaly_detection": anomaly_info
                     })
+            except Exception as e:
+                st.error(f"Error generating graph: {str(e)}")
+                st.exception(e)
     
     # Anomaly Timeline Section
     st.markdown("---")
@@ -1373,10 +1376,6 @@ def page_graph_visualization():
                         st.error("Failed to compare graphs")
                 except Exception as e:
                     st.error(f"Error comparing graphs: {str(e)}")
-                
-            except Exception as e:
-                st.error(f"Error generating graph: {str(e)}")
-                st.exception(e)
 
 
 def page_settings():
