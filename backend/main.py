@@ -130,6 +130,12 @@ async def lifespan(app: FastAPI):
         app.state.db_service = db_service
         logger.info("✓ Database initialized successfully")
         
+        # Initialize Anomaly Detector
+        logger.info("Initializing Anomaly Detector...")
+        anomaly_service.initialize()
+        app.state.model = anomaly_service.get_model()
+        logger.info(f"✓ Anomaly Detector initialized with {anomaly_service.get_model_info()['model_type'].upper()} model")
+        
         # Update PatientAnalyzer and AuditService to use database service (if available)
         if container.patient_analyzer and db_service:
             container.patient_analyzer.database_service = db_service
@@ -139,11 +145,10 @@ async def lifespan(app: FastAPI):
             container.audit_service.database_service = db_service
             logger.info("✓ AuditService updated to use database service")
         
-        # Initialize Anomaly Detector
-        logger.info("Initializing Anomaly Detector...")
-        anomaly_service.initialize()
-        app.state.model = anomaly_service.get_model()
-        logger.info(f"✓ Anomaly Detector initialized with {anomaly_service.get_model_info()['model_type'].upper()} model")
+        # Update PatientAnalyzer to use anomaly service (if available)
+        if container.patient_analyzer and anomaly_service:
+            container.patient_analyzer.anomaly_service = anomaly_service
+            logger.info("✓ PatientAnalyzer updated to use GNN anomaly detection")
 
         logger.info("✓ Healthcare AI Assistant initialized successfully")
 

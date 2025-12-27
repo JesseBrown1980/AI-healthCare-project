@@ -49,6 +49,7 @@ class PatientAnalyzer:
         history_limit: Optional[int] = None,
         history_ttl_seconds: Optional[int] = None,
         database_service: Optional["DatabaseService"] = None,
+        anomaly_service: Optional[Any] = None,
     ):
         """
         Initialize PatientAnalyzer with all components
@@ -92,12 +93,18 @@ class PatientAnalyzer:
         )
 
         self.database_service = database_service
+        self.anomaly_service = anomaly_service
         self.analysis_history: Dict[str, List[Dict]] = {}
 
         if self.database_service:
             logger.info("PatientAnalyzer initialized with database service")
         else:
             logger.info("PatientAnalyzer initialized with in-memory history (database service not provided)")
+        
+        if self.anomaly_service:
+            logger.info("PatientAnalyzer initialized with GNN anomaly detection")
+        else:
+            logger.info("PatientAnalyzer initialized without anomaly detection (optional)")
 
     @staticmethod
     def _validated_positive_value(
@@ -292,6 +299,45 @@ class PatientAnalyzer:
             logger.info("Step 6: Reviewing medications...")
             medication_review = await self._medication_review(patient_data)
             result["medication_review"] = medication_review
+
+            # 6a. CLINICAL ANOMALY DETECTION (GNN-based)
+            if self.anomaly_service:
+                try:
+                    logger.info("Step 6a: Running GNN-based clinical anomaly detection...")
+                    anomaly_results = await self.anomaly_service.detect_clinical_anomalies(
+                        patient_data,
+                        threshold=0.5
+                    )
+                    result["gnn_anomaly_detection"] = anomaly_results
+                    
+                    # Convert high-severity anomalies to alerts
+                    high_severity_anomalies = [
+                        a for a in anomaly_results.get("anomalies", [])
+                        if a.get("severity") == "high"
+                    ]
+                    if high_severity_anomalies:
+                        logger.warning(
+                            "Detected %d high-severity clinical anomalies",
+                            len(high_severity_anomalies)
+                        )
+                        # Add anomaly alerts to existing alerts
+                        for anomaly in high_severity_anomalies:
+                            alerts.append({
+                                "type": "gnn_anomaly",
+                                "severity": "high",
+                                "title": f"Clinical Anomaly: {anomaly.get('edge_type', 'unknown')}",
+                                "description": (
+                                    f"GNN detected unusual pattern in {anomaly.get('edge_type', 'relationship')} "
+                                    f"(score: {anomaly.get('anomaly_score', 0):.2f})"
+                                ),
+                                "metadata": anomaly.get("metadata", {}),
+                            })
+                except Exception as e:
+                    logger.error(f"Clinical anomaly detection failed: {e}", exc_info=True)
+                    result["gnn_anomaly_detection"] = {
+                        "error": str(e),
+                        "message": "Anomaly detection failed"
+                    }
 
             # 7. GENERATE RECOMMENDATIONS (if requested)
             if include_recommendations:
