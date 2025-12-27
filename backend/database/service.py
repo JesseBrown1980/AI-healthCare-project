@@ -381,4 +381,68 @@ class DatabaseService:
             session.add(extraction)
             await session.flush()
             return extraction.id
+    
+    async def get_ocr_fhir_resources_for_patient(
+        self,
+        patient_id: str,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get all FHIR resources extracted from OCR documents for a patient.
+        
+        Converts parsed_data from documents to FHIR resources on-the-fly.
+        
+        Returns a dictionary with keys: 'observations', 'medication_statements', 'conditions'
+        containing lists of FHIR resources.
+        """
+        async with get_db_session() as session:
+            # Get all processed documents for this patient with parsed data
+            result = await session.execute(
+                select(Document)
+                .where(Document.patient_id == patient_id)
+                .where(Document.extracted_data.isnot(None))
+                .order_by(desc(Document.processed_at))
+            )
+            documents = result.scalars().all()
+            
+            if not documents:
+                return {
+                    "observations": [],
+                    "medication_statements": [],
+                    "conditions": [],
+                }
+            
+            # Import FHIR mapper to convert parsed_data to FHIR
+            from backend.ocr.fhir_mapper import FHIRMapper
+            fhir_mapper = FHIRMapper()
+            
+            # Collect FHIR resources from all documents
+            observations = []
+            medication_statements = []
+            conditions = []
+            
+            for doc in documents:
+                extracted_data = doc.extracted_data or {}
+                
+                # Convert parsed_data to FHIR resources
+                try:
+                    fhir_resources = fhir_mapper.map_parsed_data_to_fhir(
+                        parsed_data=extracted_data,
+                        patient_id=patient_id,
+                        document_id=doc.id,
+                    )
+                    
+                    observations.extend(fhir_resources.get("observations", []))
+                    medication_statements.extend(fhir_resources.get("medication_statements", []))
+                    conditions.extend(fhir_resources.get("conditions", []))
+                except Exception as e:
+                    logger.warning(
+                        "Failed to convert OCR data to FHIR for document %s: %s", doc.id, str(e)
+                    )
+                    continue
+            
+            return {
+                "observations": observations,
+                "medication_statements": medication_statements,
+                "conditions": conditions,
+            }
 

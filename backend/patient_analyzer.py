@@ -195,6 +195,61 @@ class PatientAnalyzer:
             patient_data = await self.patient_data_service.fetch_patient_data(
                 patient_id
             )
+            
+            # 1a. ENRICH WITH OCR DATA (if available)
+            if self.database_service:
+                try:
+                    logger.info("Step 1a: Fetching OCR-extracted data...")
+                    ocr_resources = await self.database_service.get_ocr_fhir_resources_for_patient(
+                        patient_id
+                    )
+                    
+                    # Merge OCR resources into patient_data
+                    if ocr_resources:
+                        # Merge observations (lab values, vital signs)
+                        existing_observations = patient_data.get("observations", [])
+                        ocr_observations = ocr_resources.get("observations", [])
+                        patient_data["observations"] = existing_observations + ocr_observations
+                        
+                        # Merge medications
+                        existing_medications = patient_data.get("medications", [])
+                        ocr_medications = ocr_resources.get("medication_statements", [])
+                        # Convert MedicationStatement format to match existing format
+                        converted_medications = [
+                            {
+                                "medication": med.get("medicationCodeableConcept", {}).get("text", ""),
+                                "status": med.get("status", "active"),
+                                "dosage": med.get("dosage", [{}])[0].get("text", "") if med.get("dosage") else "",
+                            }
+                            for med in ocr_medications
+                        ]
+                        patient_data["medications"] = existing_medications + converted_medications
+                        
+                        # Merge conditions
+                        existing_conditions = patient_data.get("conditions", [])
+                        ocr_conditions = ocr_resources.get("conditions", [])
+                        # Convert Condition format to match existing format
+                        converted_conditions = [
+                            {
+                                "code": cond.get("code", {}).get("text", ""),
+                                "status": cond.get("clinicalStatus", {}).get("coding", [{}])[0].get("code", "active"),
+                            }
+                            for cond in ocr_conditions
+                        ]
+                        patient_data["conditions"] = existing_conditions + converted_conditions
+                        
+                        logger.info(
+                            "Merged OCR data: %d observations, %d medications, %d conditions",
+                            len(ocr_observations),
+                            len(ocr_medications),
+                            len(ocr_conditions),
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch OCR data for patient %s: %s", patient_id, str(e)
+                    )
+                    # Continue with FHIR data only
+            
             result["patient_data"] = patient_data
 
             # 2. DETERMINE SPECIALTIES (S-LoRA)
