@@ -402,9 +402,16 @@ if __name__ == "__main__":
     
     logger.info(f"Starting Healthcare AI Assistant on {host}:{port}")
     
+    # Check if running as Windows executable
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable - disable reload
+        reload_mode = False
+    else:
+        reload_mode = os.getenv("DEBUG", "False").lower() == "true"
+    
     uvicorn.run(
         app,
         host=host,
         port=port,
-        reload=os.getenv("DEBUG", "False").lower() == "true"
+        reload=reload_mode
     )
