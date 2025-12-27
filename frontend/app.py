@@ -1221,6 +1221,158 @@ def page_graph_visualization():
                         "statistics": stats,
                         "anomaly_detection": anomaly_info
                     })
+    
+    # Anomaly Timeline Section
+    st.markdown("---")
+    st.markdown("### 📈 Anomaly Timeline")
+    st.markdown("Track anomalies over time for this patient")
+    
+    timeline_days = st.slider("Days to analyze", 7, 90, 30, 7)
+    if st.button("Load Timeline", key="load_timeline"):
+        with st.spinner("Loading anomaly timeline..."):
+            try:
+                timeline_response = make_api_call(
+                    f"/patients/{patient_id}/anomaly-timeline",
+                    params={"days": timeline_days}
+                )
+                
+                if timeline_response and timeline_response.get("timeline"):
+                    timeline_data = timeline_response["timeline"]
+                    
+                    if timeline_data:
+                        # Create timeline DataFrame
+                        timeline_df = pd.DataFrame(timeline_data)
+                        timeline_df['timestamp'] = pd.to_datetime(timeline_df['timestamp'])
+                        
+                        # Plot anomaly count over time
+                        fig_timeline = go.Figure()
+                        fig_timeline.add_trace(go.Scatter(
+                            x=timeline_df['timestamp'],
+                            y=timeline_df['anomaly_count'],
+                            mode='lines+markers',
+                            name='Anomaly Count',
+                            line=dict(color='#E94B3C', width=2),
+                            marker=dict(size=8)
+                        ))
+                        fig_timeline.update_layout(
+                            title='Anomaly Count Over Time',
+                            xaxis_title='Date',
+                            yaxis_title='Number of Anomalies',
+                            hovermode='x unified'
+                        )
+                        st.plotly_chart(fig_timeline, use_container_width=True)
+                        
+                        # Anomaly type breakdown over time
+                        if len(timeline_data) > 0:
+                            anomaly_types = set()
+                            for entry in timeline_data:
+                                anomaly_types.update(entry.get('anomaly_type_counts', {}).keys())
+                            
+                            if anomaly_types:
+                                fig_types = go.Figure()
+                                for anomaly_type in anomaly_types:
+                                    type_counts = [
+                                        entry.get('anomaly_type_counts', {}).get(anomaly_type, 0)
+                                        for entry in timeline_data
+                                    ]
+                                    timestamps = [pd.to_datetime(entry['timestamp']) for entry in timeline_data]
+                                    
+                                    fig_types.add_trace(go.Scatter(
+                                        x=timestamps,
+                                        y=type_counts,
+                                        mode='lines+markers',
+                                        name=anomaly_type.replace('_', ' ').title(),
+                                        stackgroup='one'
+                                    ))
+                                
+                                fig_types.update_layout(
+                                    title='Anomaly Types Over Time',
+                                    xaxis_title='Date',
+                                    yaxis_title='Count',
+                                    hovermode='x unified'
+                                )
+                                st.plotly_chart(fig_types, use_container_width=True)
+                    else:
+                        st.info("No anomaly data found in the selected time period")
+                else:
+                    st.warning("Failed to load timeline data")
+            except Exception as e:
+                st.error(f"Error loading timeline: {str(e)}")
+    
+    # Graph Comparison Section
+    st.markdown("---")
+    st.markdown("### 🔄 Graph Comparison")
+    st.markdown("Compare this patient's graph with other patients")
+    
+    compare_patients = st.text_input(
+        "Patient IDs to compare (comma-separated)",
+        placeholder="patient-2, patient-3",
+        key="compare_patients"
+    )
+    
+    if st.button("Compare Graphs", key="compare_graphs"):
+        if not compare_patients:
+            st.warning("Enter at least one patient ID to compare")
+        else:
+            patient_list = [p.strip() for p in compare_patients.split(',')]
+            patient_list.append(patient_id)  # Include current patient
+            
+            with st.spinner("Comparing graphs..."):
+                try:
+                    compare_response = make_api_call(
+                        "/patients/compare-graphs",
+                        method="POST",
+                        data={"patient_ids": patient_list},
+                        params={
+                            "include_anomalies": include_anomalies,
+                            "threshold": threshold
+                        }
+                    )
+                    
+                    if compare_response:
+                        comparison_results = compare_response.get("comparison_results", [])
+                        comparison_metrics = compare_response.get("comparison_metrics", {})
+                        
+                        # Node type comparison
+                        if comparison_metrics.get("node_type_distribution"):
+                            node_dist = comparison_metrics["node_type_distribution"]
+                            node_df = pd.DataFrame(node_dist)
+                            node_df.index = patient_list[:len(node_df)]
+                            
+                            fig_nodes_compare = px.bar(
+                                node_df,
+                                title="Node Type Distribution Comparison",
+                                labels={'index': 'Patient ID', 'value': 'Count'},
+                                barmode='group'
+                            )
+                            st.plotly_chart(fig_nodes_compare, use_container_width=True)
+                        
+                        # Anomaly comparison
+                        if comparison_metrics.get("anomaly_comparison"):
+                            anomaly_comp = comparison_metrics["anomaly_comparison"]
+                            anomaly_df = pd.DataFrame({
+                                'Patient ID': patient_list[:len(anomaly_comp.get("total_anomalies", []))],
+                                'Total Anomalies': anomaly_comp.get("total_anomalies", [])
+                            })
+                            
+                            fig_anomaly_compare = px.bar(
+                                anomaly_df,
+                                x='Patient ID',
+                                y='Total Anomalies',
+                                title="Anomaly Count Comparison",
+                                color='Total Anomalies',
+                                color_continuous_scale='Reds'
+                            )
+                            st.plotly_chart(fig_anomaly_compare, use_container_width=True)
+                        
+                        # Detailed comparison table
+                        with st.expander("Detailed Comparison", expanded=False):
+                            comparison_df = pd.DataFrame(comparison_results)
+                            st.dataframe(comparison_df)
+                    else:
+                        st.error("Failed to compare graphs")
+                except Exception as e:
+                    st.error(f"Error comparing graphs: {str(e)}")
                 
             except Exception as e:
                 st.error(f"Error generating graph: {str(e)}")

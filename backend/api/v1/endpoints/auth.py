@@ -9,6 +9,10 @@ from backend.models import (
     DemoLoginResponse,
     RegisterRequest,
     RegisterResponse,
+    PasswordResetRequest,
+    PasswordResetResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetConfirmResponse,
 )
 from backend.auth import hash_password, verify_password, is_password_strong
 from backend.di import get_database_service

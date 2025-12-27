@@ -4,14 +4,16 @@ Provides endpoints for visualizing patient clinical graphs from GNN anomaly dete
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 import logging
 
 from backend.security import TokenContext, auth_dependency
-from backend.di import get_patient_analyzer, get_fhir_connector
+from backend.di import get_patient_analyzer, get_fhir_connector, get_database_service
 from backend.patient_analyzer import PatientAnalyzer
 from backend.fhir_connector import FhirResourceService
 from backend.patient_data_service import PatientDataService
+from backend.database.service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -199,5 +201,232 @@ async def get_patient_graph_visualization(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate graph visualization: {str(e)}"
+        )
+
+
+@router.get("/patients/{patient_id}/anomaly-timeline")
+async def get_anomaly_timeline(
+    patient_id: str,
+    days: int = Query(30, description="Number of days to look back"),
+    db_service: Optional[DatabaseService] = Depends(get_database_service),
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read"})
+    ),
+):
+    """
+    Get anomaly timeline data for a patient showing anomalies over time.
+    
+    Extracts anomaly detection results from analysis history to show trends.
+    """
+    if not db_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Database service required for anomaly timeline"
+        )
+    
+    try:
+        # Get analysis history for the patient
+        history = await db_service.get_analysis_history(patient_id, limit=1000)
+        
+        # Filter to requested time range
+        cutoff_date = datetime.now() - timedelta(days=days)
+        timeline_data = []
+        
+        for analysis in history:
+            try:
+                timestamp = datetime.fromisoformat(analysis['analysis_timestamp'].replace('Z', '+00:00'))
+                if timestamp < cutoff_date:
+                    continue
+                
+                # Extract anomaly data from analysis_data
+                analysis_data = analysis.get('analysis_data') or {}
+                gnn_anomaly = analysis_data.get('gnn_anomaly_detection', {})
+                
+                if gnn_anomaly and gnn_anomaly.get('anomalies'):
+                    anomalies = gnn_anomaly.get('anomalies', [])
+                    anomaly_type_counts = gnn_anomaly.get('anomaly_type_counts', {})
+                    
+                    timeline_data.append({
+                        'timestamp': timestamp.isoformat(),
+                        'anomaly_count': len(anomalies),
+                        'anomaly_type_counts': anomaly_type_counts,
+                        'anomalies': [
+                            {
+                                'type': a.get('anomaly_type', 'unknown'),
+                                'score': a.get('anomaly_score', 0.0),
+                                'severity': a.get('severity', 'low'),
+                            }
+                            for a in anomalies
+                        ],
+                    })
+            except Exception as e:
+                logger.warning(f"Failed to parse analysis entry: {e}")
+                continue
+        
+        # Sort by timestamp
+        timeline_data.sort(key=lambda x: x['timestamp'])
+        
+        return {
+            'patient_id': patient_id,
+            'days': days,
+            'timeline': timeline_data,
+            'total_points': len(timeline_data),
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to generate anomaly timeline: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate anomaly timeline: {str(e)}"
+        )
+
+
+@router.post("/patients/compare-graphs")
+async def compare_patient_graphs(
+    patient_ids: List[str] = Query(..., description="List of patient IDs to compare"),
+    include_anomalies: bool = Query(True, description="Include anomaly detection"),
+    threshold: float = Query(0.5, description="Anomaly detection threshold"),
+    patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
+    fhir_connector: FhirResourceService = Depends(get_fhir_connector),
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.read"})
+    ),
+):
+    """
+    Compare clinical graphs across multiple patients.
+    
+    Returns graph statistics and anomaly comparisons for the provided patient IDs.
+    """
+    if len(patient_ids) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least 2 patient IDs required for comparison"
+        )
+    
+    if len(patient_ids) > 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 5 patients can be compared at once"
+        )
+    
+    try:
+        comparison_results = []
+        patient_data_service = PatientDataService(fhir_connector)
+        
+        from backend.anomaly_detector.models.clinical_graph_builder import ClinicalGraphBuilder
+        from backend.anomaly_detector.config import settings
+        
+        for patient_id in patient_ids:
+            try:
+                # Fetch patient data
+                patient_data = await patient_data_service.fetch_patient_data(patient_id)
+                
+                # Build graph
+                builder = ClinicalGraphBuilder(feature_dim=settings.MODEL_INPUT_DIM)
+                x, edge_index, graph_metadata = builder.build_graph_from_patient_data(patient_data)
+                
+                # Get anomaly detection if requested
+                anomaly_results = None
+                if include_anomalies and patient_analyzer.anomaly_service:
+                    try:
+                        anomaly_results = await patient_analyzer.anomaly_service.detect_clinical_anomalies(
+                            patient_data,
+                            threshold=threshold
+                        )
+                    except Exception as e:
+                        logger.warning(f"Anomaly detection failed for {patient_id}: {e}")
+                
+                # Extract statistics
+                node_map = graph_metadata.get('node_map', {})
+                node_types = graph_metadata.get('node_types', {})
+                edge_types = graph_metadata.get('edge_types', [])
+                
+                node_type_counts = {}
+                for node_id, node_type in node_types.items():
+                    node_type_counts[node_type] = node_type_counts.get(node_type, 0) + 1
+                
+                edge_type_counts = {}
+                for edge_type in edge_types:
+                    edge_type_counts[edge_type] = edge_type_counts.get(edge_type, 0) + 1
+                
+                comparison_results.append({
+                    'patient_id': patient_id,
+                    'statistics': {
+                        'total_nodes': len(node_map),
+                        'total_edges': len(edge_types),
+                        'node_types': node_type_counts,
+                        'edge_types': edge_type_counts,
+                    },
+                    'anomaly_detection': {
+                        'anomaly_count': anomaly_results.get('anomaly_count', 0) if anomaly_results else 0,
+                        'anomaly_type_counts': anomaly_results.get('anomaly_type_counts', {}) if anomaly_results else {},
+                    } if anomaly_results else None,
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to process patient {patient_id}: {e}")
+                comparison_results.append({
+                    'patient_id': patient_id,
+                    'error': str(e),
+                })
+        
+        # Calculate comparison metrics
+        all_node_types = set()
+        all_edge_types = set()
+        for result in comparison_results:
+            if 'statistics' in result:
+                all_node_types.update(result['statistics'].get('node_types', {}).keys())
+                all_edge_types.update(result['statistics'].get('edge_types', {}).keys())
+        
+        comparison_metrics = {
+            'node_type_distribution': {
+                node_type: [
+                    r['statistics'].get('node_types', {}).get(node_type, 0)
+                    for r in comparison_results
+                    if 'statistics' in r
+                ]
+                for node_type in all_node_types
+            },
+            'edge_type_distribution': {
+                edge_type: [
+                    r['statistics'].get('edge_types', {}).get(edge_type, 0)
+                    for r in comparison_results
+                    if 'statistics' in r
+                ]
+                for edge_type in all_edge_types
+            },
+            'anomaly_comparison': {
+                'total_anomalies': [
+                    r.get('anomaly_detection', {}).get('anomaly_count', 0) if r.get('anomaly_detection') else 0
+                    for r in comparison_results
+                ],
+                'anomaly_types': {}
+            }
+        }
+        
+        # Aggregate anomaly types
+        all_anomaly_types = set()
+        for result in comparison_results:
+            if result.get('anomaly_detection'):
+                all_anomaly_types.update(result['anomaly_detection'].get('anomaly_type_counts', {}).keys())
+        
+        for anomaly_type in all_anomaly_types:
+            comparison_metrics['anomaly_comparison']['anomaly_types'][anomaly_type] = [
+                r.get('anomaly_detection', {}).get('anomaly_type_counts', {}).get(anomaly_type, 0)
+                if r.get('anomaly_detection') else 0
+                for r in comparison_results
+            ]
+        
+        return {
+            'patient_ids': patient_ids,
+            'comparison_results': comparison_results,
+            'comparison_metrics': comparison_metrics,
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to compare graphs: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compare graphs: {str(e)}"
         )
 

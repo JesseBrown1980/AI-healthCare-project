@@ -102,6 +102,10 @@ class User(Base):
     roles = Column(JSONColumn())  # List of roles: ['admin', 'clinician', 'viewer']
     is_active = Column(Integer, default=1)  # 1 = active, 0 = inactive
     is_verified = Column(Integer, default=0)  # Email verification status
+    verification_token = Column(String(255))  # Email verification token
+    verification_token_expires = Column(DateTime(timezone=True))  # Token expiration
+    password_reset_token = Column(String(255))  # Password reset token
+    password_reset_token_expires = Column(DateTime(timezone=True))  # Reset token expiration
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     last_login = Column(DateTime(timezone=True))
     metadata = Column(JSONColumn())  # Additional user metadata

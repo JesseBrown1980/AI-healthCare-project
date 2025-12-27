@@ -3,7 +3,8 @@ User management service for authentication.
 """
 
 import logging
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -130,4 +131,113 @@ class UserService:
             if user:
                 user.is_active = 0
                 await session.commit()
+    
+    async def generate_password_reset_token(self, email: str) -> Optional[str]:
+        """Generate a password reset token for a user."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).where(User.email == email.lower())
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                return None  # Don't reveal if user exists
+            
+            # Generate secure token
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=1)  # 1 hour expiry
+            
+            user.password_reset_token = token
+            user.password_reset_token_expires = expires_at
+            await session.commit()
+            
+            return token
+    
+    async def verify_password_reset_token(self, email: str, token: str) -> bool:
+        """Verify a password reset token."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).where(
+                    User.email == email.lower(),
+                    User.password_reset_token == token
+                )
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                return False
+            
+            # Check if token is expired
+            if user.password_reset_token_expires and user.password_reset_token_expires < datetime.now(timezone.utc):
+                return False
+            
+            return True
+    
+    async def reset_password_with_token(self, email: str, token: str, new_password_hash: str) -> bool:
+        """Reset password using a valid token."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).where(
+                    User.email == email.lower(),
+                    User.password_reset_token == token
+                )
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                return False
+            
+            # Check if token is expired
+            if user.password_reset_token_expires and user.password_reset_token_expires < datetime.now(timezone.utc):
+                return False
+            
+            # Update password and clear reset token
+            user.password_hash = new_password_hash
+            user.password_reset_token = None
+            user.password_reset_token_expires = None
+            await session.commit()
+            
+            return True
+    
+    async def generate_verification_token(self, email: str) -> Optional[str]:
+        """Generate an email verification token."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).where(User.email == email.lower())
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                return None
+            
+            # Generate secure token
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.now(timezone.utc) + timedelta(days=7)  # 7 days expiry
+            
+            user.verification_token = token
+            user.verification_token_expires = expires_at
+            await session.commit()
+            
+            return token
+    
+    async def verify_email_with_token(self, email: str, token: str) -> bool:
+        """Verify email using a verification token."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).where(
+                    User.email == email.lower(),
+                    User.verification_token == token
+                )
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                return False
+            
+            # Check if token is expired
+            if user.verification_token_expires and user.verification_token_expires < datetime.now(timezone.utc):
+                return False
+            
+            # Mark as verified and clear token
+            user.is_verified = 1
+            user.verification_token = None
+            user.verification_token_expires = None
+            await session.commit()
+            
+            return True
 

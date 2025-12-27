@@ -199,6 +199,38 @@ class RegisterResponse(BaseModel):
     message: str = "User registered successfully"
 
 
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if '@' not in v:
+            raise ValueError('Invalid email format')
+        return v.lower()
+
+
+class PasswordResetResponse(BaseModel):
+    message: str = "Password reset token generated. Check your email for instructions."
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    token: str = Field(..., description="Password reset token")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if '@' not in v:
+            raise ValueError('Invalid email format')
+        return v.lower()
+
+
+class PasswordResetConfirmResponse(BaseModel):
+    message: str = "Password reset successfully"
+
+
 class DeviceRegistration(BaseModel):
     device_token: str
     platform: str = "unknown"
