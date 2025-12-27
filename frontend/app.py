@@ -74,6 +74,7 @@ def make_api_call(
     endpoint: str,
     method: str = "GET",
     data: Optional[Dict] = None,
+    params: Optional[Dict] = None,
     *,
     timeout: float = 10.0,
 ) -> Optional[Dict]:
@@ -85,9 +86,9 @@ def make_api_call(
         headers = {"Content-Type": "application/json"}
 
         if method == "GET":
-            response = requests.get(url, headers=headers, timeout=timeout)
+            response = requests.get(url, headers=headers, params=params, timeout=timeout)
         elif method == "POST":
-            response = requests.post(url, headers=headers, json=data, timeout=timeout)
+            response = requests.post(url, headers=headers, json=data, params=params, timeout=timeout)
         else:
             st.error(f"Unsupported HTTP method: {method}")
             return None
@@ -963,6 +964,208 @@ def page_document_upload():
             st.info("No documents uploaded yet. Use the Upload Document tab to get started.")
 
 
+def page_graph_visualization():
+    """Graph visualization page for patient clinical graphs"""
+    st.title("🕸️ Clinical Graph Visualization")
+    st.markdown("Visualize patient clinical relationships and GNN anomaly detection results")
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        patient_id = st.text_input(
+            "Patient ID",
+            value=st.session_state.get("selected_patient_id", "demo-patient-1"),
+            key="graph_patient_id"
+        )
+    with col2:
+        include_anomalies = st.checkbox("Include Anomaly Detection", value=True)
+        threshold = st.slider("Anomaly Threshold", 0.0, 1.0, 0.5, 0.1)
+    
+    if st.button("Generate Graph", type="primary"):
+        if not patient_id:
+            st.warning("Please enter a Patient ID")
+            return
+        
+        with st.spinner("Building clinical graph and detecting anomalies..."):
+            try:
+                # Fetch graph data
+                response = make_api_call(
+                    f"/patients/{patient_id}/graph",
+                    params={
+                        "include_anomalies": include_anomalies,
+                        "threshold": threshold
+                    }
+                )
+                
+                if not response:
+                    st.error("Failed to fetch graph data")
+                    return
+                
+                graph_data = response.get("graph", {})
+                nodes = graph_data.get("nodes", [])
+                edges = graph_data.get("edges", [])
+                stats = response.get("statistics", {})
+                anomaly_info = response.get("anomaly_detection", {})
+                
+                if not nodes:
+                    st.info("No graph data available for this patient")
+                    return
+                
+                # Display statistics
+                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                col_stat1.metric("Total Nodes", stats.get("total_nodes", 0))
+                col_stat2.metric("Total Edges", stats.get("total_edges", 0))
+                col_stat3.metric("Anomalies", anomaly_info.get("anomaly_count", 0) if anomaly_info else 0)
+                col_stat4.metric("Threshold", f"{threshold:.2f}")
+                
+                # Create network graph using Plotly
+                import plotly.graph_objects as go
+                import numpy as np
+                
+                # Position nodes using a simple layout (circular for now)
+                # In production, use a proper graph layout algorithm
+                num_nodes = len(nodes)
+                angles = np.linspace(0, 2 * np.pi, num_nodes, endpoint=False)
+                radius = 5
+                
+                node_x = []
+                node_y = []
+                node_text = []
+                node_colors = []
+                node_sizes = []
+                
+                for i, node in enumerate(nodes):
+                    angle = angles[i]
+                    x = radius * np.cos(angle)
+                    y = radius * np.sin(angle)
+                    node_x.append(x)
+                    node_y.append(y)
+                    node_text.append(f"{node['label']}<br>Type: {node['type']}")
+                    node_colors.append(node['color'])
+                    node_sizes.append(node.get('size', 15))
+                
+                # Create edge traces
+                edge_x = []
+                edge_y = []
+                edge_colors = []
+                edge_widths = []
+                
+                for edge in edges:
+                    source_id = edge['source']
+                    target_id = edge['target']
+                    
+                    # Find node indices
+                    source_idx = next((i for i, n in enumerate(nodes) if n['id'] == source_id), None)
+                    target_idx = next((i for i, n in enumerate(nodes) if n['id'] == target_id), None)
+                    
+                    if source_idx is not None and target_idx is not None:
+                        edge_x.extend([node_x[source_idx], node_x[target_idx], None])
+                        edge_y.extend([node_y[source_idx], node_y[target_idx], None])
+                        edge_colors.append(edge['color'])
+                        edge_widths.append(edge.get('width', 1.0))
+                
+                # Create edge traces (one per edge to support different colors)
+                edge_traces = []
+                for i, edge in enumerate(edges):
+                    source_id = edge['source']
+                    target_id = edge['target']
+                    
+                    source_idx = next((j for j, n in enumerate(nodes) if n['id'] == source_id), None)
+                    target_idx = next((j for j, n in enumerate(nodes) if n['id'] == target_id), None)
+                    
+                    if source_idx is not None and target_idx is not None:
+                        edge_trace = go.Scatter(
+                            x=[node_x[source_idx], node_x[target_idx], None],
+                            y=[node_y[source_idx], node_y[target_idx], None],
+                            line=dict(
+                                width=edge.get('width', 1.0),
+                                color=edge.get('color', '#888')
+                            ),
+                            hoverinfo='text',
+                            text=f"{edge['type'].replace('_', ' ').title()}<br>"
+                                 f"{'⚠️ ANOMALY' if edge.get('is_anomaly') else 'Normal'}<br>"
+                                 f"{edge.get('anomaly_info', {}).get('anomaly_type', '') if edge.get('is_anomaly') else ''}",
+                            mode='lines',
+                            showlegend=False
+                        )
+                        edge_traces.append(edge_trace)
+                
+                # Create node trace
+                node_trace = go.Scatter(
+                    x=node_x, y=node_y,
+                    mode='markers+text',
+                    hoverinfo='text',
+                    text=[node['label'] for node in nodes],
+                    textposition="middle center",
+                    marker=dict(
+                        size=node_sizes,
+                        color=node_colors,
+                        line=dict(width=2, color='white')
+                    ),
+                    customdata=[node['type'] for node in nodes],
+                    hovertemplate='<b>%{text}</b><br>Type: %{customdata}<extra></extra>'
+                )
+                
+                # Create figure with all edge traces and node trace
+                fig = go.Figure(
+                    data=edge_traces + [node_trace],
+                    layout=go.Layout(
+                        title='Patient Clinical Graph',
+                        titlefont_size=16,
+                        showlegend=False,
+                        hovermode='closest',
+                        margin=dict(b=20, l=5, r=5, t=40),
+                        annotations=[
+                            dict(
+                                text="Node colors: Blue=Patient, Red=Medication, Orange=Condition, Green=Provider, Purple=Lab Value<br>"
+                                     "Edge colors: Red=Medication Anomaly, Orange=Lab Anomaly, Gold=Clinical Pattern Anomaly, Gray=Normal",
+                                showarrow=False,
+                                xref="paper", yref="paper",
+                                x=0.005, y=-0.002,
+                                xanchor="left", yanchor="bottom",
+                                font=dict(size=10, color="#888")
+                            )
+                        ],
+                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                        plot_bgcolor='white'
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Display anomaly details
+                if anomaly_info and anomaly_info.get('anomaly_count', 0) > 0:
+                    st.markdown("### 🚨 Detected Anomalies")
+                    
+                    anomaly_counts = anomaly_info.get('anomaly_type_counts', {})
+                    if anomaly_counts:
+                        st.markdown("**Anomaly Type Distribution:**")
+                        for anomaly_type, count in anomaly_counts.items():
+                            st.markdown(f"- **{anomaly_type.replace('_', ' ').title()}**: {count}")
+                    
+                    # Show detailed anomaly list
+                    with st.expander("View Anomaly Details", expanded=False):
+                        for edge in edges:
+                            if edge.get('is_anomaly'):
+                                anomaly_info_edge = edge.get('anomaly_info', {})
+                                st.markdown(f"**{edge['type'].replace('_', ' ').title()}** ({edge['source']} → {edge['target']})")
+                                st.markdown(f"- Type: {anomaly_info_edge.get('anomaly_type', 'unknown')}")
+                                st.markdown(f"- Score: {anomaly_info_edge.get('score', 0):.3f}")
+                                st.markdown(f"- Severity: {anomaly_info_edge.get('severity', 'low')}")
+                                st.markdown("---")
+                
+                # Display node/edge statistics
+                with st.expander("Graph Statistics", expanded=False):
+                    st.json({
+                        "statistics": stats,
+                        "anomaly_detection": anomaly_info
+                    })
+                
+            except Exception as e:
+                st.error(f"Error generating graph: {str(e)}")
+                st.exception(e)
+
+
 def page_settings():
     """Settings page"""
     st.title("⚙️ Settings")
@@ -1022,6 +1225,7 @@ def main():
         "Home": page_home,
         "Multi-Patient Dashboard": page_multi_patient_dashboard,
         "Patient Analysis": page_patient_analysis,
+        "Graph Visualization": page_graph_visualization,
         "Medical Query": page_medical_query,
         "Document Upload": page_document_upload,
         "Feedback": page_feedback,
