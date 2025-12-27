@@ -313,3 +313,68 @@ async def get_document(
         logger.error("Error fetching document: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/documents/{document_id}/convert-fhir")
+async def convert_document_to_fhir(
+    request: Request,
+    document_id: str,
+    patient_id: Optional[str] = Form(None),
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.write", "user/*.write", "system/*.write"})
+    ),
+    document_service: Optional[DocumentService] = Depends(get_document_service),
+    audit_service: Optional[AuditService] = Depends(get_audit_service),
+):
+    """
+    Convert parsed document data to FHIR resources.
+    
+    Creates Observation, MedicationStatement, and Condition resources
+    from the extracted medical data.
+    """
+    if not document_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Document service not available",
+        )
+    
+    correlation_id = getattr(
+        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
+    )
+    
+    try:
+        result = await document_service.convert_to_fhir_resources(
+            document_id=document_id,
+            patient_id=patient_id or auth.patient,
+        )
+        
+        # Audit log
+        if audit_service:
+            await audit_service.record_event(
+                action="C",
+                patient_id=result["patient_id"],
+                user_context=auth,
+                correlation_id=correlation_id,
+                outcome="0",
+                outcome_desc="Document converted to FHIR resources",
+                event_type="document_fhir_conversion",
+            )
+        
+        return {
+            "status": "success",
+            "document_id": result["document_id"],
+            "patient_id": result["patient_id"],
+            "fhir_resources": result["fhir_resources"],
+            "resource_counts": {
+                "observations": len(result["fhir_resources"].get("observations", [])),
+                "medications": len(result["fhir_resources"].get("medication_statements", [])),
+                "conditions": len(result["fhir_resources"].get("conditions", [])),
+            },
+            "message": "FHIR resources created. Use FHIR connector to submit to FHIR server.",
+        }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Error converting document to FHIR [%s]: %s", correlation_id, str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+

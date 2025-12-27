@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.ocr import TextExtractor, OCRResult
 from backend.ocr.medical_parser import MedicalParser
+from backend.ocr.fhir_mapper import FHIRMapper
 from backend.database import get_db_session, DatabaseService
 from backend.database.models import Document, OCRExtraction
 
@@ -42,9 +43,10 @@ class DocumentService:
         self.upload_dir = Path(upload_dir or "./uploads")
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize OCR and parser
+        # Initialize OCR, parser, and FHIR mapper
         self.text_extractor = TextExtractor()
         self.medical_parser = MedicalParser()
+        self.fhir_mapper = FHIRMapper()
         
         logger.info("Document service initialized (upload_dir: %s)", self.upload_dir)
     
@@ -226,6 +228,73 @@ class DocumentService:
             "document_id": document_id,
             "patient_id": patient_id,
             "status": "linked",
+        }
+    
+    async def convert_to_fhir_resources(
+        self,
+        document_id: str,
+        patient_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Convert parsed document data to FHIR resources.
+        
+        Args:
+            document_id: Document ID
+            patient_id: Patient ID (if not provided, will try to get from document)
+        
+        Returns:
+            Dictionary with FHIR resources
+        """
+        if not self.database_service:
+            raise ValueError("Database service required")
+        
+        # Get document
+        document = await self.database_service.get_document(document_id)
+        if not document:
+            raise ValueError(f"Document not found: {document_id}")
+        
+        # Get patient_id
+        if not patient_id:
+            patient_id = document.get("patient_id")
+            if not patient_id:
+                raise ValueError("Patient ID required for FHIR conversion")
+        
+        # Get parsed data
+        parsed_data = document.get("extracted_data")
+        if not parsed_data:
+            raise ValueError("Document has not been processed with OCR yet")
+        
+        # Convert to FHIR
+        fhir_resources = self.fhir_mapper.map_parsed_data_to_fhir(
+            parsed_data=parsed_data,
+            patient_id=patient_id,
+            document_id=document_id,
+        )
+        
+        # Update document with FHIR resource IDs
+        fhir_resource_ids = {
+            "observation_ids": [obs["id"] for obs in fhir_resources.get("observations", [])],
+            "medication_ids": [med["id"] for med in fhir_resources.get("medication_statements", [])],
+            "condition_ids": [cond["id"] for cond in fhir_resources.get("conditions", [])],
+        }
+        
+        await self.database_service.update_document(
+            document_id,
+            {"fhir_resource_id": document_id},  # Store DocumentReference ID
+        )
+        
+        logger.info(
+            "Converted to FHIR: %d observations, %d medications, %d conditions",
+            len(fhir_resources.get("observations", [])),
+            len(fhir_resources.get("medication_statements", [])),
+            len(fhir_resources.get("conditions", [])),
+        )
+        
+        return {
+            "document_id": document_id,
+            "patient_id": patient_id,
+            "fhir_resources": fhir_resources,
+            "resource_ids": fhir_resource_ids,
         }
     
     async def _prepare_image(self, file_path: str) -> str:
