@@ -109,6 +109,44 @@ def make_api_call(
         return None
 
 
+def upload_file(
+    endpoint: str,
+    file: Any,
+    patient_id: Optional[str] = None,
+    document_type: Optional[str] = None,
+    *,
+    timeout: float = 30.0,
+) -> Optional[Dict]:
+    """Upload a file to the backend (multipart/form-data)."""
+    try:
+        url = f"{API_URL}{endpoint}"
+        files = {"file": (file.name, file.getvalue(), file.type)}
+        data = {}
+        
+        if patient_id:
+            data["patient_id"] = patient_id
+        if document_type:
+            data["document_type"] = document_type
+        
+        response = requests.post(url, files=files, data=data, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        error_detail = exc.response.json().get("detail", "Unknown error") if exc.response else "Unknown error"
+        st.error(f"Upload failed: {error_detail}")
+        st.info(f"Request failed with status {status}.")
+        return None
+    except RequestException as exc:
+        st.error("Unable to reach the server. Please check your connection.")
+        st.info(str(exc))
+        return None
+    except Exception as exc:
+        st.error("An unexpected error occurred during file upload.")
+        st.info(str(exc))
+        return None
+
+
 def initialize_session_state():
     """Initialize shared session state values."""
     query_params = st.experimental_get_query_params()
@@ -704,6 +742,227 @@ def page_feedback():
             st.warning("Please enter a Query ID")
 
 
+def page_document_upload():
+    """Document upload and OCR processing page"""
+    st.title("📄 Document Upload & OCR")
+    st.markdown("*Upload medical documents for OCR processing and FHIR conversion*")
+    
+    # Initialize session state for document tracking
+    if "uploaded_documents" not in st.session_state:
+        st.session_state.uploaded_documents = []
+    if "current_document_id" not in st.session_state:
+        st.session_state.current_document_id = None
+    
+    # Tabs for different sections
+    tab1, tab2, tab3 = st.tabs(["📤 Upload Document", "🔍 Process & View", "📋 Document List"])
+    
+    with tab1:
+        st.subheader("Upload Medical Document")
+        st.markdown("Supported formats: PDF, PNG, JPG, JPEG, GIF, BMP, TIFF")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            patient_id = st.text_input(
+                "Patient ID (Optional)",
+                placeholder="patient-12345",
+                help="Link document to a patient record"
+            )
+        with col2:
+            document_type = st.selectbox(
+                "Document Type",
+                ["", "lab_result", "prescription", "medical_record", "imaging_report", "other"],
+                help="Type of medical document"
+            )
+        
+        uploaded_file = st.file_uploader(
+            "Choose a file",
+            type=["pdf", "png", "jpg", "jpeg", "gif", "bmp", "tiff"],
+            help="Upload a medical document for OCR processing"
+        )
+        
+        if uploaded_file is not None:
+            st.info(f"📎 Selected: **{uploaded_file.name}** ({uploaded_file.size:,} bytes)")
+            
+            if st.button("Upload Document", type="primary", use_container_width=True):
+                with st.spinner("Uploading document..."):
+                    result = upload_file(
+                        "/api/v1/documents/upload",
+                        uploaded_file,
+                        patient_id=patient_id if patient_id else None,
+                        document_type=document_type if document_type else None,
+                    )
+                
+                if result and result.get("status") == "success":
+                    doc_id = result.get("document_id")
+                    st.session_state.current_document_id = doc_id
+                    
+                    if result.get("duplicate"):
+                        st.warning("⚠️ Duplicate file detected. Using existing document.")
+                    else:
+                        st.success(f"✅ Document uploaded successfully!")
+                    
+                    st.json(result)
+                    
+                    # Add to session state
+                    if doc_id not in [d.get("id") for d in st.session_state.uploaded_documents]:
+                        st.session_state.uploaded_documents.append({
+                            "id": doc_id,
+                            "name": uploaded_file.name,
+                            "type": result.get("document_type", "unknown"),
+                            "patient_id": patient_id,
+                            "uploaded_at": datetime.now().isoformat(),
+                        })
+                else:
+                    st.error("Failed to upload document")
+    
+    with tab2:
+        st.subheader("Process Document with OCR")
+        
+        # Document ID input
+        doc_id = st.text_input(
+            "Document ID",
+            value=st.session_state.current_document_id or "",
+            placeholder="Enter document ID from upload",
+            help="ID of the document to process"
+        )
+        
+        if doc_id:
+            col1, col2 = st.columns(2)
+            with col1:
+                ocr_engine = st.selectbox(
+                    "OCR Engine",
+                    ["auto", "tesseract", "easyocr"],
+                    help="Tesseract for printed text, EasyOCR for handwritten"
+                )
+            with col2:
+                language = st.text_input(
+                    "Language Code",
+                    value="en",
+                    placeholder="en, es, fr, etc.",
+                    help="Language for OCR processing"
+                )
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("🔍 Run OCR", use_container_width=True):
+                    with st.spinner("Processing document with OCR..."):
+                        engine_param = None if ocr_engine == "auto" else ocr_engine
+                        lang_param = language if language else None
+                        
+                        # Build URL with query parameters
+                        url = f"{API_URL}/api/v1/documents/{doc_id}/process"
+                        params = {}
+                        if engine_param:
+                            params["engine"] = engine_param
+                        if lang_param:
+                            params["language"] = lang_param
+                        
+                        try:
+                            response = requests.post(url, params=params, timeout=60.0)
+                            response.raise_for_status()
+                            result = response.json()
+                            
+                            if result and result.get("status") == "success":
+                                st.success("✅ OCR processing completed!")
+                                st.session_state[f"ocr_result_{doc_id}"] = result
+                            else:
+                                st.error("OCR processing failed")
+                        except HTTPError as exc:
+                            status = exc.response.status_code if exc.response is not None else "unknown"
+                            error_detail = exc.response.json().get("detail", "Unknown error") if exc.response else "Unknown error"
+                            st.error(f"OCR processing failed: {error_detail}")
+                            st.info(f"Status: {status}")
+                        except Exception as e:
+                            st.error(f"OCR processing failed: {str(e)}")
+            
+            with col2:
+                if st.button("🔄 Convert to FHIR", use_container_width=True):
+                    with st.spinner("Converting to FHIR resources..."):
+                        result = make_api_call(
+                            f"/api/v1/documents/{doc_id}/convert-fhir",
+                            method="POST",
+                            data={},
+                            timeout=60.0,
+                        )
+                        
+                        if result and result.get("status") == "success":
+                            st.success("✅ FHIR conversion completed!")
+                            st.session_state[f"fhir_result_{doc_id}"] = result
+                        else:
+                            st.error("FHIR conversion failed")
+            
+            with col3:
+                if st.button("📋 View Document Info", use_container_width=True):
+                    doc_info = make_api_call(f"/api/v1/documents/{doc_id}")
+                    if doc_info:
+                        st.session_state[f"doc_info_{doc_id}"] = doc_info
+                    else:
+                        st.error("Failed to fetch document info")
+            
+            # Display OCR results
+            if f"ocr_result_{doc_id}" in st.session_state:
+                st.markdown("---")
+                st.subheader("📝 OCR Results")
+                ocr_result = st.session_state[f"ocr_result_{doc_id}"]
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Confidence", f"{ocr_result.get('confidence', 0):.1%}")
+                with col2:
+                    st.metric("Word Count", ocr_result.get('word_count', 0))
+                with col3:
+                    st.metric("Engine", ocr_result.get('engine', 'unknown'))
+                
+                extracted_text = ocr_result.get('extracted_text', '')
+                if extracted_text:
+                    st.text_area("Extracted Text", extracted_text, height=200)
+            
+            # Display FHIR results
+            if f"fhir_result_{doc_id}" in st.session_state:
+                st.markdown("---")
+                st.subheader("🏥 FHIR Resources")
+                fhir_result = st.session_state[f"fhir_result_{doc_id}"]
+                
+                resources = fhir_result.get('resources', [])
+                st.metric("FHIR Resources Created", len(resources))
+                
+                if resources:
+                    resource_types = {}
+                    for resource in resources:
+                        rtype = resource.get('resourceType', 'Unknown')
+                        resource_types[rtype] = resource_types.get(rtype, 0) + 1
+                    
+                    st.markdown("**Resource Breakdown:**")
+                    for rtype, count in resource_types.items():
+                        st.markdown(f"- {rtype}: {count}")
+                    
+                    st.json(fhir_result)
+            
+            # Display document info
+            if f"doc_info_{doc_id}" in st.session_state:
+                st.markdown("---")
+                st.subheader("📋 Document Information")
+                doc_info = st.session_state[f"doc_info_{doc_id}"]
+                st.json(doc_info)
+    
+    with tab3:
+        st.subheader("Uploaded Documents")
+        
+        if st.session_state.uploaded_documents:
+            for doc in st.session_state.uploaded_documents:
+                with st.expander(f"📄 {doc.get('name', 'Unknown')} - {doc.get('id', '')[:8]}..."):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"**Type:** {doc.get('type', 'unknown')}")
+                        st.markdown(f"**Patient ID:** {doc.get('patient_id', 'Not linked')}")
+                    with col2:
+                        if st.button(f"Process", key=f"process_{doc.get('id')}"):
+                            st.session_state.current_document_id = doc.get('id')
+                            st.experimental_rerun()
+        else:
+            st.info("No documents uploaded yet. Use the Upload Document tab to get started.")
+
+
 def page_settings():
     """Settings page"""
     st.title("⚙️ Settings")
@@ -764,6 +1023,7 @@ def main():
         "Multi-Patient Dashboard": page_multi_patient_dashboard,
         "Patient Analysis": page_patient_analysis,
         "Medical Query": page_medical_query,
+        "Document Upload": page_document_upload,
         "Feedback": page_feedback,
         "Settings": page_settings,
     }
