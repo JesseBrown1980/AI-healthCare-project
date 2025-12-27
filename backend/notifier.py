@@ -115,19 +115,60 @@ class SlackNotifier:
             return None
 
 
+class EmailNotifier:
+    """Send notifications via email."""
+    
+    def __init__(self, email_service=None):
+        self.email_service = email_service
+    
+    async def notify(
+        self, payload: Dict[str, Any], correlation_id: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        """Send email notification."""
+        if not self.email_service:
+            return None
+        
+        # Extract recipient email from payload
+        recipient_email = payload.get("recipient_email") or payload.get("email")
+        if not recipient_email:
+            logger.warning("No recipient email in payload, skipping email notification")
+            return None
+        
+        notification_type = payload.get("notification_type", "default")
+        patient_id = payload.get("patient_id")
+        alert_data = payload.get("alerts") and {"alerts": payload.get("alerts")} or None
+        risk_scores = payload.get("risk_scores")
+        
+        success = await self.email_service.send_notification_email(
+            to_email=recipient_email,
+            notification_type=notification_type,
+            patient_id=patient_id,
+            alert_data=alert_data,
+            risk_scores=risk_scores,
+        )
+        
+        return {"status": "sent" if success else "failed"}
+
+
 class Notifier:
-    """Coordinator for notification channels (webhook, Slack, and FCM)."""
+    """Coordinator for notification channels (webhook, Slack, FCM, Email, and Calendar)."""
 
     def __init__(
         self,
         callback_url: Optional[str] = None,
         fcm_server_key: Optional[str] = None,
         slack_webhook_url: Optional[str] = None,
+        email_service: Optional[Any] = None,
+        google_calendar_service: Optional[Any] = None,
+        microsoft_calendar_service: Optional[Any] = None,
         channels: Optional[List[NotificationChannel]] = None,
     ) -> None:
         self.callback_url = callback_url or os.getenv("NOTIFICATION_URL", "").strip()
         self.slack_webhook_url = slack_webhook_url or os.getenv("SLACK_WEBHOOK_URL", "").strip()
         self.fcm_server_key = fcm_server_key or os.getenv("FCM_SERVER_KEY", "").strip()
+        self.email_service = email_service
+        self.google_calendar_service = google_calendar_service
+        self.microsoft_calendar_service = microsoft_calendar_service
         self.registered_devices: List[Dict[str, str]] = []
 
         if channels is not None:
@@ -138,6 +179,8 @@ class Notifier:
                 configured_channels.append(WebhookNotifier(self.callback_url))
             if self.slack_webhook_url:
                 configured_channels.append(SlackNotifier(self.slack_webhook_url))
+            if self.email_service:
+                configured_channels.append(EmailNotifier(self.email_service))
             self.channels = configured_channels
 
     def register_device(self, device_token: str, platform: str) -> Dict[str, str]:

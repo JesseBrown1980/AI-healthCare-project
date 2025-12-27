@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .endpoints import auth, patients, clinical, system, documents, graph_visualization
+from .endpoints import auth, patients, clinical, system, documents, graph_visualization, calendar
 
 api_router = APIRouter()
 
@@ -12,3 +12,4 @@ api_router.include_router(clinical.router, tags=["Clinical Insights"])
 api_router.include_router(system.router, tags=["System Infrastructure"])
 api_router.include_router(documents.router, tags=["Documents"])
 api_router.include_router(graph_visualization.router, tags=["Graph Visualization"])
+api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar Integration"])

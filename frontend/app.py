@@ -32,7 +32,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom styling
+# Custom styling with mobile/tablet responsive design
 st.markdown("""
 <style>
     .main {
@@ -63,6 +63,51 @@ st.markdown("""
         padding: 1rem;
         border-radius: 4px;
         margin: 1rem 0;
+    }
+    
+    /* Mobile and Tablet Responsive Styles */
+    @media screen and (max-width: 768px) {
+        .main {
+            padding-top: 1rem;
+        }
+        .stMetric {
+            padding: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .stButton > button {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        .stTextInput > div > div > input {
+            font-size: 16px; /* Prevents zoom on iOS */
+        }
+        .stSelectbox > div > div > select {
+            font-size: 16px;
+        }
+        [data-testid="stSidebar"] {
+            min-width: 200px;
+        }
+    }
+    
+    @media screen and (min-width: 769px) and (max-width: 1024px) {
+        /* Tablet styles */
+        .main {
+            padding-top: 1.5rem;
+        }
+        .stMetric {
+            padding: 0.75rem;
+        }
+    }
+    
+    /* Touch-friendly interactions */
+    @media (hover: none) and (pointer: coarse) {
+        button, a, [role="button"] {
+            min-height: 44px;
+            min-width: 44px;
+        }
+        .stButton > button {
+            padding: 0.75rem 1.5rem;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
