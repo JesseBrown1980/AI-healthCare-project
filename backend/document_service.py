@@ -84,10 +84,13 @@ class DocumentService:
             existing = await self.database_service.get_document_by_hash(file_hash)
             if existing:
                 logger.info("Duplicate file detected: %s", file_hash)
+                # Get full document to include document_type
+                existing_doc = await self.database_service.get_document(existing["id"])
                 return {
                     "id": existing["id"],
                     "file_path": existing["file_path"],
                     "file_hash": existing["file_hash"],
+                    "document_type": existing_doc.get("document_type") if existing_doc else None,
                     "duplicate": True,
                 }
         

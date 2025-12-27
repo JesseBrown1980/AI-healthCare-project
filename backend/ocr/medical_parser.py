@@ -214,6 +214,11 @@ class MedicalParser:
             matches = re.finditer(pattern, text)
             for match in matches:
                 try:
+                    # Initialize variables
+                    name = None
+                    dosage = None
+                    frequency = None
+                    
                     if pattern_type == 'name_dosage':
                         name = match.group(1).strip()
                         dosage = f"{match.group(2)} {match.group(3)}"
@@ -224,12 +229,15 @@ class MedicalParser:
                     else:
                         continue
                     
+                    if not name or not dosage:
+                        continue
+                    
                     date = self._find_nearest_date(text, match.start(), dates)
                     
                     medication = Medication(
                         name=name,
                         dosage=dosage,
-                        frequency=frequency if 'frequency' in locals() else None,
+                        frequency=frequency,
                         date=date,
                     )
                     medications.append(medication)
