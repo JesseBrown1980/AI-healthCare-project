@@ -266,47 +266,69 @@ class FHIRMapper:
         
         # Handle blood pressure specially (has two values)
         if vital_type == "bp":
-            # Parse systolic/diastolic from unit field
+            # Parse systolic/diastolic from unit field (format: "120/80 mmHg")
             unit_str = vital.get("unit", "")
             if "/" in unit_str:
                 parts = unit_str.split("/")
                 if len(parts) >= 2:
-                    observation["component"] = [
-                        {
-                            "code": {
-                                "coding": [
-                                    {
-                                        "system": "http://loinc.org",
-                                        "code": "8480-6",
-                                        "display": "Systolic blood pressure",
-                                    }
-                                ]
+                    try:
+                        systolic = float(parts[0].strip())
+                        diastolic_str = parts[1].strip().split()[0]  # Get number before "mmHg"
+                        diastolic = float(diastolic_str)
+                        
+                        observation["component"] = [
+                            {
+                                "code": {
+                                    "coding": [
+                                        {
+                                            "system": "http://loinc.org",
+                                            "code": "8480-6",
+                                            "display": "Systolic blood pressure",
+                                        }
+                                    ]
+                                },
+                                "valueQuantity": {
+                                    "value": systolic,
+                                    "unit": "mmHg",
+                                    "system": "http://unitsofmeasure.org",
+                                    "code": "mm[Hg]",
+                                },
                             },
-                            "valueQuantity": {
-                                "value": float(parts[0]),
-                                "unit": "mmHg",
-                                "system": "http://unitsofmeasure.org",
-                                "code": "mm[Hg]",
+                            {
+                                "code": {
+                                    "coding": [
+                                        {
+                                            "system": "http://loinc.org",
+                                            "code": "8462-4",
+                                            "display": "Diastolic blood pressure",
+                                        }
+                                    ]
+                                },
+                                "valueQuantity": {
+                                    "value": diastolic,
+                                    "unit": "mmHg",
+                                    "system": "http://unitsofmeasure.org",
+                                    "code": "mm[Hg]",
+                                },
                             },
-                        },
-                        {
-                            "code": {
-                                "coding": [
-                                    {
-                                        "system": "http://loinc.org",
-                                        "code": "8462-4",
-                                        "display": "Diastolic blood pressure",
-                                    }
-                                ]
-                            },
-                            "valueQuantity": {
-                                "value": float(parts[1].split()[0]),
-                                "unit": "mmHg",
-                                "system": "http://unitsofmeasure.org",
-                                "code": "mm[Hg]",
-                            },
-                        },
-                    ]
+                        ]
+                    except (ValueError, IndexError) as e:
+                        logger.warning("Failed to parse BP values from unit '%s': %s", unit_str, str(e))
+                        # Fallback: use value as systolic, estimate diastolic
+                        observation["valueQuantity"] = {
+                            "value": vital.get("value"),
+                            "unit": "mmHg",
+                            "system": "http://unitsofmeasure.org",
+                            "code": "mm[Hg]",
+                        }
+            else:
+                # No "/" found, treat as single value
+                observation["valueQuantity"] = {
+                    "value": vital.get("value"),
+                    "unit": "mmHg",
+                    "system": "http://unitsofmeasure.org",
+                    "code": "mm[Hg]",
+                }
         else:
             observation["valueQuantity"] = {
                 "value": vital.get("value"),
@@ -405,6 +427,15 @@ class FHIRMapper:
         if not onset_date:
             onset_date = datetime.now().isoformat()
         
+        # Build code structure
+        code_coding = []
+        if snomed:
+            code_coding.append({
+                "system": "http://snomed.info/sct",
+                "code": snomed["code"],
+                "display": snomed["display"],
+            })
+        
         fhir_condition = {
             "resourceType": "Condition",
             "id": str(uuid4()),
@@ -418,13 +449,7 @@ class FHIRMapper:
                 ]
             },
             "code": {
-                "coding": [
-                    {
-                        "system": "http://snomed.info/sct",
-                        "code": snomed["code"] if snomed else None,
-                        "display": snomed["display"] if snomed else condition.get("name"),
-                    }
-                ] if snomed else [],
+                "coding": code_coding,
                 "text": condition.get("name"),
             },
             "subject": {
