@@ -89,13 +89,19 @@ def check_registry_access() -> Dict[str, Any]:
     accessible = []
     inaccessible = []
     
+    hkey_names = {
+        winreg.HKEY_LOCAL_MACHINE: "HKEY_LOCAL_MACHINE",
+        winreg.HKEY_CURRENT_USER: "HKEY_CURRENT_USER",
+        winreg.HKEY_CLASSES_ROOT: "HKEY_CLASSES_ROOT"
+    }
+    
     for hkey, subkey in test_keys:
         try:
             key = winreg.OpenKey(hkey, subkey, 0, winreg.KEY_READ)
             key.Close()
-            accessible.append(f"{hkey.name}\\{subkey}")
+            accessible.append(f"{hkey_names.get(hkey, 'UNKNOWN')}\\{subkey}")
         except Exception as e:
-            inaccessible.append(f"{hkey.name}\\{subkey} - {str(e)}")
+            inaccessible.append(f"{hkey_names.get(hkey, 'UNKNOWN')}\\{subkey} - {str(e)}")
     
     return {
         "accessible": accessible,

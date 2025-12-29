@@ -8,7 +8,44 @@ These tools modify Windows registry and system settings. **Always backup your sy
 
 ## Tools
 
-### 1. Diagnostic Tool (`diagnose_system.py`)
+### 1. Search Indexing Diagnostic (`check_search_indexing.py`)
+
+**Purpose**: Diagnose Windows Search indexing issues (when Windows Search returns no results).
+
+**Usage**:
+```batch
+python windows_build\system_repair\check_search_indexing.py
+```
+
+**What it checks**:
+- Windows Search service status
+- Search index status
+- Registry settings for indexing
+- Indexed locations
+
+**Output**: Creates `search_indexing_report.txt` with findings.
+
+### 2. Search Indexing Repair (`fix_search_indexing.ps1`)
+
+**Purpose**: Fix Windows Search indexing issues.
+
+**⚠️ Requires Administrator privileges**
+
+**Usage**:
+```powershell
+# Right-click and "Run as Administrator"
+.\windows_build\system_repair\fix_search_indexing.ps1
+```
+
+**What it fixes**:
+- Stops and restarts Windows Search service
+- Deletes and rebuilds the search index
+- Resets registry settings
+- Adds common locations to the index
+
+**Note**: Index rebuilding takes 15-30 minutes in the background.
+
+### 3. Diagnostic Tool (`diagnose_system.py`)
 
 **Purpose**: Diagnose file system and registry issues without making changes.
 
@@ -25,7 +62,7 @@ python windows_build\system_repair\diagnose_system.py
 
 **Output**: Creates `diagnostic_report.txt` with findings and recommendations.
 
-### 2. Repair Tool (`repair_system.py`)
+### 4. Repair Tool (`repair_system.py`)
 
 **Purpose**: Fix file system visibility and registry issues.
 
@@ -43,7 +80,7 @@ python windows_build\system_repair\repair_system.py
 - Rebuilds icon cache
 - Optional: Runs DISM repair (takes 15-30 minutes)
 
-### 3. Quick Fix PowerShell Script (`quick_fix.ps1`)
+### 5. Quick Fix PowerShell Script (`quick_fix.ps1`)
 
 **Purpose**: Quick fix for File Explorer visibility issues.
 
@@ -107,6 +144,22 @@ dism /online /cleanup-image /restorehealth
 This repairs the Windows image (takes 15-30 minutes).
 
 ## Common Issues and Solutions
+
+### Windows Search Returns Nothing
+
+**Symptoms**: Pressing Windows key and typing returns no results, even for files that exist.
+
+**Diagnosis**: Run `check_search_indexing.py` to check if locations are indexed.
+
+**Quick Fix**: 
+1. Run `fix_search_indexing.ps1` as administrator
+2. Or manually: Settings > Search > Searching Windows > Advanced search indexer settings > Rebuild
+
+**Full Fix**: 
+1. Run `check_search_indexing.py` to diagnose
+2. Run `fix_search_indexing.ps1` as administrator
+3. Wait 15-30 minutes for index to rebuild
+4. Check Settings > Search > Searching Windows for progress
 
 ### Files Not Showing in File Explorer
 

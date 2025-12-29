@@ -108,7 +108,7 @@ class User(Base):
     password_reset_token_expires = Column(DateTime(timezone=True))  # Reset token expiration
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     last_login = Column(DateTime(timezone=True))
-    metadata = Column(JSONColumn())  # Additional user metadata
+    user_metadata = Column(JSONColumn())  # Additional user metadata
     
     # Relationships
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
@@ -126,7 +126,7 @@ class UserSession(Base):
     last_activity = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     ip_address = Column(String(45))
     user_agent = Column(Text)
-    metadata = Column(JSONColumn())
+    session_metadata = Column(JSONColumn())
     
     # Relationships
     user = relationship("User", back_populates="sessions")

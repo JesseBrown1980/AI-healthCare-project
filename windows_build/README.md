@@ -1,23 +1,27 @@
 # Windows Build and Installation
 
-This directory contains files for building a Windows executable and installer for the Healthcare AI Assistant.
+This directory contains files for building a Windows executable and
+installer for the Healthcare AI Assistant.
 
 ## Prerequisites
 
 1. **Python 3.9+** installed on Windows
 2. **PyInstaller** - Will be installed automatically
-3. **Inno Setup 6** (optional, for creating installer) - Download from https://jrsoftware.org/isdl.php
+3. **Inno Setup 6** (optional, for creating installer) - Download from
+   [Inno Setup](https://jrsoftware.org/isdl.php)
 
 ## Building the Application
 
 ### Quick Build
 
 Run the build script:
+
 ```batch
 windows_build\build_windows.bat
 ```
 
 This will:
+
 1. Create/activate a virtual environment
 2. Install all dependencies
 3. Build the executable using PyInstaller
@@ -26,6 +30,7 @@ This will:
 ### Manual Build
 
 1. **Install dependencies:**
+
    ```batch
    pip install pyinstaller
    pip install -r requirements.txt
@@ -34,11 +39,13 @@ This will:
    ```
 
 2. **Build executable:**
+
    ```batch
    pyinstaller --clean --noconfirm windows_build\healthcare_ai.spec
    ```
 
 3. **Build installer (if Inno Setup is installed):**
+
    ```batch
    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows_build\installer.iss
    ```
@@ -69,6 +76,7 @@ The application includes automatic update functionality:
 ### Update Configuration
 
 Set the `UPDATE_URL` environment variable to customize the update source:
+
 - Default: GitHub Releases API
 - Custom: Your own update server endpoint
 
@@ -83,7 +91,8 @@ The Windows launcher provides:
 
 ## Icon
 
-Place a `icon.ico` file in the `windows_build` directory to use a custom icon for the executable and installer.
+Place a `icon.ico` file in the `windows_build` directory to use a custom
+icon for the executable and installer.
 
 ## Troubleshooting
 
@@ -104,4 +113,3 @@ Place a `icon.ico` file in the `windows_build` directory to use a custom icon fo
 1. Check internet connectivity
 2. Verify GitHub Releases API is accessible
 3. Check application logs for update errors
-

@@ -4,6 +4,7 @@ from .deps import (
     get_audit_service,
     get_aot_reasoner,
     get_container,
+    get_database_service,
     get_fhir_connector,
     get_llm_engine,
     get_optional_llm_engine,
@@ -22,6 +23,7 @@ from .deps import (
 __all__ = [
     "ServiceContainer",
     "get_container",
+    "get_database_service",
     "get_fhir_connector",
     "get_patient_analyzer",
     "get_llm_engine",
