@@ -21,11 +21,12 @@ def mock_request():
     return request
 
 
-def test_http_exception_handler_401(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_401(mock_request):
     """Test HTTP exception handler for 401 Unauthorized."""
     exc = HTTPException(status_code=401, detail="Unauthorized")
     
-    response = http_exception_handler(mock_request, exc)
+    response = await http_exception_handler(mock_request, exc)
     
     assert isinstance(response, JSONResponse)
     assert response.status_code == 401
@@ -35,11 +36,12 @@ def test_http_exception_handler_401(mock_request):
     assert "authenticate" in content.lower()
 
 
-def test_http_exception_handler_403(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_403(mock_request):
     """Test HTTP exception handler for 403 Forbidden."""
     exc = HTTPException(status_code=403, detail="Forbidden")
     
-    response = http_exception_handler(mock_request, exc)
+    response = await http_exception_handler(mock_request, exc)
     
     assert isinstance(response, JSONResponse)
     assert response.status_code == 403
@@ -49,11 +51,12 @@ def test_http_exception_handler_403(mock_request):
     assert "permission" in content.lower()
 
 
-def test_http_exception_handler_404(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_404(mock_request):
     """Test HTTP exception handler for 404 Not Found."""
     exc = HTTPException(status_code=404, detail="Not Found")
     
-    response = http_exception_handler(mock_request, exc)
+    response = await http_exception_handler(mock_request, exc)
     
     assert isinstance(response, JSONResponse)
     assert response.status_code == 404
@@ -63,11 +66,12 @@ def test_http_exception_handler_404(mock_request):
     assert "not found" in content.lower()
 
 
-def test_http_exception_handler_422(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_422(mock_request):
     """Test HTTP exception handler for 422 Validation Error."""
     exc = HTTPException(status_code=422, detail="Validation Error")
     
-    response = http_exception_handler(mock_request, exc)
+    response = await http_exception_handler(mock_request, exc)
     
     assert isinstance(response, JSONResponse)
     assert response.status_code == 422
@@ -77,11 +81,12 @@ def test_http_exception_handler_422(mock_request):
     assert "validation" in content.lower()
 
 
-def test_http_exception_handler_503(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_503(mock_request):
     """Test HTTP exception handler for 503 Service Unavailable."""
     exc = HTTPException(status_code=503, detail="Service Unavailable")
     
-    response = http_exception_handler(mock_request, exc)
+    response = await http_exception_handler(mock_request, exc)
     
     assert isinstance(response, JSONResponse)
     assert response.status_code == 503
@@ -91,12 +96,13 @@ def test_http_exception_handler_503(mock_request):
     assert "unavailable" in content.lower()
 
 
-def test_general_exception_handler_debug_mode(mock_request):
+@pytest.mark.asyncio
+async def test_general_exception_handler_debug_mode(mock_request):
     """Test general exception handler in debug mode."""
     with patch.dict('os.environ', {'DEBUG': 'True'}):
         exc = ValueError("Test error message")
         
-        response = general_exception_handler(mock_request, exc)
+        response = await general_exception_handler(mock_request, exc)
         
         assert isinstance(response, JSONResponse)
         assert response.status_code == 500
@@ -106,12 +112,13 @@ def test_general_exception_handler_debug_mode(mock_request):
         assert "Test error message" in content
 
 
-def test_general_exception_handler_production_mode(mock_request):
+@pytest.mark.asyncio
+async def test_general_exception_handler_production_mode(mock_request):
     """Test general exception handler in production mode."""
     with patch.dict('os.environ', {'DEBUG': 'False'}):
         exc = ValueError("Sensitive error details")
         
-        response = general_exception_handler(mock_request, exc)
+        response = await general_exception_handler(mock_request, exc)
         
         assert isinstance(response, JSONResponse)
         assert response.status_code == 500
@@ -122,33 +129,36 @@ def test_general_exception_handler_production_mode(mock_request):
         assert "ValueError" not in content
 
 
-def test_general_exception_handler_includes_correlation_id(mock_request):
+@pytest.mark.asyncio
+async def test_general_exception_handler_includes_correlation_id(mock_request):
     """Test that general exception handler includes correlation ID."""
     exc = Exception("Test error")
     
-    response = general_exception_handler(mock_request, exc)
+    response = await general_exception_handler(mock_request, exc)
     
     content = response.body.decode()
     assert "test-correlation-123" in content
     assert "correlation_id" in content
 
 
-def test_general_exception_handler_includes_path(mock_request):
+@pytest.mark.asyncio
+async def test_general_exception_handler_includes_path(mock_request):
     """Test that general exception handler includes request path."""
     exc = Exception("Test error")
     
-    response = general_exception_handler(mock_request, exc)
+    response = await general_exception_handler(mock_request, exc)
     
     content = response.body.decode()
     assert "/api/v1/test" in content
     assert "path" in content
 
 
-def test_http_exception_handler_includes_timestamp(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_includes_timestamp(mock_request):
     """Test that HTTP exception handler includes timestamp."""
     exc = HTTPException(status_code=400, detail="Bad Request")
     
-    response = http_exception_handler(mock_request, exc)
+    response = await http_exception_handler(mock_request, exc)
     
     content = response.body.decode()
     assert "timestamp" in content
@@ -156,14 +166,15 @@ def test_http_exception_handler_includes_timestamp(mock_request):
     assert "T" in content or "-" in content  # ISO format indicator
 
 
-def test_http_exception_handler_logs_errors(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_logs_errors(mock_request):
     """Test that HTTP exception handler logs errors appropriately."""
     import logging
     
     with patch('backend.main.logger') as mock_logger:
         exc = HTTPException(status_code=500, detail="Internal Server Error")
         
-        response = http_exception_handler(mock_request, exc)
+        response = await http_exception_handler(mock_request, exc)
         
         # Should log error for 5xx status codes
         mock_logger.error.assert_called_once()
@@ -171,28 +182,30 @@ def test_http_exception_handler_logs_errors(mock_request):
         assert "Internal Server Error" in str(mock_logger.error.call_args)
 
 
-def test_http_exception_handler_logs_warnings(mock_request):
+@pytest.mark.asyncio
+async def test_http_exception_handler_logs_warnings(mock_request):
     """Test that HTTP exception handler logs warnings for 4xx errors."""
     import logging
     
     with patch('backend.main.logger') as mock_logger:
         exc = HTTPException(status_code=400, detail="Bad Request")
         
-        response = http_exception_handler(mock_request, exc)
+        response = await http_exception_handler(mock_request, exc)
         
         # Should log warning for 4xx status codes
         mock_logger.warning.assert_called_once()
         assert "400" in str(mock_logger.warning.call_args)
 
 
-def test_general_exception_handler_logs_with_traceback(mock_request):
+@pytest.mark.asyncio
+async def test_general_exception_handler_logs_with_traceback(mock_request):
     """Test that general exception handler logs with full traceback."""
     import logging
     
     with patch('backend.main.logger') as mock_logger:
         exc = Exception("Test error")
         
-        response = general_exception_handler(mock_request, exc)
+        response = await general_exception_handler(mock_request, exc)
         
         # Should log with exc_info=True for full traceback
         mock_logger.error.assert_called_once()
@@ -201,11 +214,12 @@ def test_general_exception_handler_logs_with_traceback(mock_request):
         assert call_args.kwargs.get('exc_info') is True or 'exc_info' in str(call_args)
 
 
-def test_error_response_format_consistency(mock_request):
+@pytest.mark.asyncio
+async def test_error_response_format_consistency(mock_request):
     """Test that all error responses have consistent format."""
     exc = HTTPException(status_code=400, detail="Test error")
     
-    response = http_exception_handler(mock_request, exc)
+    response = await http_exception_handler(mock_request, exc)
     content = response.body.decode()
     
     # Check for required fields
@@ -216,7 +230,8 @@ def test_error_response_format_consistency(mock_request):
     assert "status_code" in content
 
 
-def test_error_response_without_correlation_id():
+@pytest.mark.asyncio
+async def test_error_response_without_correlation_id():
     """Test error handling when correlation ID is missing."""
     request = MagicMock(spec=Request)
     request.state = MagicMock()
@@ -228,7 +243,7 @@ def test_error_response_without_correlation_id():
     
     exc = HTTPException(status_code=500, detail="Error")
     
-    response = http_exception_handler(request, exc)
+    response = await http_exception_handler(request, exc)
     
     # Should still work and generate a correlation ID
     content = response.body.decode()

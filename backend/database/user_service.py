@@ -77,6 +77,8 @@ class UserService:
                 'is_verified': bool(user.is_verified),
                 'created_at': user.created_at.isoformat() if user.created_at else None,
                 'last_login': user.last_login.isoformat() if user.last_login else None,
+                'oauth_provider': user.oauth_provider,
+                'oauth_provider_id': user.oauth_provider_id,
             }
     
     async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:

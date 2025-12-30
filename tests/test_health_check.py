@@ -50,8 +50,8 @@ async def test_health_check_all_healthy(
     mock_request, mock_llm_engine, mock_rag_fusion, mock_s_lora_manager, mock_mlc_learning
 ):
     """Test health check when all components are healthy."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client', return_value=MagicMock(ping=AsyncMock())), \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client', return_value=MagicMock(ping=AsyncMock())), \
          patch.dict('os.environ', {'DEBUG': 'False'}):
         
         # Mock database session
@@ -79,8 +79,8 @@ async def test_health_check_all_healthy(
 @pytest.mark.asyncio
 async def test_health_check_database_unhealthy(mock_request, mock_llm_engine, mock_rag_fusion):
     """Test health check when database is unhealthy."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client', return_value=None), \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client', return_value=None), \
          patch.dict('os.environ', {'DEBUG': 'False'}):
         
         # Make database connection fail
@@ -103,8 +103,8 @@ async def test_health_check_database_unhealthy(mock_request, mock_llm_engine, mo
 @pytest.mark.asyncio
 async def test_health_check_redis_unavailable(mock_request, mock_llm_engine):
     """Test health check when Redis is unavailable."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client', return_value=None), \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client', return_value=None), \
          patch.dict('os.environ', {'DEBUG': 'False'}):
         
         # Mock database session
@@ -130,8 +130,8 @@ async def test_health_check_redis_unavailable(mock_request, mock_llm_engine):
 @pytest.mark.asyncio
 async def test_health_check_redis_connection_failure(mock_request, mock_llm_engine):
     """Test health check when Redis connection fails."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client') as mock_redis, \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client') as mock_redis, \
          patch.dict('os.environ', {'DEBUG': 'False'}):
         
         # Mock database session
@@ -160,8 +160,8 @@ async def test_health_check_redis_connection_failure(mock_request, mock_llm_engi
 @pytest.mark.asyncio
 async def test_health_check_missing_components(mock_request):
     """Test health check when key components are missing."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client', return_value=None), \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client', return_value=None), \
          patch.dict('os.environ', {'DEBUG': 'False'}):
         
         # Mock database session
@@ -188,8 +188,8 @@ async def test_health_check_missing_components(mock_request):
 @pytest.mark.asyncio
 async def test_health_check_debug_mode_shows_errors(mock_request):
     """Test health check in debug mode shows detailed errors."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client', return_value=None), \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client', return_value=None), \
          patch.dict('os.environ', {'DEBUG': 'True'}):
         
         # Make database connection fail
@@ -211,8 +211,8 @@ async def test_health_check_debug_mode_shows_errors(mock_request):
 @pytest.mark.asyncio
 async def test_health_check_production_mode_hides_errors(mock_request):
     """Test health check in production mode hides detailed errors."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client', return_value=None), \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client', return_value=None), \
          patch.dict('os.environ', {'DEBUG': 'False'}):
         
         # Make database connection fail
@@ -235,8 +235,8 @@ async def test_health_check_production_mode_hides_errors(mock_request):
 @pytest.mark.asyncio
 async def test_health_check_all_components_status(mock_request, mock_llm_engine, mock_rag_fusion):
     """Test that all component statuses are included."""
-    with patch('backend.api.v1.endpoints.system.get_db_session') as mock_db, \
-         patch('backend.api.v1.endpoints.system.get_redis_client', return_value=None), \
+    with patch('backend.database.get_db_session') as mock_db, \
+         patch('backend.database.connection.get_redis_client', return_value=None), \
          patch.dict('os.environ', {'DEBUG': 'False'}):
         
         # Mock database session
