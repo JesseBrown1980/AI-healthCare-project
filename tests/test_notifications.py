@@ -205,7 +205,10 @@ def test_registration_endpoints_return_503_when_notifier_missing():
             for path in target_paths:
                 response = client.post(path, json=payload)
                 assert response.status_code == 503
-                assert response.json() == {"detail": "Notifier not initialized"}
+                response_json = response.json()
+                # Check for new error response format (with correlation_id, hint, etc.)
+                assert response_json.get("status") == "error"
+                assert "Notifier not initialized" in response_json.get("message", "") or "Notifier not initialized" in response_json.get("detail", "")
     finally:
         app.dependency_overrides = original_overrides
         app.router.lifespan_context = original_lifespan
