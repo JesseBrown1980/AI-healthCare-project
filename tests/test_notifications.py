@@ -273,7 +273,7 @@ async def test_analyze_patient_respects_notify_flag(monkeypatch):
         with TestClient(app) as client:
             response = client.post(
                 "/api/v1/analyze-patient",
-                params={"fhir_patient_id": "p-3", "notify": True},
+                params={"fhir_patient_id": "p-3", "notify": "true"},
             )
 
         assert response.status_code == 200
@@ -286,13 +286,17 @@ async def test_analyze_patient_respects_notify_flag(monkeypatch):
         first_notify = recorder.last_notify
         recorder.last_notify = None
 
+        # Clear the cache and reset the recorder
         app.dependency_overrides[get_patient_summary_cache] = lambda: {}
         monkeypatch.setattr(main, "notifications_enabled", True)
+        
+        # Reset the recorder to ensure fresh state
+        recorder.analysis_history = {}
 
         with TestClient(app) as client:
             second_response = client.post(
                 "/api/v1/analyze-patient",
-                params={"fhir_patient_id": "p-3", "notify": True},
+                params={"fhir_patient_id": "p-3", "notify": "true"},
             )
 
         assert second_response.status_code == 200
