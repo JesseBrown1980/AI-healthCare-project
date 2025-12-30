@@ -55,14 +55,92 @@ def _register_device_token(
     return {"status": "registered", "device": registered}
 
 @router.get("/health", response_model=HealthCheckResponse)
-async def health_check():
-    """System health check endpoint."""
-    return {
+async def health_check(
+    request: Request,
+    llm_engine: Optional[LLMEngine] = Depends(get_optional_llm_engine),
+    rag_fusion: Optional[RAGFusion] = Depends(get_optional_rag_fusion),
+    s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
+    mlc_learning: Optional[MLCLearning] = Depends(get_optional_mlc_learning),
+):
+    """
+    System health check endpoint with detailed component status.
+    
+    Returns overall health status and individual component availability.
+    """
+    from backend.database import get_db_session
+    from backend.database.connection import get_redis_client
+    import os
+    
+    health_status = {
         "status": "healthy",
         "service": "Healthcare AI Assistant",
         "version": "1.0.0",
         "vendor": "generic",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "components": {}
     }
+    
+    # Check database
+    try:
+        from sqlalchemy import text
+        async with get_db_session() as session:
+            await session.execute(text("SELECT 1"))
+        health_status["components"]["database"] = {"status": "healthy", "available": True}
+    except Exception as e:
+        logger.warning(f"Database health check failed: {e}")
+        health_status["components"]["database"] = {
+            "status": "unhealthy",
+            "available": False,
+            "error": str(e) if os.getenv("DEBUG", "False").lower() == "true" else "Database unavailable"
+        }
+        health_status["status"] = "degraded"
+    
+    # Check Redis
+    try:
+        redis_client = get_redis_client()
+        if redis_client:
+            await redis_client.ping()
+            health_status["components"]["redis"] = {"status": "healthy", "available": True}
+        else:
+            health_status["components"]["redis"] = {"status": "disabled", "available": False}
+    except Exception as e:
+        logger.warning(f"Redis health check failed: {e}")
+        health_status["components"]["redis"] = {
+            "status": "unhealthy",
+            "available": False,
+            "error": str(e) if os.getenv("DEBUG", "False").lower() == "true" else "Redis unavailable"
+        }
+        # Redis is optional, so don't mark overall status as degraded
+    
+    # Check LLM Engine
+    health_status["components"]["llm_engine"] = {
+        "status": "healthy" if llm_engine else "disabled",
+        "available": llm_engine is not None
+    }
+    if not llm_engine:
+        health_status["status"] = "degraded"
+    
+    # Check RAG Fusion
+    health_status["components"]["rag_fusion"] = {
+        "status": "healthy" if rag_fusion else "disabled",
+        "available": rag_fusion is not None
+    }
+    if not rag_fusion:
+        health_status["status"] = "degraded"
+    
+    # Check S-LoRA Manager
+    health_status["components"]["s_lora_manager"] = {
+        "status": "healthy" if s_lora_manager else "disabled",
+        "available": s_lora_manager is not None
+    }
+    
+    # Check MLC Learning
+    health_status["components"]["mlc_learning"] = {
+        "status": "healthy" if mlc_learning else "disabled",
+        "available": mlc_learning is not None
+    }
+    
+    return health_status
 
 @router.post("/cache/clear", response_model=CacheClearResponse)
 async def clear_cache(

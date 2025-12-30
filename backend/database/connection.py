@@ -56,12 +56,29 @@ async def init_database() -> None:
     db_url = get_database_url()
     logger.info(f"Initializing database connection: {db_url.split('@')[-1] if '@' in db_url else db_url}")
     
+    # Configure connection arguments based on database type
+    connect_args = {}
+    if "sqlite" in db_url.lower():
+        # SQLite-specific connection arguments
+        connect_args = {
+            "timeout": 10,  # Connection timeout in seconds
+            "check_same_thread": False,  # For async SQLite compatibility
+        }
+    else:
+        # PostgreSQL/other database connection arguments
+        connect_args = {
+            "connect_timeout": 10,
+            "command_timeout": 30,
+        }
+    
     _engine = create_async_engine(
         db_url,
         echo=os.getenv("DEBUG", "False").lower() == "true",
-        pool_pre_ping=True,
+        pool_pre_ping=True,  # Verify connections before using
         pool_size=10,
         max_overflow=20,
+        pool_recycle=3600,  # Recycle connections after 1 hour
+        connect_args=connect_args,
     )
     
     _session_factory = async_sessionmaker(

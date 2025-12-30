@@ -359,37 +359,81 @@ async def patient_updates(websocket: WebSocket):
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """
-    Global exception handler
+    Global exception handler for unhandled exceptions.
+    Provides consistent error response format and logging.
     """
     correlation_id = getattr(request.state, "correlation_id", uuid.uuid4().hex)
-    logger.error("Unhandled exception [%s]: %s", correlation_id, str(exc))
+    
+    # Log with full traceback for debugging
+    logger.error(
+        "Unhandled exception [%s] at %s %s: %s",
+        correlation_id,
+        request.method,
+        request.url.path,
+        str(exc),
+        exc_info=True
+    )
+    
+    # Determine error message based on environment
+    is_debug = os.getenv("DEBUG", "False").lower() == "true"
+    error_message = "An unexpected error occurred"
+    error_detail = None
+    
+    if is_debug:
+        error_message = f"Internal server error: {type(exc).__name__}"
+        error_detail = str(exc)
+    
     payload = {
         "status": "error",
-        "message": "An unexpected error occurred",
+        "message": error_message,
         "correlation_id": correlation_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "path": str(request.url.path),
     }
-
+    
+    if error_detail:
+        payload["detail"] = error_detail
+    
     return JSONResponse(status_code=500, content=payload)
 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    """
+    HTTP exception handler for FastAPI HTTPException.
+    Provides consistent error response format with helpful hints.
+    """
     correlation_id = getattr(request.state, "correlation_id", uuid.uuid4().hex)
-    logger.error("HTTPException [%s]: %s", correlation_id, exc.detail)
-
-    if exc.status_code == 503 and exc.detail == "Notifier not initialized":
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    
+    # Log based on status code severity
+    if exc.status_code >= 500:
+        logger.error("HTTPException [%s] %s: %s", correlation_id, exc.status_code, exc.detail)
+    elif exc.status_code >= 400:
+        logger.warning("HTTPException [%s] %s: %s", correlation_id, exc.status_code, exc.detail)
+    else:
+        logger.info("HTTPException [%s] %s: %s", correlation_id, exc.status_code, exc.detail)
 
     payload = {
         "status": "error",
         "message": exc.detail if exc.detail else "Request failed",
         "correlation_id": correlation_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status_code": exc.status_code,
     }
 
-    if exc.status_code in {401, 403}:
-        payload["hint"] = "Please re-authenticate and try again."
+    # Add helpful hints based on error type
+    if exc.status_code == 401:
+        payload["hint"] = "Please authenticate and try again. Check your access token."
+    elif exc.status_code == 403:
+        payload["hint"] = "You don't have permission to access this resource. Check your roles and scopes."
+    elif exc.status_code == 404:
+        payload["hint"] = "The requested resource was not found. Check the URL and resource ID."
+    elif exc.status_code == 422:
+        payload["hint"] = "Request validation failed. Check your input parameters."
+    elif exc.status_code == 429:
+        payload["hint"] = "Rate limit exceeded. Please try again later."
+    elif exc.status_code == 503:
+        payload["hint"] = "Service temporarily unavailable. Please try again in a moment."
 
     return JSONResponse(status_code=exc.status_code, content=payload)
 
