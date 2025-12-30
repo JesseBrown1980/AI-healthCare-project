@@ -87,10 +87,79 @@ async def init_database() -> None:
         logger.warning(f"Redis connection failed: {e}. Continuing without Redis cache.")
         _redis_client = None
     
-    # Create tables (imported from models to avoid circular import)
-    from .models import Base
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Run Alembic migrations to ensure database schema is up to date
+    # This ensures Alembic knows about the database state and prevents
+    # "Target database is not up to date" errors when autogenerating migrations
+    try:
+        from alembic.config import Config
+        from alembic import script
+        from alembic import command
+        
+        # Get sync engine for Alembic (Alembic doesn't support async directly)
+        db_url_sync = db_url
+        if db_url_sync.startswith("sqlite+aiosqlite:///"):
+            db_url_sync = db_url_sync.replace("sqlite+aiosqlite:///", "sqlite:///", 1)
+        elif db_url_sync.startswith("postgresql+asyncpg://"):
+            db_url_sync = db_url_sync.replace("postgresql+asyncpg://", "postgresql://", 1)
+        
+        # Create Alembic config
+        import pathlib
+        project_root = pathlib.Path(__file__).parent.parent.parent
+        alembic_cfg = Config(str(project_root / "alembic.ini"))
+        alembic_cfg.set_main_option("sqlalchemy.url", db_url_sync)
+        
+        # Check if alembic_version table exists
+        from sqlalchemy import create_engine, inspect, text
+        sync_engine = create_engine(db_url_sync)
+        
+        with sync_engine.connect() as conn:
+            inspector = inspect(sync_engine)
+            tables = inspector.get_table_names()
+            
+            if "alembic_version" not in tables:
+                # Database exists but Alembic hasn't been initialized
+                # Check if we have existing tables that match our models
+                expected_tables = ["analysis_history", "documents", "ocr_extractions", 
+                                 "user_sessions", "audit_logs", "users"]
+                has_existing_tables = any(table in tables for table in expected_tables)
+                
+                if has_existing_tables:
+                    # Stamp database with current head revision
+                    logger.info("Stamping database with current Alembic version...")
+                    command.stamp(alembic_cfg, "head")
+                    logger.info("✓ Database stamped with Alembic version")
+                else:
+                    # No existing tables, run migrations from scratch
+                    logger.info("Running Alembic migrations...")
+                    command.upgrade(alembic_cfg, "head")
+                    logger.info("✓ Database migrations applied")
+            else:
+                # Alembic is initialized, check if we need to upgrade
+                with conn.begin():
+                    result = conn.execute(text("SELECT version_num FROM alembic_version"))
+                    current_version = result.scalar()
+                    logger.info(f"Current Alembic version: {current_version}")
+                    
+                    # Get head revision
+                    script_dir = script.ScriptDirectory.from_config(alembic_cfg)
+                    head_revision = script_dir.get_current_head()
+                    
+                    if current_version != head_revision:
+                        logger.info(f"Upgrading database from {current_version} to {head_revision}...")
+                        command.upgrade(alembic_cfg, "head")
+                        logger.info("✓ Database upgraded to latest version")
+                    else:
+                        logger.info("✓ Database is up to date")
+        
+        sync_engine.dispose()
+        
+    except Exception as e:
+        logger.warning(f"Failed to run Alembic migrations: {e}. Falling back to create_all().")
+        # Fallback to create_all if Alembic fails
+        from .models import Base
+        async with _engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.warning("✓ Database tables created using create_all() (Alembic not available)")
     
     logger.info("✓ Database initialized successfully")
 
