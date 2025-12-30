@@ -97,7 +97,7 @@ class User(Base):
     
     id = Column(String(36), primary_key=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)  # bcrypt hashed password
+    password_hash = Column(String(255), nullable=True)  # bcrypt hashed password (null for OAuth-only users)
     full_name = Column(String(255))
     roles = Column(JSONColumn())  # List of roles: ['admin', 'clinician', 'viewer']
     is_active = Column(Integer, default=1)  # 1 = active, 0 = inactive
@@ -109,6 +109,13 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     last_login = Column(DateTime(timezone=True))
     user_metadata = Column(JSONColumn())  # Additional user metadata
+    
+    # OAuth provider fields
+    oauth_provider = Column(String(50), nullable=True, index=True)  # 'google', 'apple', or None for password auth
+    oauth_provider_id = Column(String(255), nullable=True, index=True)  # Provider's user ID (sub claim)
+    oauth_access_token = Column(Text, nullable=True)  # Encrypted OAuth access token
+    oauth_refresh_token = Column(Text, nullable=True)  # Encrypted OAuth refresh token
+    oauth_token_expires = Column(DateTime(timezone=True), nullable=True)  # Token expiration
     
     # Relationships
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")

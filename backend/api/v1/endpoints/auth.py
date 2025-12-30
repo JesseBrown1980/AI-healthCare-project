@@ -69,8 +69,19 @@ async def login(
             user_service = UserService()
             user = await user_service.get_user_by_email(payload.email)
             if user:
-                # Verify password
-                if not verify_password(payload.password, user['password_hash']):
+                # Check if user is OAuth-only (no password)
+                if user.get('oauth_provider') and not user.get('password_hash'):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Please sign in with {user.get('oauth_provider', 'OAuth')}"
+                    )
+                
+                # Verify password (skip if OAuth user with dummy password)
+                password_hash = user.get('password_hash')
+                if not password_hash:
+                    raise HTTPException(status_code=403, detail="Invalid credentials")
+                
+                if not verify_password(payload.password, password_hash):
                     raise HTTPException(status_code=403, detail="Invalid credentials")
                 
                 # Check if user is active

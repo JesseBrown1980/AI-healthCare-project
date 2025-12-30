@@ -11,6 +11,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from .connection import get_db_session
 from .models import User
+from backend.auth import hash_password
 
 logger = logging.getLogger(__name__)
 
@@ -240,4 +241,113 @@ class UserService:
             await session.commit()
             
             return True
+    
+    async def create_oauth_user(
+        self,
+        email: str,
+        full_name: Optional[str] = None,
+        provider: str = "google",
+        provider_user_id: str = "",
+        access_token: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        token_expires: Optional[datetime] = None,
+        email_verified: bool = True,
+    ) -> Dict[str, Any]:
+        """Create a new user account via OAuth."""
+        async with get_db_session() as session:
+            # Check if user already exists
+            result = await session.execute(
+                select(User).where(User.email == email.lower())
+            )
+            existing = result.scalar_one_or_none()
+            if existing:
+                raise ValueError(f"User with email {email} already exists")
+            
+            # Create user with OAuth info
+            # Note: password_hash is required but OAuth users don't have passwords
+            # Use a random hash that can never be matched
+            dummy_password = secrets.token_urlsafe(32)
+            password_hash = hash_password(dummy_password)
+            
+            user = User(
+                id=str(uuid4()),
+                email=email.lower(),
+                password_hash=password_hash,  # Dummy password for OAuth users
+                full_name=full_name,
+                roles=['viewer'],
+                is_active=1,
+                is_verified=1 if email_verified else 0,
+                oauth_provider=provider,
+                oauth_provider_id=provider_user_id,
+                oauth_access_token=access_token,  # In production, encrypt this
+                oauth_refresh_token=refresh_token,  # In production, encrypt this
+                oauth_token_expires=token_expires,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            
+            return {
+                'id': user.id,
+                'email': user.email,
+                'full_name': user.full_name,
+                'roles': user.roles,
+                'is_active': bool(user.is_active),
+                'oauth_provider': user.oauth_provider,
+            }
+    
+    async def link_oauth_account(
+        self,
+        user_id: str,
+        provider: str,
+        provider_user_id: str,
+        access_token: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        token_expires: Optional[datetime] = None,
+    ) -> None:
+        """Link an OAuth account to an existing user."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                raise ValueError(f"User {user_id} not found")
+            
+            user.oauth_provider = provider
+            user.oauth_provider_id = provider_user_id
+            user.oauth_access_token = access_token  # In production, encrypt
+            user.oauth_refresh_token = refresh_token  # In production, encrypt
+            user.oauth_token_expires = token_expires
+            await session.commit()
+    
+    async def update_oauth_tokens(
+        self,
+        user_id: str,
+        provider: str,
+        provider_user_id: str,
+        access_token: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        token_expires: Optional[datetime] = None,
+    ) -> None:
+        """Update OAuth tokens for an existing OAuth user."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).where(
+                    User.id == user_id,
+                    User.oauth_provider == provider,
+                    User.oauth_provider_id == provider_user_id
+                )
+            )
+            user = result.scalar_one_or_none()
+            if not user:
+                raise ValueError(f"OAuth user {user_id} not found")
+            
+            if access_token:
+                user.oauth_access_token = access_token  # In production, encrypt
+            if refresh_token:
+                user.oauth_refresh_token = refresh_token  # In production, encrypt
+            if token_expires:
+                user.oauth_token_expires = token_expires
+            await session.commit()
 

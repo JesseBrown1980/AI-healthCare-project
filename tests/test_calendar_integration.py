@@ -3,7 +3,7 @@ Tests for calendar integration (Google and Microsoft).
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta, timezone
 
 
@@ -18,12 +18,15 @@ async def test_google_calendar_create_event():
         access_token="test_token"
     )
     
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = AsyncMock()
+    with patch('httpx.AsyncClient') as mock_client_class:
+        mock_response = MagicMock()
         mock_response.json.return_value = {"id": "event123", "summary": "Test Event"}
         mock_response.raise_for_status = MagicMock()
         
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
         
         result = await service.create_event(
             summary="Test Event",
@@ -47,12 +50,15 @@ async def test_microsoft_calendar_create_event():
         access_token="test_token"
     )
     
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = AsyncMock()
+    with patch('httpx.AsyncClient') as mock_client_class:
+        mock_response = MagicMock()
         mock_response.json.return_value = {"id": "event456", "subject": "Test Event"}
         mock_response.raise_for_status = MagicMock()
         
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
         
         result = await service.create_event(
             subject="Test Event",
@@ -72,8 +78,8 @@ async def test_calendar_list_events():
     
     service = GoogleCalendarService(access_token="test_token")
     
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = AsyncMock()
+    with patch('httpx.AsyncClient') as mock_client_class:
+        mock_response = MagicMock()
         mock_response.json.return_value = {
             "items": [
                 {"id": "event1", "summary": "Event 1"},
@@ -82,7 +88,10 @@ async def test_calendar_list_events():
         }
         mock_response.raise_for_status = MagicMock()
         
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
         
         events = await service.list_events()
         

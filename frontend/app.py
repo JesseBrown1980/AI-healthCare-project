@@ -202,6 +202,10 @@ def initialize_session_state():
 
     if "current_page" not in st.session_state:
         st.session_state["current_page"] = query_params.get("page", ["Home"])[0]
+    
+    # Initialize graph popup setting (default: enabled)
+    if "show_graph_popup_after_analysis" not in st.session_state:
+        st.session_state["show_graph_popup_after_analysis"] = True
 
 
 def set_patient_selection(patient_id: str):
@@ -573,6 +577,40 @@ def page_patient_analysis():
 
             # SUMMARY TAB
             st.success("✅ Analysis Complete")
+            
+            # Show graph visualization popup if enabled
+            show_graph_popup = st.session_state.get("show_graph_popup_after_analysis", True)
+            if show_graph_popup:
+                # Fetch graph data for visualization
+                with st.spinner("🕸️ Building clinical graph..."):
+                    try:
+                        graph_response = make_api_call(
+                            f"/patients/{patient_id}/graph",
+                            params={
+                                "include_anomalies": True,
+                                "threshold": 0.5
+                            }
+                        )
+                        
+                        if graph_response and graph_response.get("graph"):
+                            # Import and show popup
+                            try:
+                                from frontend.components.graph_popup import render_graph_popup
+                                
+                                # Show popup in an expander (acts like a modal)
+                                with st.expander("🕸️ View Clinical Graph (GNN Analysis)", expanded=True):
+                                    render_graph_popup(
+                                        patient_id=patient_id,
+                                        graph_data=graph_response,
+                                        show_popup=True,
+                                        key=f"analysis_graph_{patient_id}"
+                                    )
+                            except ImportError:
+                                # Fallback if component not available
+                                st.info("Graph visualization component not available")
+                    except Exception as e:
+                        # Silently fail - graph popup is optional
+                        st.debug(f"Graph visualization unavailable: {e}")
 
             with st.expander("📋 Patient Summary", expanded=True):
                 summary = result.get("summary", {})
@@ -1464,6 +1502,17 @@ def page_settings():
         options=["Brief", "Standard", "Detailed", "Expert"],
         value="Standard"
     )
+    
+    st.markdown("---")
+    st.subheader("Display Preferences")
+    
+    # Graph popup setting
+    show_graph_popup = st.checkbox(
+        "Show Graph Visualization After Analysis",
+        value=st.session_state.get("show_graph_popup_after_analysis", True),
+        help="Automatically display the clinical graph visualization popup after patient analysis completes"
+    )
+    st.session_state["show_graph_popup_after_analysis"] = show_graph_popup
     
     if st.button("Save Settings"):
         st.success("Settings saved!")

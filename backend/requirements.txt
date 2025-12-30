@@ -6,6 +6,8 @@ httpx>=0.25.0
 trio>=0.22.2
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.6  # Required for FastAPI file uploads
+cryptography>=41.0.0  # For Apple OAuth JWT signing
+PyJWT>=2.8.0  # For Apple OAuth token handling
 
 # LLM & AI
 openai>=1.3.0

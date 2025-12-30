@@ -10,8 +10,11 @@ from fastapi.testclient import TestClient
 @pytest.mark.asyncio
 async def test_get_patient_graph_visualization():
     """Test patient graph visualization endpoint."""
+    import torch
     from backend.api.v1.endpoints.graph_visualization import get_patient_graph_visualization
     from backend.security import TokenContext
+    from backend.patient_data_service import PatientDataService
+    from backend.anomaly_detector.models.clinical_graph_builder import ClinicalGraphBuilder
     
     # Mock dependencies
     mock_auth = TokenContext(
@@ -21,30 +24,60 @@ async def test_get_patient_graph_visualization():
     )
     
     mock_patient_data = {
-        "patient": {"id": "patient-123"},
+        "patient": {"id": "patient-123", "resourceType": "Patient"},
         "medications": [],
         "conditions": [],
         "observations": [],
     }
     
-    with patch('backend.api.v1.endpoints.graph_visualization.PatientDataService') as mock_service:
-        mock_service.return_value.fetch_patient_data = AsyncMock(return_value=mock_patient_data)
+    # Create mock graph tensors
+    num_nodes = 1
+    num_edges = 0
+    feature_dim = 16
+    x = torch.zeros(num_nodes, feature_dim)
+    edge_index = torch.zeros(2, num_edges, dtype=torch.long)
+    mock_metadata = {
+        'node_map': {0: 'patient_patient-123'},
+        'node_types': {'patient_patient-123': 'patient'},
+        'node_metadata': {'patient_patient-123': {'id': 'patient-123'}},
+        'edge_types': [],
+    }
+    
+    with patch('backend.api.v1.endpoints.graph_visualization.PatientDataService') as mock_service_class:
+        mock_service = MagicMock()
+        mock_service.fetch_patient_data = AsyncMock(return_value=mock_patient_data)
+        mock_service_class.return_value = mock_service
         
-        with patch('backend.api.v1.endpoints.graph_visualization.ClinicalGraphBuilder') as mock_builder:
-            mock_graph = MagicMock()
-            mock_graph.shape = (2, 5)  # 2 nodes, 5 edges
-            mock_metadata = {
-                'node_map': {0: 'patient_123', 1: 'med_1'},
-                'node_types': {'patient_123': 'patient', 'med_1': 'medication'},
-                'edge_types': ['has_medication'] * 5,
-            }
-            mock_builder.return_value.build_graph_from_patient_data.return_value = (
-                mock_graph, mock_graph, mock_metadata
-            )
+        with patch('backend.api.v1.endpoints.graph_visualization.ClinicalGraphBuilder') as mock_builder_class:
+            mock_builder = MagicMock()
+            mock_builder.build_graph_from_patient_data.return_value = (x, edge_index, mock_metadata)
+            mock_builder_class.return_value = mock_builder
             
-            # This would need proper FastAPI test client setup
-            # For now, tests the structure
-            pass
+            # Mock PatientAnalyzer
+            with patch('backend.api.v1.endpoints.graph_visualization.get_patient_analyzer') as mock_get_analyzer:
+                mock_analyzer = MagicMock()
+                mock_analyzer.anomaly_service = None  # Disable anomaly detection for this test
+                mock_get_analyzer.return_value = mock_analyzer
+                
+                # Mock FhirResourceService
+                with patch('backend.api.v1.endpoints.graph_visualization.get_fhir_connector') as mock_get_fhir:
+                    mock_fhir = MagicMock()
+                    mock_get_fhir.return_value = mock_fhir
+                    
+                    # Call the endpoint function directly
+                    result = await get_patient_graph_visualization(
+                        patient_id="patient-123",
+                        include_anomalies=False,
+                        threshold=0.5,
+                        patient_analyzer=mock_analyzer,
+                        fhir_connector=mock_fhir,
+                        auth=mock_auth
+                    )
+                    
+                    assert result is not None
+                    assert "nodes" in result
+                    assert "edges" in result
+                    assert len(result["nodes"]) >= 1  # At least patient node
 
 
 @pytest.mark.asyncio
