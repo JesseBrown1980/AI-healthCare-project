@@ -29,8 +29,9 @@ class _StubAnalyzer:
         await asyncio.sleep(0)
         return result
 
-    def get_latest_analysis(self, patient_id: str) -> Dict[str, Any]:
+    async def get_latest_analysis(self, patient_id: str) -> Dict[str, Any]:
         bucket = self.analysis_history.get(patient_id, [])
+        await asyncio.sleep(0)  # Make it async
         return bucket[-1] if bucket else None
 
     def get_history(self, patient_id: str = None):
