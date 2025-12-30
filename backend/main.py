@@ -36,6 +36,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
+from backend.middleware import (
+    RateLimitMiddleware,
+    TimeoutMiddleware,
+    SecurityHeadersMiddleware,
+)
 from backend.anomaly_detector.api import router as anomaly_router
 from backend.anomaly_detector.service import anomaly_service
 # python-jose implementation used for JWT encoding/decoding
@@ -191,7 +196,9 @@ app = FastAPI(
     title="Healthcare AI Assistant",
     description="AI-powered healthcare application with FHIR integration",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # Request size limits (10MB default, 50MB for file uploads)
+    max_request_size=int(os.getenv("MAX_REQUEST_SIZE", 10 * 1024 * 1024)),  # 10MB
 )
 
 # Register Modular V1 Router (includes Patients, Clinical, Auth, System)
@@ -199,6 +206,29 @@ app.include_router(v1_router, prefix="/api/v1")
 
 # Register Anomaly Detector Router (keep as separate or could be included in v1)
 app.include_router(anomaly_router, prefix="/api/v1/anomaly", tags=["Anomaly Detection"])
+
+# Add security headers middleware (first, so it applies to all responses)
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    enabled=os.getenv("SECURITY_HEADERS_ENABLED", "true").lower() == "true",
+    strict_transport_security=os.getenv("HSTS_ENABLED", "true").lower() == "true",
+)
+
+# Add timeout middleware
+app.add_middleware(
+    TimeoutMiddleware,
+    timeout_seconds=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "30.0")),
+    enabled=os.getenv("TIMEOUT_MIDDLEWARE_ENABLED", "true").lower() == "true",
+)
+
+# Add rate limiting middleware
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")),
+    requests_per_hour=int(os.getenv("RATE_LIMIT_PER_HOUR", "1000")),
+    burst_size=int(os.getenv("RATE_LIMIT_BURST", "10")),
+    enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
+)
 
 # Add CORS middleware
 app.add_middleware(
