@@ -48,7 +48,7 @@ async def test_get_patient_graph_visualization():
         mock_service.fetch_patient_data = AsyncMock(return_value=mock_patient_data)
         mock_service_class.return_value = mock_service
         
-        with patch('backend.api.v1.endpoints.graph_visualization.ClinicalGraphBuilder') as mock_builder_class:
+        with patch('backend.anomaly_detector.models.clinical_graph_builder.ClinicalGraphBuilder') as mock_builder_class:
             mock_builder = MagicMock()
             mock_builder.build_graph_from_patient_data.return_value = (x, edge_index, mock_metadata)
             mock_builder_class.return_value = mock_builder

@@ -142,7 +142,7 @@ async def test_patient_cache_and_invalidation(monkeypatch):
         "http://fake.fhir/Patient/p-cache": [FakeResponse(patient_resource), FakeResponse(patient_resource)],
     }
     client = StubHttpClient("http://fake.fhir", routes=routes)
-    service = FhirResourceService(client, cache_ttl_seconds=60)
+    service = FhirResourceService(client, cache_ttl_seconds=60, enable_sample_data=False)
 
     async def stubbed(*_args, **_kwargs):  # pragma: no cover - helper stub
         return []
@@ -227,7 +227,7 @@ async def test_get_patient_cache_invalidation_and_expiry(monkeypatch):
         ]
     }
     client = StubHttpClient("http://fake.fhir", routes=routes)
-    service = FhirResourceService(client, cache_ttl_seconds=120)
+    service = FhirResourceService(client, cache_ttl_seconds=120, enable_sample_data=False)
 
     async def fake_bundle(*_args, **_kwargs):  # pragma: no cover - helper stub
         return []
