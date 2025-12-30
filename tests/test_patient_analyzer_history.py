@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -14,7 +15,8 @@ class _StubAdapterManager:
         return None
 
 
-def test_history_limit_keeps_recent_entries():
+@pytest.mark.asyncio
+async def test_history_limit_keeps_recent_entries():
     analyzer = PatientAnalyzer(
         fhir_connector=None,
         llm_engine=None,
@@ -35,10 +37,10 @@ def test_history_limit_keeps_recent_entries():
     t2 = (base_time + timedelta(minutes=1)).isoformat()
     t3 = (base_time + timedelta(minutes=2)).isoformat()
 
-    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t1})
-    analyzer._add_to_history({"patient_id": "p2", "analysis_timestamp": t1})
-    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t2})
-    analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t3})
+    await analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t1})
+    await analyzer._add_to_history({"patient_id": "p2", "analysis_timestamp": t1})
+    await analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t2})
+    await analyzer._add_to_history({"patient_id": "p1", "analysis_timestamp": t3})
 
     history = analyzer.get_history("p1")
 
