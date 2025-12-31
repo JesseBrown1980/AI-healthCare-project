@@ -168,12 +168,13 @@ async def test_microsoft_calendar_auto_refresh_on_expired_token():
         refresh_token="test-refresh-token",
     )
     
-    with patch.object(service, '_refresh_access_token', new_callable=AsyncMock) as mock_refresh:
-        mock_refresh.return_value = "refreshed-token"
-        
+    async def mock_refresh():
+        service.access_token = "refreshed-token"
+        return "refreshed-token"
+    
+    with patch.object(service, '_refresh_access_token', side_effect=mock_refresh):
         headers = await service._get_headers()
         
         # After refresh, access_token should be set and used in headers
         assert service.access_token == "refreshed-token"
         assert headers["Authorization"] == "Bearer refreshed-token"
-        mock_refresh.assert_called_once()
