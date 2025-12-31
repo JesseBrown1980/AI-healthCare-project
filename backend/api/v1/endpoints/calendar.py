@@ -126,3 +126,56 @@ async def list_microsoft_calendar_events(
         logger.error(f"Failed to list Microsoft Calendar events: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.delete("/google/events/{event_id}")
+async def delete_google_calendar_event(
+    event_id: str,
+    calendar_id: str = Query("primary"),
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.write"})
+    ),
+):
+    """Delete a Google Calendar event."""
+    try:
+        service = GoogleCalendarService()
+        success = await service.delete_event(
+            calendar_id=calendar_id,
+            event_id=event_id,
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete calendar event")
+        
+        return {"status": "success", "message": "Event deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete Google Calendar event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/microsoft/events/{event_id}")
+async def delete_microsoft_calendar_event(
+    event_id: str,
+    calendar_id: str = Query("calendar"),
+    auth: TokenContext = Depends(
+        auth_dependency({"patient/*.read", "user/*.write"})
+    ),
+):
+    """Delete a Microsoft Calendar event."""
+    try:
+        service = MicrosoftCalendarService()
+        success = await service.delete_event(
+            calendar_id=calendar_id,
+            event_id=event_id,
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete calendar event")
+        
+        return {"status": "success", "message": "Event deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete Microsoft Calendar event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -277,3 +277,81 @@ def test_calendar_endpoints_exception_handling(client, auth_token):
         assert response.status_code == 500
         error_msg = response.json().get("message", response.json().get("detail", ""))
         assert len(error_msg) > 0
+
+
+def test_delete_google_calendar_event_success(client, auth_token):
+    """Test successful Google Calendar event deletion."""
+    from backend.calendar.google_calendar import GoogleCalendarService
+    
+    with patch('backend.api.v1.endpoints.calendar.GoogleCalendarService') as mock_service_class:
+        mock_service = MagicMock()
+        mock_service.delete_event = AsyncMock(return_value=True)
+        mock_service_class.return_value = mock_service
+        
+        response = client.delete(
+            "/api/v1/calendar/google/events/event123",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert "deleted" in data["message"].lower()
+
+
+def test_delete_google_calendar_event_failure(client, auth_token):
+    """Test Google Calendar event deletion when service fails."""
+    from backend.calendar.google_calendar import GoogleCalendarService
+    
+    with patch('backend.api.v1.endpoints.calendar.GoogleCalendarService') as mock_service_class:
+        mock_service = MagicMock()
+        mock_service.delete_event = AsyncMock(return_value=False)
+        mock_service_class.return_value = mock_service
+        
+        response = client.delete(
+            "/api/v1/calendar/google/events/event123",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
+        
+        assert response.status_code == 500
+        error_msg = response.json().get("message", response.json().get("detail", ""))
+        assert "failed" in error_msg.lower() or "error" in error_msg.lower()
+
+
+def test_delete_microsoft_calendar_event_success(client, auth_token):
+    """Test successful Microsoft Calendar event deletion."""
+    from backend.calendar.microsoft_calendar import MicrosoftCalendarService
+    
+    with patch('backend.api.v1.endpoints.calendar.MicrosoftCalendarService') as mock_service_class:
+        mock_service = MagicMock()
+        mock_service.delete_event = AsyncMock(return_value=True)
+        mock_service_class.return_value = mock_service
+        
+        response = client.delete(
+            "/api/v1/calendar/microsoft/events/event456",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert "deleted" in data["message"].lower()
+
+
+def test_delete_microsoft_calendar_event_failure(client, auth_token):
+    """Test Microsoft Calendar event deletion when service fails."""
+    from backend.calendar.microsoft_calendar import MicrosoftCalendarService
+    
+    with patch('backend.api.v1.endpoints.calendar.MicrosoftCalendarService') as mock_service_class:
+        mock_service = MagicMock()
+        mock_service.delete_event = AsyncMock(return_value=False)
+        mock_service_class.return_value = mock_service
+        
+        response = client.delete(
+            "/api/v1/calendar/microsoft/events/event456",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
+        
+        assert response.status_code == 500
+        error_msg = response.json().get("message", response.json().get("detail", ""))
+        assert "failed" in error_msg.lower() or "error" in error_msg.lower()
