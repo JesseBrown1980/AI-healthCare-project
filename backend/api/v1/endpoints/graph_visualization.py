@@ -5,7 +5,7 @@ Provides endpoints for visualizing patient clinical graphs from GNN anomaly dete
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from backend.security import TokenContext, auth_dependency
@@ -236,12 +236,16 @@ async def get_anomaly_timeline(
         history = await db_service.get_analysis_history(patient_id, limit=1000)
         
         # Filter to requested time range
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         timeline_data = []
         
         for analysis in history:
             try:
-                timestamp = datetime.fromisoformat(analysis['analysis_timestamp'].replace('Z', '+00:00'))
+                timestamp_str = analysis['analysis_timestamp'].replace('Z', '+00:00')
+                timestamp = datetime.fromisoformat(timestamp_str)
+                # Ensure timestamp is timezone-aware
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
                 if timestamp < cutoff_date:
                     continue
                 

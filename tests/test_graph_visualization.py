@@ -95,28 +95,57 @@ async def test_get_anomaly_timeline():
         clinician_roles=set(),
     )
     
-    with patch('backend.api.v1.endpoints.graph_visualization.DatabaseService') as mock_db:
-        mock_db.return_value.get_analysis_history = AsyncMock(return_value=[
-            {
-                'analysis_timestamp': '2024-01-01T00:00:00Z',
-                'analysis_data': {
-                    'gnn_anomaly_detection': {
-                        'anomalies': [
-                            {'anomaly_type': 'medication_anomaly', 'anomaly_score': 0.8}
-                        ],
-                        'anomaly_type_counts': {'medication_anomaly': 1}
-                    }
+    from datetime import datetime, timezone, timedelta
+    
+    # Use recent timestamps (within last 30 days)
+    now = datetime.now(timezone.utc)
+    mock_history = [
+        {
+            'analysis_timestamp': (now - timedelta(days=5)).isoformat(),
+            'analysis_data': {
+                'gnn_anomaly_detection': {
+                    'anomalies': [
+                        {'anomaly_type': 'medication_anomaly', 'anomaly_score': 0.8}
+                    ],
+                    'anomaly_type_counts': {'medication_anomaly': 1}
                 }
             }
-        ])
+        },
+        {
+            'analysis_timestamp': (now - timedelta(days=2)).isoformat(),
+            'analysis_data': {
+                'gnn_anomaly_detection': {
+                    'anomalies': [
+                        {'anomaly_type': 'lab_value_anomaly', 'anomaly_score': 0.7}
+                    ],
+                    'anomaly_type_counts': {'lab_value_anomaly': 1}
+                }
+            }
+        }
+    ]
+    
+    with patch('backend.api.v1.endpoints.graph_visualization.get_database_service') as mock_get_db:
+        mock_db = MagicMock()
+        mock_db.get_analysis_history = AsyncMock(return_value=mock_history)
+        mock_get_db.return_value = mock_db
         
-        # Test structure
-        pass
+        result = await get_anomaly_timeline(
+            patient_id="patient-123",
+            days=30,
+            db_service=mock_db,
+            auth=mock_auth
+        )
+        
+        assert result is not None
+        assert "timeline" in result
+        assert "patient_id" in result
+        assert len(result["timeline"]) == 2
 
 
 @pytest.mark.asyncio
 async def test_compare_patient_graphs():
     """Test graph comparison endpoint."""
+    import torch
     from backend.api.v1.endpoints.graph_visualization import compare_patient_graphs
     from backend.security import TokenContext
     
@@ -126,9 +155,72 @@ async def test_compare_patient_graphs():
         clinician_roles=set(),
     )
     
-    request_data = {"patient_ids": ["patient-1", "patient-2"]}
+    patient_ids = ["patient-1", "patient-2"]
     
-    # Would need proper mocking of all dependencies
-    # Tests the endpoint structure
-    pass
+    # Mock patient data
+    mock_patient_data_1 = {
+        "patient": {"id": "patient-1"},
+        "medications": [{"id": "med-1", "medicationCodeableConcept": {"coding": [{"display": "Metformin"}]}}],
+        "conditions": [],
+        "observations": [],
+    }
+    
+    mock_patient_data_2 = {
+        "patient": {"id": "patient-2"},
+        "medications": [],
+        "conditions": [{"id": "cond-1", "code": {"coding": [{"display": "Diabetes"}]}}],
+        "observations": [],
+    }
+    
+    # Mock graph metadata
+    mock_metadata_1 = {
+        'node_map': {0: 'patient_patient-1', 1: 'medication_med-1'},
+        'node_types': {'patient_patient-1': 'patient', 'medication_med-1': 'medication'},
+        'node_metadata': {'patient_patient-1': {}, 'medication_med-1': {'name': 'Metformin'}},
+        'edge_types': ['prescribed'],
+    }
+    
+    mock_metadata_2 = {
+        'node_map': {0: 'patient_patient-2', 1: 'condition_cond-1'},
+        'node_types': {'patient_patient-2': 'patient', 'condition_cond-1': 'condition'},
+        'node_metadata': {'patient_patient-2': {}, 'condition_cond-1': {'name': 'Diabetes'}},
+        'edge_types': ['diagnosed'],
+    }
+    
+    with patch('backend.api.v1.endpoints.graph_visualization.PatientDataService') as mock_service_class:
+        mock_service = MagicMock()
+        mock_service.fetch_patient_data = AsyncMock(side_effect=[mock_patient_data_1, mock_patient_data_2])
+        mock_service_class.return_value = mock_service
+        
+        with patch('backend.anomaly_detector.models.clinical_graph_builder.ClinicalGraphBuilder') as mock_builder_class:
+            mock_builder = MagicMock()
+            mock_builder.build_graph_from_patient_data.side_effect = [
+                (torch.zeros(2, 16), torch.zeros(2, 1, dtype=torch.long), mock_metadata_1),
+                (torch.zeros(2, 16), torch.zeros(2, 1, dtype=torch.long), mock_metadata_2),
+            ]
+            mock_builder_class.return_value = mock_builder
+            
+            with patch('backend.api.v1.endpoints.graph_visualization.get_patient_analyzer') as mock_get_analyzer:
+                mock_analyzer = MagicMock()
+                mock_analyzer.anomaly_service = None
+                mock_get_analyzer.return_value = mock_analyzer
+                
+                with patch('backend.api.v1.endpoints.graph_visualization.get_fhir_connector') as mock_get_fhir:
+                    mock_fhir = MagicMock()
+                    mock_get_fhir.return_value = mock_fhir
+                    
+                    result = await compare_patient_graphs(
+                        patient_ids=patient_ids,
+                        include_anomalies=False,
+                        threshold=0.5,
+                        patient_analyzer=mock_analyzer,
+                        fhir_connector=mock_fhir,
+                        auth=mock_auth
+                    )
+                    
+                    assert result is not None
+                    assert "comparison_results" in result
+                    assert len(result["comparison_results"]) == 2
+                    assert "comparison_metrics" in result
+                    assert "patient_ids" in result
 
