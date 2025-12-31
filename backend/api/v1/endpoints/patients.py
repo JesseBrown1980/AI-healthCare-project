@@ -312,10 +312,12 @@ async def list_patients(
                         patient["patient_id"]
                     )
                 except Exception as exc:
-                    logger.warning(
+                    from backend.utils.logging_utils import log_warning
+                    log_warning(
                         "Unable to fetch demographics for %s: %s",
                         patient.get("patient_id"),
-                        exc,
+                        str(exc),
+                        request=request,
                     )
 
                 roster.append(
@@ -560,7 +562,14 @@ async def analyze_patient(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error analyzing patient [%s]: %s", correlation_id, str(e))
+        from backend.utils.logging_utils import log_error
+        log_error(
+            "Error analyzing patient: %s",
+            str(e),
+            correlation_id=correlation_id,
+            request=request,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 

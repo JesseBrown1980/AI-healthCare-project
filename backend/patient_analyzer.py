@@ -384,7 +384,10 @@ class PatientAnalyzer:
 
         except FHIRConnectorError as e:
             logger.error(
-                "FHIR connector error analyzing patient %s: %s", patient_id, str(e)
+                "FHIR connector error analyzing patient %s [%s]: %s",
+                patient_id,
+                correlation_id if correlation_id else "no-correlation-id",
+                str(e),
             )
             return {
                 "patient_id": patient_id,
@@ -395,7 +398,13 @@ class PatientAnalyzer:
                 "timestamp": datetime.now().isoformat(),
             }
         except Exception as e:  # pragma: no cover - defensive logging
-            logger.error("Error analyzing patient %s: %s", patient_id, str(e))
+            logger.error(
+                "Error analyzing patient %s [%s]: %s",
+                patient_id,
+                correlation_id if correlation_id else "no-correlation-id",
+                str(e),
+                exc_info=True,
+            )
             return {
                 "patient_id": patient_id,
                 "status": "error",
