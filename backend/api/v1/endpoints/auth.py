@@ -13,6 +13,10 @@ from backend.models import (
     PasswordResetResponse,
     PasswordResetConfirmRequest,
     PasswordResetConfirmResponse,
+    EmailVerificationRequest,
+    EmailVerificationResponse,
+    EmailVerificationConfirmRequest,
+    EmailVerificationConfirmResponse,
 )
 from backend.auth import hash_password, verify_password, is_password_strong
 from backend.di import get_database_service
@@ -263,4 +267,75 @@ async def password_reset_confirm(
     except Exception as e:
         logger.error(f"Password reset confirmation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Password reset failed")
+
+
+@router.post("/verify-email", response_model=EmailVerificationResponse)
+async def verify_email_request(
+    payload: EmailVerificationRequest,
+    db_service: Optional[DatabaseService] = Depends(get_database_service),
+):
+    """
+    Request an email verification token.
+    
+    Generates a secure token and stores it with the user account.
+    In production, this token would be sent via email.
+    """
+    if not db_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Email verification requires database service"
+        )
+    
+    try:
+        user_service = UserService()
+        token = await user_service.generate_verification_token(payload.email)
+        
+        # Always return success message (don't reveal if user exists)
+        # In production, only send email if user exists
+        return EmailVerificationResponse(
+            message="If an account with that email exists, a verification token has been generated."
+        )
+    except Exception as e:
+        logger.error(f"Email verification request failed: {e}", exc_info=True)
+        # Still return success to prevent email enumeration
+        return EmailVerificationResponse(
+            message="If an account with that email exists, a verification token has been generated."
+        )
+
+
+@router.post("/verify-email/confirm", response_model=EmailVerificationConfirmResponse)
+async def verify_email_confirm(
+    payload: EmailVerificationConfirmRequest,
+    db_service: Optional[DatabaseService] = Depends(get_database_service),
+):
+    """
+    Confirm email verification with token.
+    
+    Validates the token and marks the user's email as verified.
+    """
+    if not db_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Email verification requires database service"
+        )
+    
+    try:
+        user_service = UserService()
+        
+        # Verify token
+        is_valid = await user_service.verify_email_with_token(payload.email, payload.token)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired verification token"
+            )
+        
+        return EmailVerificationConfirmResponse(
+            message="Email verified successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Email verification confirmation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Email verification failed")
 

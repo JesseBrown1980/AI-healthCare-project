@@ -231,6 +231,37 @@ class PasswordResetConfirmResponse(BaseModel):
     message: str = "Password reset successfully"
 
 
+class EmailVerificationRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if '@' not in v:
+            raise ValueError('Invalid email format')
+        return v.lower()
+
+
+class EmailVerificationResponse(BaseModel):
+    message: str = "If an account with that email exists, a verification token has been generated."
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    token: str = Field(..., description="Email verification token")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if '@' not in v:
+            raise ValueError('Invalid email format')
+        return v.lower()
+
+
+class EmailVerificationConfirmResponse(BaseModel):
+    message: str = "Email verified successfully"
+
+
 class DeviceRegistration(BaseModel):
     device_token: str
     platform: str = "unknown"
