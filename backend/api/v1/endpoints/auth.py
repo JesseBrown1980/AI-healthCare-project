@@ -173,3 +173,94 @@ async def register(
         raise HTTPException(status_code=500, detail="Registration failed")
 
 
+@router.post("/password-reset", response_model=PasswordResetResponse)
+async def password_reset(
+    payload: PasswordResetRequest,
+    db_service: Optional[DatabaseService] = Depends(get_database_service),
+):
+    """
+    Request a password reset token.
+    
+    Generates a secure token and stores it with the user account.
+    In production, this token would be sent via email.
+    """
+    if not db_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset requires database service"
+        )
+    
+    try:
+        user_service = UserService()
+        token = await user_service.generate_password_reset_token(payload.email)
+        
+        # Always return success message (don't reveal if user exists)
+        # In production, only send email if user exists
+        return PasswordResetResponse(
+            message="If an account with that email exists, a password reset token has been generated."
+        )
+    except Exception as e:
+        logger.error(f"Password reset request failed: {e}", exc_info=True)
+        # Still return success to prevent email enumeration
+        return PasswordResetResponse(
+            message="If an account with that email exists, a password reset token has been generated."
+        )
+
+
+@router.post("/password-reset/confirm", response_model=PasswordResetConfirmResponse)
+async def password_reset_confirm(
+    payload: PasswordResetConfirmRequest,
+    db_service: Optional[DatabaseService] = Depends(get_database_service),
+):
+    """
+    Confirm password reset with token and set new password.
+    
+    Validates the token and updates the user's password.
+    """
+    if not db_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset requires database service"
+        )
+    
+    # Validate password strength
+    is_strong, error_msg = is_password_strong(payload.new_password)
+    if not is_strong:
+        raise HTTPException(status_code=400, detail=error_msg)
+    
+    try:
+        user_service = UserService()
+        
+        # Verify token
+        is_valid = await user_service.verify_password_reset_token(payload.email, payload.token)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired password reset token"
+            )
+        
+        # Hash new password
+        new_password_hash = hash_password(payload.new_password)
+        
+        # Reset password
+        success = await user_service.reset_password_with_token(
+            payload.email,
+            payload.token,
+            new_password_hash
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to reset password. Token may be invalid or expired."
+            )
+        
+        return PasswordResetConfirmResponse(
+            message="Password reset successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password reset confirmation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Password reset failed")
+
