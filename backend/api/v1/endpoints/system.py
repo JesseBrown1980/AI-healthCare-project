@@ -40,6 +40,20 @@ def _register_device_token(
     request: Request,
     notifier: Notifier,
 ) -> Dict[str, Any]:
+    """
+    Register a device token for push notifications.
+    
+    Args:
+        registration: Device registration data
+        request: FastAPI request object
+        notifier: Notifier service instance
+        
+    Returns:
+        Registration status and device information
+        
+    Raises:
+        HTTPException: If notifier is not initialized
+    """
     if not notifier:
         raise HTTPException(status_code=503, detail="Notifier not initialized")
 

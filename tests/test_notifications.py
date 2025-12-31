@@ -268,7 +268,8 @@ async def test_analyze_patient_respects_notify_flag(monkeypatch):
     app.dependency_overrides.update(overrides)
 
     try:
-        monkeypatch.setattr(main, "notifications_enabled", False)
+        from backend.api.v1.endpoints import patients as patients_module
+        monkeypatch.setattr(patients_module, "notifications_enabled", False)
 
         with TestClient(app) as client:
             response = client.post(
@@ -288,15 +289,21 @@ async def test_analyze_patient_respects_notify_flag(monkeypatch):
 
         # Clear the cache and reset the recorder
         app.dependency_overrides[get_patient_summary_cache] = lambda: {}
-        monkeypatch.setattr(main, "notifications_enabled", True)
+        monkeypatch.setattr(patients_module, "notifications_enabled", True)
         
         # Reset the recorder to ensure fresh state
         recorder.analysis_history = {}
+        recorder.last_notify = None  # Reset notify flag
+        
+        # Also clear any potential caches that might prevent the analyze call
+        # Force a fresh analysis by ensuring the cache is empty
+        cache_override = {}
+        app.dependency_overrides[get_patient_summary_cache] = lambda: cache_override
 
         with TestClient(app) as client:
             second_response = client.post(
                 "/api/v1/analyze-patient",
-                params={"fhir_patient_id": "p-3", "notify": "true"},
+                params={"fhir_patient_id": "p-3", "notify": True},  # Use boolean instead of string
             )
 
         assert second_response.status_code == 200

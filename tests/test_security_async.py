@@ -14,6 +14,8 @@ async def test_auth_dependency_uses_async_jwks(monkeypatch):
     monkeypatch.setenv("IAM_JWKS_URL", jwks_url)
     monkeypatch.setenv("IAM_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("SMART_CLIENT_ID", "client-id")
+    # Disable demo login to force JWKS validation
+    monkeypatch.setenv("ENABLE_DEMO_LOGIN", "false")
 
     jwks_calls = 0
 
@@ -31,15 +33,16 @@ async def test_auth_dependency_uses_async_jwks(monkeypatch):
             self._async_client = async_client
 
         monkeypatch.setattr(JWTValidator, "__init__", init_with_client)
-        monkeypatch.setattr(
-            JWTValidator,
-            "_verify_signature",
-            lambda self, token, jwk_key: {
+        
+        def mock_verify_signature(self, token, jwk_key):
+            # Return claims that match what the validator expects
+            return {
                 "scope": "user/*.read",
                 "sub": "test-user",
-                "exp": (datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp(),
-            },
-        )
+                "exp": int((datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp()),
+            }
+        
+        monkeypatch.setattr(JWTValidator, "_verify_signature", mock_verify_signature)
 
         dependency = auth_dependency(required_scopes={"user/*.read"})
 
@@ -49,7 +52,14 @@ async def test_auth_dependency_uses_async_jwks(monkeypatch):
         async def protected(context: TokenContext = Depends(dependency)):
             return {"subject": context.subject, "scopes": sorted(context.scopes)}
 
-        token = jwt.encode({"sub": "test-user"}, "secret", algorithm="HS256", headers={"kid": "kid-1"})
+        # Create a token with kid header to trigger JWKS validation path
+        # The actual signature won't be validated since we're mocking _verify_signature
+        token = jwt.encode(
+            {"sub": "test-user", "scope": "user/*.read", "exp": int((datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp())},
+            "secret",
+            algorithm="HS256",
+            headers={"kid": "kid-1"}
+        )
 
         app_transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(

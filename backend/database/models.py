@@ -2,7 +2,7 @@
 SQLAlchemy models for Healthcare AI Assistant database.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -43,7 +43,7 @@ class AnalysisHistory(Base):
     recommendations = Column(JSONColumn())
     user_id = Column(String(255), index=True)
     correlation_id = Column(String(255), index=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     __table_args__ = (
         Index("idx_analysis_patient_timestamp", "patient_id", "analysis_timestamp"),
@@ -64,7 +64,7 @@ class Document(Base):
     ocr_confidence = Column(Float)
     extracted_data = Column(JSONColumn())  # Structured extracted data
     fhir_resource_id = Column(String(255))
-    uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     processed_at = Column(DateTime(timezone=True))
     created_by = Column(String(255))
     
@@ -84,7 +84,7 @@ class OCRExtraction(Base):
     extracted_value = Column(Text)
     confidence = Column(Float)
     normalized_value = Column(JSONColumn())  # FHIR-compatible format
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     document = relationship("Document", back_populates="ocr_extractions")
@@ -130,7 +130,7 @@ class UserSession(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(255))
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    last_activity = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    last_activity = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     ip_address = Column(String(45))
     user_agent = Column(Text)
     session_metadata = Column(JSONColumn())
@@ -151,7 +151,7 @@ class AuditLog(Base):
     action = Column(String(50))  # 'READ', 'WRITE', 'DELETE'
     resource_type = Column(String(50))
     outcome = Column(String(10))  # '0' success, '8' error
-    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     ip_address = Column(String(45))  # IPv4 or IPv6
     user_agent = Column(Text)
     details = Column(JSONColumn())

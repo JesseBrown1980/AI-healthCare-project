@@ -29,11 +29,12 @@ demo_login_enabled: bool = os.getenv("ENABLE_DEMO_LOGIN", "false").lower() == "t
 demo_login_secret = os.getenv("DEMO_LOGIN_SECRET", "demo-secret-key-123")
 demo_login_expires_minutes = int(os.getenv("DEMO_LOGIN_EXPIRES_MINS", "60"))
 
-def _issue_demo_token(email: str, patient: Optional[str]) -> DemoLoginResponse:
+def _issue_demo_token(email: str, patient: Optional[str] = None, scopes: Optional[str] = None) -> DemoLoginResponse:
     """Create a short-lived JWT for demo use when SMART tokens are unavailable."""
     issued_at = datetime.now(timezone.utc)
     expires_at = issued_at + timedelta(minutes=demo_login_expires_minutes)
-    scopes = "patient/*.read user/*.read system/*.read"
+    if scopes is None:
+        scopes = "patient/*.read user/*.read system/*.read"
 
     payload = {
         "sub": email,
@@ -172,27 +173,3 @@ async def register(
         raise HTTPException(status_code=500, detail="Registration failed")
 
 
-def _issue_demo_token(email: str, patient: Optional[str], scopes: Optional[str] = None) -> DemoLoginResponse:
-    """Create a short-lived JWT for demo use when SMART tokens are unavailable."""
-    issued_at = datetime.now(timezone.utc)
-    expires_at = issued_at + timedelta(minutes=demo_login_expires_minutes)
-    if scopes is None:
-        scopes = "patient/*.read user/*.read system/*.read"
-
-    payload = {
-        "sub": email,
-        "scope": scopes,
-        "iat": int(issued_at.timestamp()),
-        "exp": int(expires_at.timestamp()),
-        "iss": "demo-login",
-    }
-
-    if patient:
-        payload["patient"] = patient
-
-    token = jwt.encode(payload, demo_login_secret, algorithm="HS256")
-
-    return DemoLoginResponse(
-        access_token=token,
-        expires_in=int((expires_at - issued_at).total_seconds()),
-    )

@@ -1,6 +1,11 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from backend.llm_engine import LLMEngine
+    from backend.rag_fusion import RAGFusion
+    from backend.aot_reasoner import AoTReasoner
+    from backend.mlc_learning import MLCLearning
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +13,22 @@ logger = logging.getLogger(__name__)
 class RecommendationService:
     """Service for generating clinical recommendations."""
 
-    def __init__(self, llm_engine, rag_fusion, aot_reasoner, mlc_learning):
+    def __init__(
+        self,
+        llm_engine: "LLMEngine",
+        rag_fusion: "RAGFusion",
+        aot_reasoner: "AoTReasoner",
+        mlc_learning: "MLCLearning",
+    ) -> None:
+        """
+        Initialize RecommendationService.
+        
+        Args:
+            llm_engine: LLM engine for generating recommendations
+            rag_fusion: RAG fusion component for knowledge retrieval
+            aot_reasoner: Algorithm of Thought reasoner
+            mlc_learning: Meta-Learning for Compositionality learning component
+        """
         self.llm_engine = llm_engine
         self.rag_fusion = rag_fusion
         self.aot_reasoner = aot_reasoner

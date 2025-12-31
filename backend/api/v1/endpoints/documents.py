@@ -4,7 +4,7 @@ Document upload and management endpoints.
 Handles file uploads, OCR processing, and document linking to patients.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Path, Request
 from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
 import logging
@@ -15,6 +15,7 @@ from backend.di import get_database_service, get_audit_service
 from backend.database import DatabaseService
 from backend.document_service import DocumentService
 from backend.audit_service import AuditService
+from backend.utils.validation import validate_patient_id, validate_document_id, validate_filename, validate_file_size, MAX_FILE_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,20 @@ async def upload_document(
     )
     
     try:
+        # Validate filename
+        if file.filename:
+            validate_filename(file.filename)
+        
+        # Validate file size (check content-length header if available)
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                file_size = int(content_length)
+                validate_file_size(file_size, max_size=MAX_FILE_SIZE)
+            except ValueError:
+                # Invalid content-length, will check during read
+                pass
+        
         # Validate file type
         allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff"}
         file_ext = os.path.splitext(file.filename or "")[1].lower()
@@ -68,10 +83,17 @@ async def upload_document(
                 detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}",
             )
         
+        # Validate patient_id if provided
+        validated_patient_id = None
+        if patient_id:
+            validated_patient_id = validate_patient_id(patient_id)
+        elif auth.patient:
+            validated_patient_id = validate_patient_id(auth.patient)
+        
         # Save file
         result = await document_service.save_uploaded_file(
             file=file,
-            patient_id=patient_id or auth.patient,
+            patient_id=validated_patient_id,
             document_type=document_type,
             created_by=auth.user_id,
         )
@@ -107,7 +129,7 @@ async def upload_document(
 @router.post("/documents/{document_id}/process")
 async def process_document(
     request: Request,
-    document_id: str,
+    document_id: str = Path(..., description="Document ID to process"),
     engine: Optional[str] = Query(None, description="OCR engine: 'tesseract' or 'easyocr'"),
     language: Optional[str] = Query(None, description="Language code (e.g., 'en', 'es')"),
     auth: TokenContext = Depends(
@@ -121,6 +143,9 @@ async def process_document(
     
     Returns extracted text and confidence score.
     """
+    # Validate document_id
+    document_id = validate_document_id(document_id)
+    
     if not document_service:
         raise HTTPException(
             status_code=503,
@@ -171,8 +196,8 @@ async def process_document(
 @router.post("/documents/{document_id}/link-patient")
 async def link_document_to_patient(
     request: Request,
-    document_id: str,
-    patient_id: str = Form(...),
+    document_id: str = Path(..., description="Document ID to link"),
+    patient_id: str = Form(..., description="Patient ID to link document to"),
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.write", "user/*.write", "system/*.write"})
     ),
@@ -184,6 +209,10 @@ async def link_document_to_patient(
     
     This allows the document to be associated with a patient's medical record.
     """
+    # Validate IDs
+    document_id = validate_document_id(document_id)
+    patient_id = validate_patient_id(patient_id)
+    
     if not document_service:
         raise HTTPException(
             status_code=503,
@@ -224,7 +253,7 @@ async def link_document_to_patient(
 @router.get("/patients/{patient_id}/documents")
 async def get_patient_documents(
     request: Request,
-    patient_id: str,
+    patient_id: str = Path(..., description="Patient ID"),
     limit: int = Query(100, ge=1, le=500),
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
@@ -237,6 +266,9 @@ async def get_patient_documents(
     
     Returns list of documents with metadata.
     """
+    # Validate patient_id
+    patient_id = validate_patient_id(patient_id)
+    
     if not database_service:
         raise HTTPException(
             status_code=503,
@@ -277,13 +309,16 @@ async def get_patient_documents(
 @router.get("/documents/{document_id}")
 async def get_document(
     request: Request,
-    document_id: str,
+    document_id: str = Path(..., description="Document ID"),
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read", "system/*.read"})
     ),
     database_service: Optional[DatabaseService] = Depends(get_database_service),
 ):
     """Get document details by ID."""
+    # Validate document_id
+    document_id = validate_document_id(document_id)
+    
     if not database_service:
         raise HTTPException(
             status_code=503,

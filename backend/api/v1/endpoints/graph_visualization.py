@@ -14,6 +14,7 @@ from backend.patient_analyzer import PatientAnalyzer
 from backend.fhir_connector import FhirResourceService
 from backend.patient_data_service import PatientDataService
 from backend.database.service import DatabaseService
+from backend.utils.validation import validate_patient_id, validate_patient_id_list
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ async def get_patient_graph_visualization(
     Returns graph structure with nodes and edges formatted for network visualization libraries.
     Includes anomaly detection results if enabled.
     """
+    # Validate patient_id
+    patient_id = validate_patient_id(patient_id)
+    
     try:
         # Fetch patient data
         patient_data_service = PatientDataService(fhir_connector)
@@ -218,6 +222,9 @@ async def get_anomaly_timeline(
     
     Extracts anomaly detection results from analysis history to show trends.
     """
+    # Validate patient_id
+    patient_id = validate_patient_id(patient_id)
+    
     if not db_service:
         raise HTTPException(
             status_code=503,
@@ -297,13 +304,14 @@ async def compare_patient_graphs(
     
     Returns graph statistics and anomaly comparisons for the provided patient IDs.
     """
+    # Validate patient_ids
+    patient_ids = validate_patient_id_list(patient_ids, max_count=5)
+    
     if len(patient_ids) < 2:
         raise HTTPException(
             status_code=400,
             detail="At least 2 patient IDs required for comparison"
         )
-    
-    if len(patient_ids) > 5:
         raise HTTPException(
             status_code=400,
             detail="Maximum 5 patients can be compared at once"

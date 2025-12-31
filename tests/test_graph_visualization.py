@@ -75,9 +75,12 @@ async def test_get_patient_graph_visualization():
                     )
                     
                     assert result is not None
-                    assert "nodes" in result
-                    assert "edges" in result
-                    assert len(result["nodes"]) >= 1  # At least patient node
+                    assert "graph" in result
+                    assert "nodes" in result["graph"]
+                    assert "edges" in result["graph"]
+                    assert len(result["graph"]["nodes"]) >= 1  # At least patient node
+                    assert "patient_id" in result
+                    assert "statistics" in result
 
 
 @pytest.mark.asyncio

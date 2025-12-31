@@ -30,6 +30,7 @@ from backend.analysis_cache import AnalysisJobManager
 from backend.audit_service import AuditService
 from backend.explainability import explain_risk
 from backend.patient_data_service import PatientDataService
+from backend.utils.validation import validate_patient_id, validate_patient_id_list
 
 logger = logging.getLogger(__name__)
 
@@ -461,6 +462,9 @@ async def analyze_patient(
         patient_id = payload_patient_id or patient_id
         if not patient_id:
             raise HTTPException(status_code=422, detail="patient_id is required")
+        
+        # Validate patient_id
+        patient_id = validate_patient_id(patient_id)
 
         logger.info(f"Analyzing patient: {patient_id}")
 
@@ -573,6 +577,9 @@ async def get_patient_fhir(
     """
     Fetch raw FHIR patient data for a given patient ID.
     """
+    # Validate patient_id
+    patient_id = validate_patient_id(patient_id)
+    
     correlation_id = getattr(
         request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
     )
@@ -640,6 +647,9 @@ async def explain_patient_risk(
     patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
     audit_service: AuditService = Depends(get_audit_service),
 ):
+    # Validate patient_id
+    patient_id = validate_patient_id(patient_id)
+    
     correlation_id = getattr(
         request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
     )

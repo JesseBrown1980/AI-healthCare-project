@@ -16,6 +16,7 @@ from backend.database.user_service import UserService
 from backend.database.service import DatabaseService
 from backend.di import get_database_service
 from backend.api.v1.endpoints.auth import _issue_demo_token, demo_login_secret, demo_login_expires_minutes
+from backend.utils.validation import validate_oauth_provider, validate_email
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ def _generate_state() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _store_state(state: str, provider: str, redirect_after: Optional[str] = None):
+def _store_state(state: str, provider: str, redirect_after: Optional[str] = None) -> None:
     """Store OAuth state temporarily."""
     _oauth_states[state] = {
         "provider": provider,
@@ -54,7 +55,7 @@ def _verify_state(state: str) -> Optional[Dict[str, Any]]:
     return state_data
 
 
-def _clear_state(state: str):
+def _clear_state(state: str) -> None:
     """Clear OAuth state after use."""
     if state in _oauth_states:
         del _oauth_states[state]
@@ -72,12 +73,7 @@ async def oauth_authorize(
     Supported providers: 'google', 'apple'
     """
     # Validate provider name
-    provider = provider.lower().strip()
-    if provider not in ["google", "apple"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported OAuth provider: {provider}. Supported providers: google, apple"
-        )
+    provider = validate_oauth_provider(provider)
     
     if not db_service:
         raise HTTPException(
@@ -93,12 +89,12 @@ async def oauth_authorize(
             # Allow only same origin redirects for security
             frontend_url = os.getenv("FRONTEND_URL", "http://localhost:8501")
             if not redirect_after.startswith(frontend_url):
-                logger.warning(f"Invalid redirect URL: {redirect_after}")
+                logger.warning("Invalid redirect URL: %s", redirect_after)
                 redirect_after = None
     
     oauth_provider = get_oauth_provider(provider)
     if not oauth_provider:
-        logger.error(f"OAuth provider not configured: {provider}")
+        logger.error("OAuth provider not configured: %s", provider)
         raise HTTPException(
             status_code=503,
             detail=f"OAuth provider '{provider}' is not configured. Please check server configuration."
@@ -135,17 +131,12 @@ async def oauth_callback(
     Exchanges authorization code for tokens and creates/logs in user.
     """
     # Validate provider name
-    provider = provider.lower().strip()
-    if provider not in ["google", "apple"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported OAuth provider: {provider}. Supported providers: google, apple"
-        )
+    provider = validate_oauth_provider(provider)
     
     # Check for OAuth provider errors
     if error:
         error_msg = error_description or error
-        logger.warning(f"OAuth provider returned error: {error} - {error_msg}")
+        logger.warning("OAuth provider returned error: %s - %s", error, error_msg)
         raise HTTPException(
             status_code=400,
             detail=f"OAuth authorization failed: {error_msg}"
@@ -170,7 +161,7 @@ async def oauth_callback(
     # Verify state
     state_data = _verify_state(state)
     if not state_data:
-        logger.warning(f"Invalid or expired OAuth state token: {state[:10]}...")
+        logger.warning("Invalid or expired OAuth state token: %s...", state[:10] if state else "None")
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired state token. Please try logging in again."

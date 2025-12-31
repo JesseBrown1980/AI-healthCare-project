@@ -26,6 +26,20 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 _shared_async_client: Optional[httpx.AsyncClient] = None
 
+# Common scope constants for reuse across endpoints
+SCOPE_PATIENT_READ = "patient/*.read"
+SCOPE_PATIENT_WRITE = "patient/*.write"
+SCOPE_USER_READ = "user/*.read"
+SCOPE_USER_WRITE = "user/*.write"
+SCOPE_SYSTEM_READ = "system/*.read"
+SCOPE_SYSTEM_WRITE = "system/*.write"
+SCOPE_SYSTEM_MANAGE = "system/*.manage"
+
+# Common scope sets
+DEFAULT_READ_SCOPES = {SCOPE_PATIENT_READ, SCOPE_USER_READ, SCOPE_SYSTEM_READ}
+DEFAULT_WRITE_SCOPES = {SCOPE_PATIENT_WRITE, SCOPE_USER_WRITE, SCOPE_SYSTEM_WRITE}
+DEFAULT_ADMIN_SCOPES = {SCOPE_PATIENT_READ, SCOPE_PATIENT_WRITE, SCOPE_USER_READ, SCOPE_USER_WRITE, SCOPE_SYSTEM_READ, SCOPE_SYSTEM_WRITE, SCOPE_SYSTEM_MANAGE}
+
 
 async def get_shared_async_client() -> httpx.AsyncClient:
     """Return a shared ``httpx.AsyncClient`` instance for JWKS retrieval."""

@@ -116,6 +116,8 @@ async def test_cerner_patient_flow_includes_pagination_and_normalization(monkeyp
         server_url="https://cerner.example/r4", vendor="cerner", client_id="client-2"
     )
     connector = FhirResourceService(client)
+    # Disable sample data mode to ensure token is requested
+    connector.enable_sample_data = False
 
     token_calls = {"count": 0}
 
