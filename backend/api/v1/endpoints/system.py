@@ -75,7 +75,7 @@ async def health_check(
     rag_fusion: Optional[RAGFusion] = Depends(get_optional_rag_fusion),
     s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
     mlc_learning: Optional[MLCLearning] = Depends(get_optional_mlc_learning),
-):
+) -> HealthCheckResponse:
     """
     System health check endpoint with detailed component status.
     
@@ -162,7 +162,7 @@ async def clear_cache(
     analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
     patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
     patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(get_patient_summary_cache),
-):
+) -> CacheClearResponse:
     """Clear all application caches."""
     cleared_summaries = len(patient_summary_cache)
     patient_summary_cache.clear()
@@ -190,7 +190,7 @@ async def register_device(
     request: Request,
     auth: TokenContext = Depends(auth_dependency()),
     notifier: Notifier = Depends(get_notifier),
-): 
+) -> DeviceRegistrationResponse: 
     """Register a device token for push notifications."""
     return _register_device_token(registration, request, notifier)
 
@@ -203,7 +203,7 @@ async def get_system_stats(
     s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
     mlc_learning: Optional[MLCLearning] = Depends(get_optional_mlc_learning),
     audit_service: AuditService = Depends(get_audit_service),
-):
+) -> StatsResponse:
     """
     Get system statistics and performance metrics
     """
@@ -235,7 +235,7 @@ async def get_system_stats(
 async def get_adapters_status(
     s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
     audit_service: AuditService = Depends(get_audit_service),
-):
+) -> Dict[str, Any]:
     """
     Get status of S-LoRA adapters (active vs available).
     """
