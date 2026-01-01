@@ -208,6 +208,7 @@ async def link_document_to_patient(
     Link a document to a patient record.
     
     This allows the document to be associated with a patient's medical record.
+    Validates both document_id and patient_id before linking.
     """
     # Validate IDs
     document_id = validate_document_id(document_id)

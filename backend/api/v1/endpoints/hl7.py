@@ -169,11 +169,17 @@ async def list_hl7_messages(
     Note: This endpoint requires database storage of HL7 messages.
     Currently returns placeholder - full implementation would query database.
     """
+    from backend.utils.validation import validate_patient_id
+    
     if not db_service:
         raise HTTPException(
             status_code=503,
             detail="Database service required for message listing"
         )
+    
+    # Validate patient_id if provided
+    if patient_id:
+        patient_id = validate_patient_id(patient_id)
     
     # TODO: Implement database query for stored HL7 messages
     # For now, return placeholder
