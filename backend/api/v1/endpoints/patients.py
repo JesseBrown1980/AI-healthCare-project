@@ -748,12 +748,12 @@ async def dashboard_summary(
     if not patient_ids:
         return []
 
-    summaries = []
+    # Optimize: Use asyncio.gather for parallel processing
     async with fhir_connector.request_context(
         auth.access_token, auth.scopes, auth.patient
     ):
-        for patient_id in patient_ids:
-            summary = await _get_patient_summary(
+        summary_tasks = [
+            _get_patient_summary(
                 patient_id,
                 auth,
                 patient_analyzer=patient_analyzer,
@@ -762,7 +762,9 @@ async def dashboard_summary(
                 patient_summary_cache=patient_summary_cache,
                 use_request_context=False,
             )
-            summaries.append(summary)
+            for patient_id in patient_ids
+        ]
+        summaries = await asyncio.gather(*summary_tasks)
 
     def _timestamp_value(value: Optional[str]) -> datetime:
         try:

@@ -52,10 +52,16 @@ class DatabaseService:
             await session.flush()
             analysis_id = analysis.id
             
-            # Invalidate cache
+            # Invalidate cache (batch operation for efficiency)
             if self.redis_client:
-                await self.redis_client.delete(f"patient:analysis:{patient_id}:latest")
-                await self.redis_client.delete(f"patient:summary:{patient_id}")
+                from backend.utils.cache_utils import batch_invalidate_cache
+                await batch_invalidate_cache(
+                    self.redis_client,
+                    [
+                        f"patient:analysis:{patient_id}:latest",
+                        f"patient:summary:{patient_id}",
+                    ]
+                )
             
             return analysis_id
     
@@ -71,7 +77,13 @@ class DatabaseService:
         if self.redis_client:
             cached = await self.redis_client.get(f"patient:analysis:{patient_id}:latest")
             if cached:
+                from backend.utils.cache_utils import get_cache_metrics
+                get_cache_metrics().record_hit()
                 return json.loads(cached)
+        
+        # Record cache miss
+        from backend.utils.cache_utils import get_cache_metrics
+        get_cache_metrics().record_miss()
         
         # Query database
         async with get_db_session() as session:
@@ -122,6 +134,7 @@ class DatabaseService:
                     self.cache_ttl,
                     json.dumps(data, default=str),
                 )
+                logger.debug(f"Cached analysis for patient {patient_id}")
             
             return data
     
@@ -199,7 +212,13 @@ class DatabaseService:
         
         cached = await self.redis_client.get(f"patient:summary:{patient_id}")
         if cached:
+            from backend.utils.cache_utils import get_cache_metrics
+            get_cache_metrics().record_hit()
             return json.loads(cached)
+        
+        # Record cache miss
+        from backend.utils.cache_utils import get_cache_metrics
+        get_cache_metrics().record_miss()
         return None
     
     async def clear_cache(self, pattern: Optional[str] = None) -> int:
