@@ -56,14 +56,21 @@ async def medical_query(
             audit_service.new_correlation_id() if audit_service else uuid.uuid4().hex
         )
 
+    # Validate patient_id early if provided
+    validated_patient_id = None
+    if patient_id:
+        try:
+            validated_patient_id = validate_patient_id(patient_id)
+        except HTTPException:
+            # Re-raise validation errors immediately
+            raise
+
     try:
         logger.info(f"Processing medical query: {question}")
 
         # Get patient context if provided
         patient_context = None
-        if patient_id:
-            # Validate patient_id format
-            validated_patient_id = validate_patient_id(patient_id)
+        if validated_patient_id:
             (
                 access_token,
                 scopes,
@@ -97,7 +104,7 @@ async def medical_query(
         if audit_service:
             await audit_service.record_event(
                 action="E",
-                patient_id=validated_patient_id if patient_id else None,
+                patient_id=validated_patient_id,
                 user_context=None,
                 correlation_id=correlation_id,
                 outcome="0",
@@ -109,10 +116,9 @@ async def medical_query(
 
     except HTTPException as exc:
         if audit_service:
-            validated_id = validate_patient_id(patient_id) if patient_id else None
             await audit_service.record_event(
                 action="E",
-                patient_id=validated_id,
+                patient_id=validated_patient_id,
                 user_context=None,
                 correlation_id=correlation_id,
                 outcome="8",
@@ -123,13 +129,9 @@ async def medical_query(
     except Exception as e:
         logger.error("Error processing query [%s]: %s", correlation_id, str(e))
         if audit_service:
-            try:
-                validated_id = validate_patient_id(patient_id) if patient_id else None
-            except:
-                validated_id = None
             await audit_service.record_event(
                 action="E",
-                patient_id=validated_id,
+                patient_id=validated_patient_id,
                 user_context=None,
                 correlation_id=correlation_id,
                 outcome="8",
