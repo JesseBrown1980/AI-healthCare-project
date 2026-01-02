@@ -5,9 +5,8 @@ Provides HTTP endpoints for receiving and processing HL7 v2.x messages.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Body
-from fastapi.responses import JSONResponse
 
 from backend.security import TokenContext, auth_dependency
 from backend.di import get_database_service, get_fhir_connector, get_audit_service
