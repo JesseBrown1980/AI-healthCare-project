@@ -29,6 +29,7 @@ from backend.mlc_learning import MLCLearning
 from backend.audit_service import AuditService
 from backend.fhir_connector import FhirResourceService
 from backend.s_lora_manager import SLoRAManager
+from backend.utils.validation import validate_patient_id
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ async def medical_query(
         # Get patient context if provided
         patient_context = None
         if patient_id:
+            # Validate patient_id format
+            validated_patient_id = validate_patient_id(patient_id)
             (
                 access_token,
                 scopes,
@@ -69,9 +72,9 @@ async def medical_query(
             ) = fhir_connector.client.get_effective_context()
 
             async with fhir_connector.request_context(
-                access_token, scopes, patient_id, user_context
+                access_token, scopes, validated_patient_id, user_context
             ):
-                patient_context = await fhir_connector.get_patient(patient_id)
+                patient_context = await fhir_connector.get_patient(validated_patient_id)
         
         # Generate response with RAG and AoT
         response = await llm_engine.query_with_rag(
@@ -94,7 +97,7 @@ async def medical_query(
         if audit_service:
             await audit_service.record_event(
                 action="E",
-                patient_id=patient_id,
+                patient_id=validated_patient_id if patient_id else None,
                 user_context=None,
                 correlation_id=correlation_id,
                 outcome="0",
@@ -106,9 +109,10 @@ async def medical_query(
 
     except HTTPException as exc:
         if audit_service:
+            validated_id = validate_patient_id(patient_id) if patient_id else None
             await audit_service.record_event(
                 action="E",
-                patient_id=patient_id,
+                patient_id=validated_id,
                 user_context=None,
                 correlation_id=correlation_id,
                 outcome="8",
@@ -119,9 +123,13 @@ async def medical_query(
     except Exception as e:
         logger.error("Error processing query [%s]: %s", correlation_id, str(e))
         if audit_service:
+            try:
+                validated_id = validate_patient_id(patient_id) if patient_id else None
+            except:
+                validated_id = None
             await audit_service.record_event(
                 action="E",
-                patient_id=patient_id,
+                patient_id=validated_id,
                 user_context=None,
                 correlation_id=correlation_id,
                 outcome="8",

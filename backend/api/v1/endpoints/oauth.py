@@ -17,6 +17,7 @@ from backend.database.service import DatabaseService
 from backend.di import get_database_service
 from backend.api.v1.endpoints.auth import _issue_demo_token, demo_login_secret, demo_login_expires_minutes
 from backend.utils.validation import validate_oauth_provider, validate_email
+from backend.security import TokenContext, auth_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -394,6 +395,126 @@ async def oauth_callback(
         error_detail = "OAuth authentication failed. Please try again."
         if os.getenv("DEBUG", "False").lower() == "true":
             error_detail = f"OAuth authentication failed: {str(e)}"
+        raise HTTPException(status_code=500, detail=error_detail)
+
+
+@router.post("/oauth/{provider}/refresh")
+async def refresh_oauth_token(
+    provider: str,
+    db_service: Optional[DatabaseService] = Depends(get_database_service),
+    auth: TokenContext = Depends(
+        auth_dependency({"user/*.read"})
+    ),
+):
+    """
+    Refresh OAuth access token using stored refresh token.
+    
+    Requires the user to be authenticated and have an OAuth account linked.
+    """
+    provider = validate_oauth_provider(provider)
+    
+    if not db_service:
+        raise HTTPException(
+            status_code=503,
+            detail="OAuth token refresh requires database service"
+        )
+    
+    try:
+        user_service = UserService()
+        
+        # Get current user from auth context
+        user_email = auth.user_id if hasattr(auth, 'user_id') else None
+        if not user_email:
+            # Try to extract from token if available
+            raise HTTPException(
+                status_code=401,
+                detail="User authentication required for token refresh"
+            )
+        
+        # Get user from database
+        user = await user_service.get_user_by_email(user_email)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if user has OAuth account linked
+        if user.get("oauth_provider") != provider:
+            raise HTTPException(
+                status_code=400,
+                detail=f"User account is not linked to {provider} OAuth provider"
+            )
+        
+        refresh_token = user.get("oauth_refresh_token")
+        if not refresh_token:
+            raise HTTPException(
+                status_code=400,
+                detail="No refresh token available. Please re-authenticate with OAuth."
+            )
+        
+        # Get OAuth provider and refresh token
+        oauth_provider = get_oauth_provider(provider)
+        if not oauth_provider:
+            raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+        
+        # Refresh access token
+        if isinstance(oauth_provider, GoogleOAuthProvider):
+            try:
+                new_tokens = await oauth_provider.refresh_access_token(refresh_token)
+            except Exception as e:
+                logger.error(f"Failed to refresh Google OAuth token: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail="Failed to refresh access token. Please re-authenticate."
+                )
+        elif isinstance(oauth_provider, AppleOAuthProvider):
+            # Apple doesn't have a separate refresh endpoint in the same way
+            # The refresh token is used during token exchange
+            raise HTTPException(
+                status_code=501,
+                detail="Apple OAuth token refresh requires re-authentication"
+            )
+        else:
+            raise HTTPException(status_code=500, detail="Invalid OAuth provider configuration")
+        
+        new_access_token = new_tokens.get("access_token")
+        new_refresh_token = new_tokens.get("refresh_token", refresh_token)  # Keep old if not provided
+        expires_in = new_tokens.get("expires_in", 3600)
+        
+        if not new_access_token:
+            raise HTTPException(
+                status_code=400,
+                detail="OAuth provider did not return a new access token"
+            )
+        
+        # Update tokens in database
+        try:
+            await user_service.update_oauth_tokens(
+                user["id"],
+                provider,
+                user.get("oauth_provider_id"),
+                new_access_token,
+                new_refresh_token,
+                datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+            )
+        except Exception as e:
+            logger.error(f"Failed to update OAuth tokens in database: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update authentication tokens"
+            )
+        
+        return {
+            "status": "success",
+            "message": "Access token refreshed successfully",
+            "expires_in": expires_in
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth token refresh failed: {e}", exc_info=True)
+        error_detail = "OAuth token refresh failed. Please try again."
+        if os.getenv("DEBUG", "False").lower() == "true":
+            error_detail = f"OAuth token refresh failed: {str(e)}"
         raise HTTPException(status_code=500, detail=error_detail)
 
 
