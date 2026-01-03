@@ -67,11 +67,13 @@ class TestPHIMasking:
         """Test masking string values."""
         result = mask_phi_value("John Doe")
         # Masking preserves first 2 and last 2 chars for values > 8 chars
-        assert result.startswith("Jo")
-        assert result.endswith("oe")
+        # "John Doe" is 8 chars, so it shows first char and last char
+        assert result.startswith("J")
+        assert result.endswith("e")
         assert "*" in result
         assert len(result) == len("John Doe")
         assert result != "John Doe"  # Should be masked
+        assert result == "J******e"  # Exact format for 8-char string
     
     def test_mask_phi_value_number(self):
         """Test masking numeric values."""
