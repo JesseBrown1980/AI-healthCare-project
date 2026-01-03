@@ -78,6 +78,7 @@ class RecommendationService:
                     rag_component=self.rag_fusion,
                     aot_reasoner=self.aot_reasoner,
                     include_reasoning=True,
+                    language=language,
                 )
 
                 recommendations["clinical_recommendations"].append(

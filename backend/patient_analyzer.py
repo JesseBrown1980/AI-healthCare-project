@@ -154,7 +154,7 @@ class PatientAnalyzer:
             return {}
         return await self.risk_scoring_service.review_medications(patient_data)
 
-    async def _generate_recommendations(self, *, patient_data, summary, alerts, risk_scores, adapters, focus):
+    async def _generate_recommendations(self, *, patient_data, summary, alerts, risk_scores, adapters, focus, language="en"):
         if not self.recommendation_service:
             return []
         return await self.recommendation_service.generate_recommendations(
@@ -164,6 +164,7 @@ class PatientAnalyzer:
             risk_scores=risk_scores,
             adapters=adapters,
             focus=focus,
+            language=language,
         )
 
     async def analyze(
@@ -174,6 +175,7 @@ class PatientAnalyzer:
         analysis_focus: Optional[str] = None,
         notify: bool = False,
         correlation_id: str = "",
+        language: str = "en",
     ) -> Dict[str, Any]:
         """
         Comprehensive patient analysis using all AI components

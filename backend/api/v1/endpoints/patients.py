@@ -34,6 +34,7 @@ from backend.utils.validation import validate_patient_id, validate_patient_id_li
 from backend.utils.error_responses import create_http_exception, get_correlation_id
 from backend.utils.logging_utils import log_structured, log_service_error
 from backend.utils.service_error_handler import ServiceErrorHandler
+from backend.utils.i18n import get_language_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -574,6 +575,10 @@ async def analyze_patient(
                 analysis_focus=None,
             )
 
+        # Get language preference from request
+        from backend.utils.i18n import get_language_from_request
+        language = get_language_from_request(request)
+        
         async def _run_analysis() -> Dict[str, Any]:
             async with fhir_connector.request_context(
                 auth.access_token, auth.scopes, auth.patient
@@ -584,6 +589,7 @@ async def analyze_patient(
                     specialty=requested_specialty,
                     notify=bool(notifications_enabled and should_notify),
                     correlation_id=correlation_id,
+                    language=language,
                 )
 
         if analysis_job_manager and analysis_key:

@@ -32,6 +32,7 @@ from backend.utils.validation import validate_patient_id, validate_query_string
 from backend.utils.error_responses import create_http_exception, get_correlation_id
 from backend.utils.logging_utils import log_structured
 from backend.utils.service_error_handler import ServiceErrorHandler
+from backend.utils.i18n import get_language_from_request, translate, DEFAULT_LANGUAGE
 
 router = APIRouter()
 
@@ -93,13 +94,17 @@ async def medical_query(
             ):
                 patient_context = await fhir_connector.get_patient(validated_patient_id)
         
+        # Get language preference from request
+        language = get_language_from_request(request)
+        
         # Generate response with RAG and AoT
         response = await llm_engine.query_with_rag(
             question=question,
             patient_context=patient_context,
             rag_component=rag_fusion,
             aot_reasoner=aot_reasoner,
-            include_reasoning=include_reasoning
+            include_reasoning=include_reasoning,
+            language=language
         )
         
         result = {

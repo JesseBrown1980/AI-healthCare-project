@@ -9,6 +9,8 @@ from typing import Dict, Optional, Any, List
 import json
 from datetime import datetime
 
+from backend.utils.i18n import translate, DEFAULT_LANGUAGE
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,7 +76,8 @@ class LLMEngine:
         patient_context: Optional[Dict] = None,
         rag_component=None,
         aot_reasoner=None,
-        include_reasoning: bool = True
+        include_reasoning: bool = True,
+        language: str = DEFAULT_LANGUAGE
     ) -> Dict[str, Any]:
         """
         Process a medical query with RAG and Algorithm of Thought
@@ -85,11 +88,12 @@ class LLMEngine:
             rag_component: RAG fusion component for knowledge retrieval
             aot_reasoner: Algorithm of Thought reasoning engine
             include_reasoning: Include step-by-step reasoning
+            language: Target language for response (e.g., 'en', 'es', 'fr', 'ru', 'zh', etc.)
             
         Returns:
             Response with answer, reasoning, and sources
         """
-        logger.info(f"Processing query: {question[:100]}...")
+        logger.info(f"Processing query: {question[:100]}... (language: {language})")
         
         try:
             # 1. Retrieve relevant medical knowledge via RAG
@@ -98,12 +102,13 @@ class LLMEngine:
                 rag_results = await rag_component.retrieve_relevant_knowledge(question)
             
             # 2. Build medical prompt
-            system_prompt = self._build_system_prompt(patient_context)
+            system_prompt = self._build_system_prompt(patient_context, language=language)
             user_prompt = self._build_user_prompt(
                 question=question,
                 patient_context=patient_context,
                 rag_results=rag_results,
-                include_reasoning=include_reasoning
+                include_reasoning=include_reasoning,
+                language=language
             )
             
             # 3. Generate response with AoT if available
@@ -199,7 +204,11 @@ class LLMEngine:
             logger.error(f"Error calling LLM: {str(e)}")
             raise
     
-    def _build_system_prompt(self, patient_context: Optional[Dict] = None) -> str:
+    def _build_system_prompt(
+        self, 
+        patient_context: Optional[Dict] = None,
+        language: str = DEFAULT_LANGUAGE
+    ) -> str:
         """Build system prompt for medical context"""
         prompt = """You are an expert clinical decision support AI assistant.
         
@@ -219,6 +228,13 @@ Important guidelines:
 - Respect HIPAA and patient privacy
         """
         
+        # Add language instruction if not English
+        if language != DEFAULT_LANGUAGE:
+            # Get language name for display
+            from backend.utils.i18n import LANGUAGE_NAMES
+            language_name = LANGUAGE_NAMES.get(language, language)
+            prompt += f"\n\nIMPORTANT: Please respond in {language_name}. Use medical terminology appropriate for {language_name}."
+        
         if patient_context:
             prompt += f"\n\nCurrent patient context available: Yes"
         
@@ -229,7 +245,8 @@ Important guidelines:
         question: str,
         patient_context: Optional[Dict] = None,
         rag_results: Optional[Dict] = None,
-        include_reasoning: bool = True
+        include_reasoning: bool = True,
+        language: str = DEFAULT_LANGUAGE
     ) -> str:
         """Build user prompt with context"""
         prompt = f"Question: {question}\n\n"
@@ -263,7 +280,8 @@ Important guidelines:
                 prompt += f"{i}. {content}\n"
         
         if include_reasoning:
-            prompt += "\n\nPlease provide step-by-step reasoning before your final answer."
+            reasoning_text = translate("llm.reasoning_required", language=language)
+            prompt += f"\n\n{reasoning_text}"
         
         return prompt
     
