@@ -17,13 +17,20 @@ logger = logging.getLogger(__name__)
 DEFAULT_LANGUAGE = "en"
 
 # Supported languages
-SUPPORTED_LANGUAGES = ["en", "es", "fr"]
+SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru", "zh", "pt", "de", "nl", "pl", "sv"]
 
 # Language names for display
 LANGUAGE_NAMES = {
     "en": "English",
     "es": "Español",
     "fr": "Français",
+    "ru": "Русский",
+    "zh": "中文",
+    "pt": "Português",
+    "de": "Deutsch",
+    "nl": "Nederlands",
+    "pl": "Polski",
+    "sv": "Svenska",
 }
 
 # Cache for loaded translations
