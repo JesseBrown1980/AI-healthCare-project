@@ -176,7 +176,7 @@ class Consent(Base):
     withdrawn_at = Column(DateTime(timezone=True), nullable=True)
     ip_address = Column(String(45))  # IP address when consent was given/withdrawn
     user_agent = Column(Text)  # User agent when consent was given/withdrawn
-    metadata = Column(JSONColumn())  # Additional metadata (e.g., consent method, language)
+    consent_metadata = Column(JSONColumn())  # Additional metadata (e.g., consent method, language)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     

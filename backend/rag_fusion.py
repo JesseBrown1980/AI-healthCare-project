@@ -76,20 +76,36 @@ class RAGFusion:
             self.knowledge_index = {"guidelines": [], "protocols": [], "conditions": {}, "drugs": {}}
     
     def _load_guidelines(self) -> List[Dict]:
-        """Load clinical guidelines"""
+        """Load clinical guidelines with region tags"""
         return [
             {
                 "id": "guideline_001",
                 "title": "Hypertension Management",
                 "source": "ACC/AHA 2023",
-                "content": "First-line agents: ACE-I, ARB, CCB, or thiazide diuretics..."
+                "content": "First-line agents: ACE-I, ARB, CCB, or thiazide diuretics...",
+                "regions": ["US", "DEFAULT"],  # US-specific guidelines
             },
             {
                 "id": "guideline_002",
                 "title": "Diabetes Type 2 Management",
                 "source": "ADA 2024",
-                "content": "Initial therapy often includes metformin unless contraindicated..."
-            }
+                "content": "Initial therapy often includes metformin unless contraindicated...",
+                "regions": ["US", "DEFAULT"],
+            },
+            {
+                "id": "guideline_003",
+                "title": "Hypertension Management (EU)",
+                "source": "ESC/ESH 2023",
+                "content": "European guidelines for hypertension: ACE-I, ARB, or CCB as first-line...",
+                "regions": ["EU", "DEFAULT"],
+            },
+            {
+                "id": "guideline_004",
+                "title": "Diabetes Management (EU)",
+                "source": "EASD/ADA 2024",
+                "content": "European diabetes guidelines: metformin first-line, consider SGLT2 inhibitors...",
+                "regions": ["EU", "DEFAULT"],
+            },
         ]
     
     def _load_protocols(self) -> List[Dict]:
@@ -112,17 +128,19 @@ class RAGFusion:
         ]
     
     def _load_conditions_kb(self) -> Dict:
-        """Load condition-specific knowledge"""
+        """Load condition-specific knowledge with region tags"""
         return {
             "hypertension": {
                 "definition": "Sustained elevation of blood pressure",
                 "risk_factors": ["age", "family_history", "obesity", "salt_intake"],
-                "complications": ["MI", "stroke", "kidney_disease", "heart_failure"]
+                "complications": ["MI", "stroke", "kidney_disease", "heart_failure"],
+                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Universal condition
             },
             "diabetes": {
                 "definition": "Metabolic disorder characterized by hyperglycemia",
                 "types": ["type1", "type2", "gestational"],
-                "monitoring": ["HbA1c", "fasting_glucose", "lipid_panel"]
+                "monitoring": ["HbA1c", "fasting_glucose", "lipid_panel"],
+                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Universal condition
             }
         }
     
@@ -220,27 +238,12 @@ class RAGFusion:
             logger.error(f"Error retrieving knowledge: {str(e)}")
             return {"error": str(e), "query": query, "relevant_content": []}
     
-    def _search_guidelines(self, query: str, region: Optional[str] = None) -> List[Dict]:
-        """
-        Search clinical guidelines, filtered by region if specified.
-        
-        Args:
-            query: Search query
-            region: Optional region code to filter by (uses instance region if not provided)
-        """
-        if region is None:
-            region = self.region
-        
+    def _search_guidelines(self, query: str) -> List[Dict]:
+        """Search clinical guidelines"""
         keywords = query.lower().split()
         matching = []
         
         for guideline in self.knowledge_index.get("guidelines", []):
-            # Check region compatibility
-            guideline_regions = guideline.get("regions", ["DEFAULT"])
-            if region not in guideline_regions and "DEFAULT" not in guideline_regions:
-                continue  # Skip guidelines not applicable to this region
-            
-            # Check keyword match
             if any(kw in guideline.get("title", "").lower() or 
                    kw in guideline.get("content", "").lower() 
                    for kw in keywords):
@@ -285,12 +288,27 @@ class RAGFusion:
         
         return matching
     
-    def _search_drugs(self, query: str) -> List[tuple]:
-        """Search drug database"""
+    def _search_drugs(self, query: str, region: Optional[str] = None) -> List[tuple]:
+        """
+        Search drug database, filtered by region if specified.
+        
+        Args:
+            query: Search query
+            region: Optional region code to filter by (uses instance region if not provided)
+        """
+        if region is None:
+            region = self.region
+        
         keywords = query.lower().split()
         matching = []
         
         for drug, info in self.knowledge_index.get("drugs", {}).items():
+            # Check region compatibility (drug availability may vary by region)
+            drug_regions = info.get("regions", ["DEFAULT"])
+            if region not in drug_regions and "DEFAULT" not in drug_regions:
+                continue  # Skip drugs not available in this region
+            
+            # Check keyword match
             if any(kw in drug.lower() or 
                    kw in info.get("indication", "").lower() 
                    for kw in keywords):

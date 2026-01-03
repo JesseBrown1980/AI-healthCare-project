@@ -234,3 +234,36 @@ def is_anonymization_required() -> bool:
     """
     policy = get_compliance_policy()
     return policy.require_anonymization
+
+
+def is_2fa_required() -> bool:
+    """
+    Check if 2FA is required based on current region.
+    
+    Returns:
+        True if 2FA is required, False otherwise
+    """
+    policy = get_compliance_policy()
+    return policy.require_2fa
+
+
+def is_https_enforced() -> bool:
+    """
+    Check if HTTPS enforcement is required based on current region.
+    
+    Returns:
+        True if HTTPS is enforced, False otherwise
+    """
+    policy = get_compliance_policy()
+    return policy.enforce_https
+
+
+def is_field_level_encryption_required() -> bool:
+    """
+    Check if field-level encryption is required based on current region.
+    
+    Returns:
+        True if field-level encryption is required, False otherwise
+    """
+    policy = get_compliance_policy()
+    return policy.field_level_encryption

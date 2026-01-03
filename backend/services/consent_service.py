@@ -79,7 +79,7 @@ class ConsentService:
                     consent.accepted_at = datetime.now(timezone.utc)
                     consent.ip_address = ip_address
                     consent.user_agent = user_agent
-                    consent.metadata = metadata or consent.metadata
+                    consent.consent_metadata = metadata or consent.consent_metadata
                     consent.updated_at = datetime.now(timezone.utc)
                     await session.flush()
                     return consent.id
