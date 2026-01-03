@@ -20,6 +20,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from frontend.utils.env_loader import load_environment, get_api_url
+from frontend.utils.i18n import translate, t, get_supported_languages, DEFAULT_LANGUAGE
 
 load_environment()  # BEGIN AI GENERATED: centralized env loading # END AI GENERATED
 
@@ -206,6 +207,10 @@ def initialize_session_state():
     # Initialize graph popup setting (default: enabled)
     if "show_graph_popup_after_analysis" not in st.session_state:
         st.session_state["show_graph_popup_after_analysis"] = True
+    
+    # Initialize language preference (default: English)
+    if "language" not in st.session_state:
+        st.session_state["language"] = DEFAULT_LANGUAGE
 
 
 def set_patient_selection(patient_id: str):
@@ -333,43 +338,66 @@ def format_elapsed_time(timestamp: datetime) -> str:
 
 def page_home():
     """Home/Dashboard page"""
-    st.title("🏥 Healthcare AI Assistant")
-    st.markdown("*Intelligent Clinical Decision Support with FHIR Integration*")
+    lang = get_current_language()
+    
+    st.title(t("ui.home.title", language=lang, default="🏥 Healthcare AI Assistant"))
+    st.markdown(f"*{t('ui.home.subtitle', language=lang, default='Intelligent Clinical Decision Support with FHIR Integration')}*")
 
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Active Features", "6", "S-LoRA, RAG, AoT, MLC")
+        st.metric(
+            t("ui.home.metric_features", language=lang, default="Active Features"),
+            "6",
+            t("ui.home.metric_features_delta", language=lang, default="S-LoRA, RAG, AoT, MLC")
+        )
     with col2:
-        st.metric("Connected EHR", "Ready", "FHIR Protocol")
+        st.metric(
+            t("ui.home.metric_ehr", language=lang, default="Connected EHR"),
+            t("ui.home.metric_ehr_value", language=lang, default="Ready"),
+            t("ui.home.metric_ehr_delta", language=lang, default="FHIR Protocol")
+        )
     with col3:
-        st.metric("Model", "GPT-4", "With Adapters")
+        st.metric(
+            t("ui.home.metric_model", language=lang, default="Model"),
+            "GPT-4",
+            t("ui.home.metric_model_delta", language=lang, default="With Adapters")
+        )
     
     st.markdown("---")
     
-    st.subheader("Getting Started")
-    st.markdown("""
-    1. **Patient Analysis**: Select a patient and analyze their complete clinical picture
-    2. **Medical Query**: Ask clinical questions with evidence-based answers
-    3. **Alert Monitoring**: View and respond to critical alerts
-    4. **Decision Support**: Access AI-powered recommendations aligned with guidelines
+    st.subheader(t("ui.home.getting_started", language=lang, default="Getting Started"))
+    st.markdown(f"""
+    1. **{t('ui.home.step1_title', language=lang, default='Patient Analysis')}**: {t('ui.home.step1_desc', language=lang, default='Select a patient and analyze their complete clinical picture')}
+    2. **{t('ui.home.step2_title', language=lang, default='Medical Query')}**: {t('ui.home.step2_desc', language=lang, default='Ask clinical questions with evidence-based answers')}
+    3. **{t('ui.home.step3_title', language=lang, default='Alert Monitoring')}**: {t('ui.home.step3_desc', language=lang, default='View and respond to critical alerts')}
+    4. **{t('ui.home.step4_title', language=lang, default='Decision Support')}**: {t('ui.home.step4_desc', language=lang, default='Access AI-powered recommendations aligned with guidelines')}
     """)
     
     st.markdown("---")
     
-    st.subheader("Key Capabilities")
+    st.subheader(t("ui.home.capabilities", language=lang, default="Key Capabilities"))
     
     capabilities = {
-        "🔍 FHIR Integration": "Seamlessly fetch patient data from EHR systems",
-        "🧠 Advanced AI": "S-LoRA, Meta-Learning, RAG-Fusion, Algorithm of Thought",
-        "💊 Medication Review": "Drug interaction checking and optimization",
-        "⚠️ Alert System": "Red-flag detection and clinical notifications",
-        "📚 Evidence-Based": "Recommendations grounded in medical guidelines",
-        "🎯 Personalization": "Learns from feedback for improved accuracy"
+        "🔍": t("ui.home.cap_fhir", language=lang, default="FHIR Integration"),
+        "🧠": t("ui.home.cap_ai", language=lang, default="Advanced AI"),
+        "💊": t("ui.home.cap_meds", language=lang, default="Medication Review"),
+        "⚠️": t("ui.home.cap_alerts", language=lang, default="Alert System"),
+        "📚": t("ui.home.cap_evidence", language=lang, default="Evidence-Based"),
+        "🎯": t("ui.home.cap_personalization", language=lang, default="Personalization")
     }
     
-    for capability, description in capabilities.items():
-        st.markdown(f"**{capability}**: {description}")
+    descriptions = {
+        "🔍": t("ui.home.cap_fhir_desc", language=lang, default="Seamlessly fetch patient data from EHR systems"),
+        "🧠": t("ui.home.cap_ai_desc", language=lang, default="S-LoRA, Meta-Learning, RAG-Fusion, Algorithm of Thought"),
+        "💊": t("ui.home.cap_meds_desc", language=lang, default="Drug interaction checking and optimization"),
+        "⚠️": t("ui.home.cap_alerts_desc", language=lang, default="Red-flag detection and clinical notifications"),
+        "📚": t("ui.home.cap_evidence_desc", language=lang, default="Recommendations grounded in medical guidelines"),
+        "🎯": t("ui.home.cap_personalization_desc", language=lang, default="Learns from feedback for improved accuracy")
+    }
+    
+    for icon, title in capabilities.items():
+        st.markdown(f"**{icon} {title}**: {descriptions[icon]}")
 
 
 def page_multi_patient_dashboard():

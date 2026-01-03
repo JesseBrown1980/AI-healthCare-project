@@ -139,5 +139,40 @@
     "medical_context": "Medical Context",
     "patient_context": "Patient Context",
     "reasoning_required": "Please provide step-by-step reasoning"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 Healthcare AI Assistant",
+      "subtitle": "Intelligent Clinical Decision Support with FHIR Integration",
+      "metric_features": "Active Features",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "Connected EHR",
+      "metric_ehr_value": "Ready",
+      "metric_ehr_delta": "FHIR Protocol",
+      "metric_model": "Model",
+      "metric_model_delta": "With Adapters",
+      "getting_started": "Getting Started",
+      "step1_title": "Patient Analysis",
+      "step1_desc": "Select a patient and analyze their complete clinical picture",
+      "step2_title": "Medical Query",
+      "step2_desc": "Ask clinical questions with evidence-based answers",
+      "step3_title": "Alert Monitoring",
+      "step3_desc": "View and respond to critical alerts",
+      "step4_title": "Decision Support",
+      "step4_desc": "Access AI-powered recommendations aligned with guidelines",
+      "capabilities": "Key Capabilities",
+      "cap_fhir": "FHIR Integration",
+      "cap_fhir_desc": "Seamlessly fetch patient data from EHR systems",
+      "cap_ai": "Advanced AI",
+      "cap_ai_desc": "S-LoRA, Meta-Learning, RAG-Fusion, Algorithm of Thought",
+      "cap_meds": "Medication Review",
+      "cap_meds_desc": "Drug interaction checking and optimization",
+      "cap_alerts": "Alert System",
+      "cap_alerts_desc": "Red-flag detection and clinical notifications",
+      "cap_evidence": "Evidence-Based",
+      "cap_evidence_desc": "Recommendations grounded in medical guidelines",
+      "cap_personalization": "Personalization",
+      "cap_personalization_desc": "Learns from feedback for improved accuracy"
+    }
   }
 }
