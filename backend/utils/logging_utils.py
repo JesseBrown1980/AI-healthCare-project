@@ -3,6 +3,7 @@ Logging utilities for consistent logging with correlation IDs.
 
 Provides standardized logging functions that automatically include
 correlation IDs from request context. Supports both text and structured (JSON) logging.
+Includes PHI filtering based on region compliance policies.
 """
 
 import logging
@@ -12,6 +13,7 @@ from typing import Optional, Any, Dict
 from datetime import datetime, timezone
 from fastapi import Request
 
+from backend.utils.phi_filter import filter_phi_from_log_data, sanitize_for_logging
 
 logger = logging.getLogger(__name__)
 
@@ -106,23 +108,26 @@ def log_structured(
     **kwargs
 ) -> None:
     """
-    Log a structured message in JSON format.
+    Log a structured message in JSON format with PHI filtering.
     
     Args:
         level: Log level ('info', 'warning', 'error', 'debug')
-        message: Log message
+        message: Log message (will be masked if it contains PHI)
         correlation_id: Correlation ID (extracted from request if not provided)
         request: FastAPI request object (used to extract correlation ID)
-        **kwargs: Additional structured fields to include
+        **kwargs: Additional structured fields to include (PHI will be filtered)
     """
     if correlation_id is None:
         correlation_id = get_correlation_id_from_request(request)
+    
+    # Sanitize message for PHI
+    sanitized_message = sanitize_for_logging(message)
     
     # Build structured log entry
     log_entry: Dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": level.upper(),
-        "message": message,
+        "message": sanitized_message,
         "correlation_id": correlation_id or "",
     }
     
@@ -134,8 +139,15 @@ def log_structured(
             "client_ip": request.client.host if request.client else None,
         })
     
-    # Add additional context
-    log_entry.update(kwargs)
+    # Sanitize additional context fields for PHI
+    sanitized_kwargs = {
+        key: sanitize_for_logging(value, field_name=key)
+        for key, value in kwargs.items()
+    }
+    log_entry.update(sanitized_kwargs)
+    
+    # Filter PHI from entire log entry based on region policy
+    log_entry = filter_phi_from_log_data(log_entry)
     
     # Log as JSON string if structured logging is enabled, otherwise format nicely
     if USE_STRUCTURED_LOGGING:
@@ -145,9 +157,9 @@ def log_structured(
         parts = [f"[{log_entry['timestamp']}]", f"[{log_entry['level']}]"]
         if correlation_id:
             parts.append(f"[{correlation_id}]")
-        parts.append(message)
-        if kwargs:
-            context_str = ", ".join(f"{k}={v}" for k, v in kwargs.items())
+        parts.append(str(log_entry['message']))
+        if sanitized_kwargs:
+            context_str = ", ".join(f"{k}={v}" for k, v in sanitized_kwargs.items())
             parts.append(f"({context_str})")
         log_message = " ".join(parts)
     
