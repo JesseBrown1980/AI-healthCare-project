@@ -3,18 +3,22 @@ Graph Visualization API Endpoints
 Provides endpoints for visualizing patient clinical graphs from GNN anomaly detection
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta, timezone
 import logging
 
 from backend.security import TokenContext, auth_dependency
-from backend.di import get_patient_analyzer, get_fhir_connector, get_database_service
+from backend.di import get_patient_analyzer, get_fhir_connector, get_database_service, get_audit_service
 from backend.patient_analyzer import PatientAnalyzer
 from backend.fhir_connector import FhirResourceService
 from backend.patient_data_service import PatientDataService
 from backend.database.service import DatabaseService
+from backend.audit_service import AuditService
 from backend.utils.validation import validate_patient_id, validate_patient_id_list
+from backend.utils.error_responses import create_http_exception, get_correlation_id
+from backend.utils.logging_utils import log_structured, log_service_error
+from backend.utils.service_error_handler import ServiceErrorHandler
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +66,14 @@ async def get_patient_graph_visualization(
                     threshold=threshold
                 )
             except Exception as e:
-                logger.warning(f"Anomaly detection failed for graph visualization: {e}")
+                log_structured(
+                    level="warning",
+                    message="Anomaly detection failed for graph visualization (continuing without anomalies)",
+                    correlation_id=correlation_id,
+                    request=request,
+                    patient_id=patient_id,
+                    error=str(e)
+                )
         
         # Build visualization-friendly graph structure
         nodes = []
@@ -198,40 +209,80 @@ async def get_patient_graph_visualization(
                 'threshold': threshold,
             }
         
+        log_structured(
+            level="info",
+            message="Patient graph visualization generated successfully",
+            correlation_id=correlation_id,
+            request=request,
+            patient_id=patient_id,
+            node_count=len(nodes),
+            edge_count=len(edges),
+            has_anomalies=bool(anomaly_results)
+        )
+        
         return response
         
     except Exception as e:
-        logger.error(f"Failed to generate graph visualization: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate graph visualization: {str(e)}"
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_patient_graph_visualization", "patient_id": patient_id},
+            correlation_id,
+            request
         )
 
 
 @router.get("/patients/{patient_id}/anomaly-timeline")
 async def get_anomaly_timeline(
+    request: Request,
     patient_id: str,
     days: int = Query(30, description="Number of days to look back"),
     db_service: Optional[DatabaseService] = Depends(get_database_service),
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read"})
     ),
+    audit_service: Optional[AuditService] = Depends(get_audit_service),
 ):
     """
     Get anomaly timeline data for a patient showing anomalies over time.
     
     Extracts anomaly detection results from analysis history to show trends.
     """
+    correlation_id = get_correlation_id(request)
+    
     # Validate patient_id
-    patient_id = validate_patient_id(patient_id)
+    try:
+        patient_id = validate_patient_id(patient_id)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
+    
+    # Validate days parameter
+    if days < 1 or days > 365:
+        raise create_http_exception(
+            message="Days parameter must be between 1 and 365",
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Database service required for anomaly timeline",
             status_code=503,
-            detail="Database service required for anomaly timeline"
+            error_type="ServiceUnavailable"
         )
     
     try:
+        log_structured(
+            level="info",
+            message="Generating anomaly timeline",
+            correlation_id=correlation_id,
+            request=request,
+            patient_id=patient_id,
+            days=days
+        )
         # Get analysis history for the patient
         history = await db_service.get_analysis_history(patient_id, limit=1000)
         
@@ -271,11 +322,26 @@ async def get_anomaly_timeline(
                         ],
                     })
             except Exception as e:
-                logger.warning(f"Failed to parse analysis entry: {e}")
+                log_structured(
+                    level="warning",
+                    message="Failed to parse analysis entry (skipping)",
+                    correlation_id=correlation_id,
+                    request=request,
+                    error=str(e)
+                )
                 continue
         
         # Sort by timestamp
         timeline_data.sort(key=lambda x: x['timestamp'])
+        
+        log_structured(
+            level="info",
+            message="Anomaly timeline generated successfully",
+            correlation_id=correlation_id,
+            request=request,
+            patient_id=patient_id,
+            timeline_points=len(timeline_data)
+        )
         
         return {
             'patient_id': patient_id,
@@ -285,15 +351,17 @@ async def get_anomaly_timeline(
         }
         
     except Exception as e:
-        logger.error(f"Failed to generate anomaly timeline: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate anomaly timeline: {str(e)}"
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_anomaly_timeline", "patient_id": patient_id, "days": days},
+            correlation_id,
+            request
         )
 
 
 @router.post("/patients/compare-graphs")
 async def compare_patient_graphs(
+    request: Request,
     patient_ids: List[str] = Query(..., description="List of patient IDs to compare"),
     include_anomalies: bool = Query(True, description="Include anomaly detection"),
     threshold: float = Query(0.5, description="Anomaly detection threshold"),
@@ -302,26 +370,48 @@ async def compare_patient_graphs(
     auth: TokenContext = Depends(
         auth_dependency({"patient/*.read", "user/*.read"})
     ),
+    audit_service: Optional[AuditService] = Depends(get_audit_service),
 ):
     """
     Compare clinical graphs across multiple patients.
     
     Returns graph statistics and anomaly comparisons for the provided patient IDs.
     """
+    correlation_id = get_correlation_id(request)
+    
     # Validate patient_ids
-    patient_ids = validate_patient_id_list(patient_ids, max_count=5)
+    try:
+        patient_ids = validate_patient_id_list(patient_ids, max_count=5)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     if len(patient_ids) < 2:
-        raise HTTPException(
+        raise create_http_exception(
+            message="At least 2 patient IDs required for comparison",
             status_code=400,
-            detail="At least 2 patient IDs required for comparison"
+            error_type="ValidationError"
         )
-        raise HTTPException(
+    
+    if len(patient_ids) > 5:
+        raise create_http_exception(
+            message="Maximum 5 patients can be compared at once",
             status_code=400,
-            detail="Maximum 5 patients can be compared at once"
+            error_type="ValidationError"
         )
     
     try:
+        log_structured(
+            level="info",
+            message="Comparing patient graphs",
+            correlation_id=correlation_id,
+            request=request,
+            patient_count=len(patient_ids),
+            include_anomalies=include_anomalies
+        )
         comparison_results = []
         patient_data_service = PatientDataService(fhir_connector)
         
@@ -376,7 +466,14 @@ async def compare_patient_graphs(
                 })
                 
             except Exception as e:
-                logger.error(f"Failed to process patient {patient_id}: {e}")
+                log_structured(
+                    level="error",
+                    message="Failed to process patient for graph comparison",
+                    correlation_id=correlation_id,
+                    request=request,
+                    patient_id=patient_id,
+                    error=str(e)
+                )
                 comparison_results.append({
                     'patient_id': patient_id,
                     'error': str(e),
@@ -429,6 +526,15 @@ async def compare_patient_graphs(
                 for r in comparison_results
             ]
         
+        log_structured(
+            level="info",
+            message="Patient graph comparison completed successfully",
+            correlation_id=correlation_id,
+            request=request,
+            patient_count=len(patient_ids),
+            successful_comparisons=len([r for r in comparison_results if 'statistics' in r])
+        )
+        
         return {
             'patient_ids': patient_ids,
             'comparison_results': comparison_results,
@@ -436,9 +542,10 @@ async def compare_patient_graphs(
         }
         
     except Exception as e:
-        logger.error(f"Failed to compare graphs: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to compare graphs: {str(e)}"
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "compare_patient_graphs", "patient_count": len(patient_ids)},
+            correlation_id,
+            request
         )
 

@@ -181,6 +181,7 @@ async def oauth_authorize(
 
 @router.get("/oauth/{provider}/callback")
 async def oauth_callback(
+    request: Request,
     provider: str,
     code: str = Query(..., description="Authorization code from OAuth provider"),
     state: str = Query(..., description="State token for CSRF protection"),
@@ -193,69 +194,128 @@ async def oauth_callback(
     
     Exchanges authorization code for tokens and creates/logs in user.
     """
+    correlation_id = get_correlation_id(request)
+    
     # Validate provider name
-    provider = validate_oauth_provider(provider)
+    try:
+        provider = validate_oauth_provider(provider)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     # Check for OAuth provider errors
     if error:
         error_msg = error_description or error
-        logger.warning("OAuth provider returned error: %s - %s", error, error_msg)
-        raise HTTPException(
+        log_structured(
+            level="warning",
+            message="OAuth provider returned error",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider,
+            error=error,
+            error_description=error_msg
+        )
+        raise create_http_exception(
+            message=f"OAuth authorization failed: {error_msg}",
             status_code=400,
-            detail=f"OAuth authorization failed: {error_msg}"
+            error_type="OAuthError"
         )
     
     # Validate inputs
     if not code or not code.strip():
-        raise HTTPException(status_code=400, detail="Authorization code is required")
+        raise create_http_exception(
+            message="Authorization code is required",
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     if not state or not state.strip():
-        raise HTTPException(status_code=400, detail="State token is required")
+        raise create_http_exception(
+            message="State token is required",
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     code = code.strip()
     state = state.strip()
     
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="OAuth authentication requires database service",
             status_code=503,
-            detail="OAuth authentication requires database service"
+            error_type="ServiceUnavailable"
         )
-    
-    # Verify state
-    state_data = _verify_state(state)
-    if not state_data:
-        logger.warning("Invalid or expired OAuth state token: %s...", state[:10] if state else "None")
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid or expired state token. Please try logging in again."
-        )
-    
-    if state_data["provider"] != provider:
-        logger.warning(
-            f"State provider mismatch: expected {state_data['provider']}, got {provider}"
-        )
-        raise HTTPException(
-            status_code=400,
-            detail="State provider mismatch. Please try logging in again."
-        )
-    
-    _clear_state(state)
-    
-    # Get OAuth provider
-    oauth_provider = get_oauth_provider(provider)
-    if not oauth_provider:
-        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
     
     try:
+        log_structured(
+            level="info",
+            message="Processing OAuth callback",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider
+        )
+        
+        # Verify state
+        state_data = _verify_state(state)
+        if not state_data:
+            log_structured(
+                level="warning",
+                message="Invalid or expired OAuth state token",
+                correlation_id=correlation_id,
+                request=request,
+                provider=provider,
+                state_prefix=state[:10] if state else "None"
+            )
+            raise create_http_exception(
+                message="Invalid or expired state token. Please try logging in again.",
+                status_code=400,
+                error_type="ValidationError"
+            )
+        
+        if state_data["provider"] != provider:
+            log_structured(
+                level="warning",
+                message="State provider mismatch",
+                correlation_id=correlation_id,
+                request=request,
+                expected_provider=state_data["provider"],
+                received_provider=provider
+            )
+            raise create_http_exception(
+                message="State provider mismatch. Please try logging in again.",
+                status_code=400,
+                error_type="ValidationError"
+            )
+        
+        _clear_state(state)
+        
+        # Get OAuth provider
+        oauth_provider = get_oauth_provider(provider)
+        if not oauth_provider:
+            raise create_http_exception(
+                message=f"Unsupported provider: {provider}",
+                status_code=400,
+                error_type="ValidationError"
+            )
+        
         # Exchange code for tokens
         if isinstance(oauth_provider, GoogleOAuthProvider):
             try:
                 tokens = await oauth_provider.exchange_code_for_tokens(code)
             except Exception as e:
-                logger.error(f"Failed to exchange Google OAuth code: {e}", exc_info=True)
-                raise HTTPException(
+                log_service_error(
+                    e,
+                    {"operation": "oauth_callback", "provider": provider, "step": "exchange_code"},
+                    correlation_id,
+                    request
+                )
+                raise create_http_exception(
+                    message="Failed to exchange authorization code. The code may be invalid or expired.",
                     status_code=400,
-                    detail="Failed to exchange authorization code. The code may be invalid or expired."
+                    error_type="OAuthError"
                 )
             
             access_token = tokens.get("access_token")
@@ -263,19 +323,26 @@ async def oauth_callback(
             expires_in = tokens.get("expires_in", 3600)
             
             if not access_token:
-                raise HTTPException(
+                raise create_http_exception(
+                    message="OAuth provider did not return an access token",
                     status_code=400,
-                    detail="OAuth provider did not return an access token"
+                    error_type="OAuthError"
                 )
             
             # Get user info
             try:
                 user_info = await oauth_provider.get_user_info(access_token)
             except Exception as e:
-                logger.error(f"Failed to get Google user info: {e}", exc_info=True)
-                raise HTTPException(
+                log_service_error(
+                    e,
+                    {"operation": "oauth_callback", "provider": provider, "step": "get_user_info"},
+                    correlation_id,
+                    request
+                )
+                raise create_http_exception(
+                    message="Failed to retrieve user information from OAuth provider",
                     status_code=400,
-                    detail="Failed to retrieve user information from OAuth provider"
+                    error_type="OAuthError"
                 )
             
             provider_user_id = user_info.get("sub")
@@ -323,17 +390,17 @@ async def oauth_callback(
             raise HTTPException(status_code=500, detail="Invalid OAuth provider configuration")
         
         if not email:
-            logger.warning(f"OAuth provider did not return email for provider {provider}")
-            raise HTTPException(
+            raise create_http_exception(
+                message="Email not provided by OAuth provider. Please ensure your account has a verified email address.",
                 status_code=400,
-                detail="Email not provided by OAuth provider. Please ensure your account has a verified email address."
+                error_type="OAuthError"
             )
         
         if not provider_user_id:
-            logger.warning(f"OAuth provider did not return user ID for provider {provider}")
-            raise HTTPException(
+            raise create_http_exception(
+                message="User ID not provided by OAuth provider",
                 status_code=400,
-                detail="User ID not provided by OAuth provider"
+                error_type="OAuthError"
             )
         
         # Find or create user
@@ -341,10 +408,16 @@ async def oauth_callback(
         try:
             user = await user_service.get_user_by_email(email)
         except Exception as e:
-            logger.error(f"Database error while fetching user: {e}", exc_info=True)
-            raise HTTPException(
+            log_service_error(
+                e,
+                {"operation": "oauth_callback", "provider": provider, "step": "get_user"},
+                correlation_id,
+                request
+            )
+            raise create_http_exception(
+                message="Database service temporarily unavailable. Please try again later.",
                 status_code=503,
-                detail="Database service temporarily unavailable. Please try again later."
+                error_type="ServiceUnavailable"
             )
         
         if user:
@@ -408,22 +481,45 @@ async def oauth_callback(
                 )
             except ValueError as e:
                 # User already exists (race condition)
-                logger.warning(f"User creation failed (may already exist): {e}")
+                log_structured(
+                    level="warning",
+                    message="User creation failed (may already exist)",
+                    correlation_id=correlation_id,
+                    request=request,
+                    provider=provider,
+                    error=str(e)
+                )
                 user = await user_service.get_user_by_email(email)
                 if not user:
-                    raise HTTPException(status_code=500, detail="Failed to create user account")
+                    raise create_http_exception(
+                        message="Failed to create user account",
+                        status_code=500,
+                        error_type="InternalServerError"
+                    )
             except Exception as e:
-                logger.error(f"Failed to create OAuth user: {e}", exc_info=True)
-                raise HTTPException(
+                log_service_error(
+                    e,
+                    {"operation": "oauth_callback", "provider": provider, "step": "create_user"},
+                    correlation_id,
+                    request
+                )
+                raise create_http_exception(
+                    message="Failed to create user account. Please try again later.",
                     status_code=500,
-                    detail="Failed to create user account. Please try again later."
+                    error_type="InternalServerError"
                 )
         
         # Update last login
         try:
             await user_service.update_user_last_login(user["id"])
         except Exception as e:
-            logger.warning(f"Failed to update last login: {e}", exc_info=True)
+            log_structured(
+                level="warning",
+                message="Failed to update last login (non-critical)",
+                correlation_id=correlation_id,
+                request=request,
+                error=str(e)
+            )
             # Non-critical error, continue
         
         # Issue JWT token
@@ -443,25 +539,38 @@ async def oauth_callback(
         # In production, use secure cookie or token in URL fragment
         redirect_url = f"{frontend_url}{redirect_after}?token={token_response.access_token}"
         
+        log_structured(
+            level="info",
+            message="OAuth callback completed successfully",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider,
+            user_email=email
+        )
+        
         return RedirectResponse(url=redirect_url)
         
     except HTTPException:
         raise
     except ValueError as e:
         # Validation errors
-        logger.warning(f"OAuth validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     except Exception as e:
-        logger.error(f"OAuth callback failed: {e}", exc_info=True)
-        # Don't expose internal error details in production
-        error_detail = "OAuth authentication failed. Please try again."
-        if os.getenv("DEBUG", "False").lower() == "true":
-            error_detail = f"OAuth authentication failed: {str(e)}"
-        raise HTTPException(status_code=500, detail=error_detail)
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "oauth_callback", "provider": provider},
+            correlation_id,
+            request
+        )
 
 
 @router.post("/oauth/{provider}/refresh")
 async def refresh_oauth_token(
+    request: Request,
     provider: str,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
     auth: TokenContext = Depends(
@@ -473,78 +582,119 @@ async def refresh_oauth_token(
     
     Requires the user to be authenticated and have an OAuth account linked.
     """
-    provider = validate_oauth_provider(provider)
+    correlation_id = get_correlation_id(request)
+    
+    try:
+        provider = validate_oauth_provider(provider)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="OAuth token refresh requires database service",
             status_code=503,
-            detail="OAuth token refresh requires database service"
+            error_type="ServiceUnavailable"
         )
     
     try:
+        log_structured(
+            level="info",
+            message="Refreshing OAuth token",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider
+        )
+        
         user_service = UserService()
         
         # Get current user from auth context
         user_email = auth.user_id if hasattr(auth, 'user_id') else None
         if not user_email:
             # Try to extract from token if available
-            raise HTTPException(
+            raise create_http_exception(
+                message="User authentication required for token refresh",
                 status_code=401,
-                detail="User authentication required for token refresh"
+                error_type="Unauthorized"
             )
         
         # Get user from database
         user = await user_service.get_user_by_email(user_email)
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise create_http_exception(
+                message="User not found",
+                status_code=404,
+                error_type="NotFound"
+            )
         
         # Check if user has OAuth account linked
         if user.get("oauth_provider") != provider:
-            raise HTTPException(
+            raise create_http_exception(
+                message=f"User account is not linked to {provider} OAuth provider",
                 status_code=400,
-                detail=f"User account is not linked to {provider} OAuth provider"
+                error_type="ValidationError"
             )
         
         refresh_token = user.get("oauth_refresh_token")
         if not refresh_token:
-            raise HTTPException(
+            raise create_http_exception(
+                message="No refresh token available. Please re-authenticate with OAuth.",
                 status_code=400,
-                detail="No refresh token available. Please re-authenticate with OAuth."
+                error_type="ValidationError"
             )
         
         # Get OAuth provider and refresh token
         oauth_provider = get_oauth_provider(provider)
         if not oauth_provider:
-            raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+            raise create_http_exception(
+                message=f"Unsupported provider: {provider}",
+                status_code=400,
+                error_type="ValidationError"
+            )
         
         # Refresh access token
         if isinstance(oauth_provider, GoogleOAuthProvider):
             try:
                 new_tokens = await oauth_provider.refresh_access_token(refresh_token)
             except Exception as e:
-                logger.error(f"Failed to refresh Google OAuth token: {e}", exc_info=True)
-                raise HTTPException(
+                log_service_error(
+                    e,
+                    {"operation": "refresh_oauth_token", "provider": provider},
+                    correlation_id,
+                    request
+                )
+                raise create_http_exception(
+                    message="Failed to refresh access token. Please re-authenticate.",
                     status_code=400,
-                    detail="Failed to refresh access token. Please re-authenticate."
+                    error_type="OAuthError"
                 )
         elif isinstance(oauth_provider, AppleOAuthProvider):
             # Apple doesn't have a separate refresh endpoint in the same way
             # The refresh token is used during token exchange
-            raise HTTPException(
+            raise create_http_exception(
+                message="Apple OAuth token refresh requires re-authentication",
                 status_code=501,
-                detail="Apple OAuth token refresh requires re-authentication"
+                error_type="NotImplemented"
             )
         else:
-            raise HTTPException(status_code=500, detail="Invalid OAuth provider configuration")
+            raise create_http_exception(
+                message="Invalid OAuth provider configuration",
+                status_code=500,
+                error_type="InternalServerError"
+            )
         
         new_access_token = new_tokens.get("access_token")
         new_refresh_token = new_tokens.get("refresh_token", refresh_token)  # Keep old if not provided
         expires_in = new_tokens.get("expires_in", 3600)
         
         if not new_access_token:
-            raise HTTPException(
+            raise create_http_exception(
+                message="OAuth provider did not return a new access token",
                 status_code=400,
-                detail="OAuth provider did not return a new access token"
+                error_type="OAuthError"
             )
         
         # Update tokens in database
@@ -558,11 +708,26 @@ async def refresh_oauth_token(
                 datetime.now(timezone.utc) + timedelta(seconds=expires_in)
             )
         except Exception as e:
-            logger.error(f"Failed to update OAuth tokens in database: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to update authentication tokens"
+            log_service_error(
+                e,
+                {"operation": "refresh_oauth_token", "provider": provider, "step": "update_tokens"},
+                correlation_id,
+                request
             )
+            raise create_http_exception(
+                message="Failed to update authentication tokens",
+                status_code=500,
+                error_type="InternalServerError"
+            )
+        
+        log_structured(
+            level="info",
+            message="OAuth token refreshed successfully",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider,
+            user_email=user_email
+        )
         
         return {
             "status": "success",
@@ -573,26 +738,77 @@ async def refresh_oauth_token(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"OAuth token refresh failed: {e}", exc_info=True)
-        error_detail = "OAuth token refresh failed. Please try again."
-        if os.getenv("DEBUG", "False").lower() == "true":
-            error_detail = f"OAuth token refresh failed: {str(e)}"
-        raise HTTPException(status_code=500, detail=error_detail)
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "refresh_oauth_token", "provider": provider},
+            correlation_id,
+            request
+        )
 
 
 @router.post("/oauth/{provider}/link")
 async def link_oauth_account(
+    request: Request,
     provider: str,
     code: str,
     state: Optional[str] = None,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
+    auth: TokenContext = Depends(auth_dependency({"user/*.write"})),
 ):
     """
     Link an OAuth account to an existing user account.
     
     Requires the user to be already authenticated.
     """
-    # This would require current user context from JWT
-    # Implementation depends on your auth middleware
-    raise HTTPException(status_code=501, detail="Account linking not yet implemented")
+    correlation_id = get_correlation_id(request)
+    
+    try:
+        provider = validate_oauth_provider(provider)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
+    
+    if not db_service:
+        raise create_http_exception(
+            message="OAuth account linking requires database service",
+            status_code=503,
+            error_type="ServiceUnavailable"
+        )
+    
+    # Validate code
+    if not code or not code.strip():
+        raise create_http_exception(
+            message="Authorization code is required",
+            status_code=400,
+            error_type="ValidationError"
+        )
+    
+    try:
+        log_structured(
+            level="info",
+            message="Linking OAuth account",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider
+        )
+        
+        # This would require current user context from JWT
+        # Implementation depends on your auth middleware
+        raise create_http_exception(
+            message="Account linking not yet implemented",
+            status_code=501,
+            error_type="NotImplemented"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "link_oauth_account", "provider": provider},
+            correlation_id,
+            request
+        )
 

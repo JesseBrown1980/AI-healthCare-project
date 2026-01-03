@@ -4,9 +4,10 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional, TYPE_CHECKING, Any
 
 from backend.security import TokenContext
+from backend.utils.logging_utils import log_structured
 
 if TYPE_CHECKING:
     from backend.database.service import DatabaseService
