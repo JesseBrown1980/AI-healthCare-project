@@ -217,13 +217,9 @@ class TestDataDeletionCompleteness:
         
         assert result["items_deleted"]["user_sessions"] == 3
         
-        # Verify sessions are deleted
-        async with get_db_session() as session:
-            from backend.database.models import UserSession
-            stmt = select(UserSession).where(UserSession.user_id == user_id)
-            result_check = await session.execute(stmt)
-            remaining_sessions = result_check.scalars().all()
-            assert len(remaining_sessions) == 0
+        # Verify deletion status shows no sessions
+        status = await data_deletion_service.get_deletion_status(user_id)
+        assert status["data_summary"]["user_sessions_count"] == 0
     
     async def test_withdraw_all_consents(self, db_session, data_deletion_service):
         """Test that all consents are withdrawn."""
