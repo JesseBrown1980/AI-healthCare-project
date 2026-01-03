@@ -40,6 +40,8 @@ from backend.middleware import (
     RateLimitMiddleware,
     TimeoutMiddleware,
     SecurityHeadersMiddleware,
+    PerformanceMonitoringMiddleware,
+    InputValidationMiddleware,
 )
 from backend.anomaly_detector.api import router as anomaly_router
 from backend.anomaly_detector.service import anomaly_service
@@ -212,6 +214,23 @@ app.add_middleware(
     SecurityHeadersMiddleware,
     enabled=os.getenv("SECURITY_HEADERS_ENABLED", "true").lower() == "true",
     strict_transport_security=os.getenv("HSTS_ENABLED", "true").lower() == "true",
+)
+
+# Add input validation middleware (early to validate all inputs)
+app.add_middleware(
+    InputValidationMiddleware,
+    enabled=os.getenv("INPUT_VALIDATION_ENABLED", "true").lower() == "true",
+    max_query_length=int(os.getenv("MAX_QUERY_LENGTH", "500")),
+    max_path_length=int(os.getenv("MAX_PATH_LENGTH", "2000")),
+    strict_mode=os.getenv("INPUT_VALIDATION_STRICT", "false").lower() == "true",
+)
+
+# Add performance monitoring middleware (early to track all requests)
+app.add_middleware(
+    PerformanceMonitoringMiddleware,
+    enabled=os.getenv("PERFORMANCE_MONITORING_ENABLED", "true").lower() == "true",
+    slow_request_threshold=float(os.getenv("SLOW_REQUEST_THRESHOLD_SECONDS", "1.0")),
+    track_slow_queries=os.getenv("TRACK_SLOW_QUERIES", "true").lower() == "true",
 )
 
 # Add timeout middleware

@@ -30,6 +30,7 @@ from backend.audit_service import AuditService
 from backend.utils.error_responses import create_http_exception, get_correlation_id
 from backend.utils.logging_utils import log_structured, log_service_error
 from backend.utils.service_error_handler import ServiceErrorHandler
+from backend.middleware.performance_monitoring import get_performance_metrics
 from datetime import datetime, timezone
 import logging
 import asyncio
@@ -283,6 +284,54 @@ async def get_system_stats(
         raise ServiceErrorHandler.handle_service_error(
             e,
             {"operation": "get_system_stats"},
+            correlation_id,
+            request
+        )
+
+
+@router.get("/performance", response_model=Dict[str, Any])
+async def get_performance_metrics(
+    request: Request,
+    auth: TokenContext = Depends(auth_dependency({"system/*.read"})),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> Dict[str, Any]:
+    """
+    Get performance monitoring metrics.
+    
+    Returns:
+        Performance metrics including request timing, slow requests, and error rates
+    """
+    correlation_id = get_correlation_id(request)
+    
+    try:
+        log_structured(
+            level="info",
+            message="Fetching performance metrics",
+            correlation_id=correlation_id,
+            request=request
+        )
+        
+        metrics = get_performance_metrics()
+        performance_stats = metrics.get_stats()
+        
+        log_structured(
+            level="info",
+            message="Performance metrics fetched successfully",
+            correlation_id=correlation_id,
+            request=request,
+            total_requests=performance_stats.get("total_requests", 0)
+        )
+        
+        return {
+            "status": "success",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "performance": performance_stats
+        }
+        
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_performance_metrics"},
             correlation_id,
             request
         )

@@ -16,7 +16,10 @@ from backend.database.user_service import UserService
 from backend.database.service import DatabaseService
 from backend.di import get_database_service
 from backend.api.v1.endpoints.auth import _issue_demo_token, demo_login_secret, demo_login_expires_minutes
-from backend.utils.validation import validate_oauth_provider, validate_email
+from backend.utils.validation import validate_oauth_provider, validate_email, validate_url
+from backend.utils.error_responses import create_http_exception, get_correlation_id
+from backend.utils.logging_utils import log_structured, log_service_error
+from backend.utils.service_error_handler import ServiceErrorHandler
 from backend.security import TokenContext, auth_dependency
 
 logger = logging.getLogger(__name__)
@@ -64,6 +67,7 @@ def _clear_state(state: str) -> None:
 
 @router.get("/oauth/{provider}/authorize")
 async def oauth_authorize(
+    request: Request,
     provider: str,
     redirect_after: Optional[str] = Query(None, description="URL to redirect to after login"),
     db_service: Optional[DatabaseService] = Depends(get_database_service),
@@ -73,48 +77,106 @@ async def oauth_authorize(
     
     Supported providers: 'google', 'apple'
     """
+    correlation_id = get_correlation_id(request)
+    
     # Validate provider name
-    provider = validate_oauth_provider(provider)
+    try:
+        provider = validate_oauth_provider(provider)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="OAuth authentication requires database service",
             status_code=503,
-            detail="OAuth authentication requires database service"
+            error_type="ServiceUnavailable"
         )
     
     # Validate redirect_after URL if provided
     if redirect_after:
         redirect_after = redirect_after.strip()
-        # Basic URL validation - ensure it's a relative path or same origin
-        if redirect_after.startswith("http://") or redirect_after.startswith("https://"):
-            # Allow only same origin redirects for security
+        try:
+            # Use validate_url utility
+            redirect_after = validate_url(redirect_after, allowed_schemes=["http", "https"])
+            # Additional security: ensure it's same origin
             frontend_url = os.getenv("FRONTEND_URL", "http://localhost:8501")
-            if not redirect_after.startswith(frontend_url):
-                logger.warning("Invalid redirect URL: %s", redirect_after)
-                redirect_after = None
+            if redirect_after.startswith("http://") or redirect_after.startswith("https://"):
+                if not redirect_after.startswith(frontend_url):
+                    log_structured(
+                        level="warning",
+                        message="Invalid redirect URL detected",
+                        correlation_id=correlation_id,
+                        request=request,
+                        redirect_url=redirect_after,
+                        frontend_url=frontend_url
+                    )
+                    redirect_after = None
+        except ValueError:
+            log_structured(
+                level="warning",
+                message="Invalid redirect URL format",
+                correlation_id=correlation_id,
+                request=request,
+                redirect_url=redirect_after
+            )
+            redirect_after = None
     
-    oauth_provider = get_oauth_provider(provider)
-    if not oauth_provider:
-        logger.error("OAuth provider not configured: %s", provider)
-        raise HTTPException(
-            status_code=503,
-            detail=f"OAuth provider '{provider}' is not configured. Please check server configuration."
+    try:
+        log_structured(
+            level="info",
+            message="Initiating OAuth authorization",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider
         )
     
-    # Generate state for CSRF protection
-    state = _generate_state()
-    _store_state(state, provider, redirect_after)
-    
-    # Get authorization URL
-    if isinstance(oauth_provider, GoogleOAuthProvider):
-        auth_url = oauth_provider.get_authorization_url(state)
-    elif isinstance(oauth_provider, AppleOAuthProvider):
-        auth_url = oauth_provider.get_authorization_url(state)
-    else:
-        raise HTTPException(status_code=500, detail="Invalid OAuth provider")
-    
-    # Redirect to provider
-    return RedirectResponse(url=auth_url)
+        oauth_provider = get_oauth_provider(provider)
+        if not oauth_provider:
+            raise create_http_exception(
+                message=f"OAuth provider '{provider}' is not configured. Please check server configuration.",
+                status_code=503,
+                error_type="ServiceUnavailable"
+            )
+        
+        # Generate state for CSRF protection
+        state = _generate_state()
+        _store_state(state, provider, redirect_after)
+        
+        # Get authorization URL
+        if isinstance(oauth_provider, GoogleOAuthProvider):
+            auth_url = oauth_provider.get_authorization_url(state)
+        elif isinstance(oauth_provider, AppleOAuthProvider):
+            auth_url = oauth_provider.get_authorization_url(state)
+        else:
+            raise create_http_exception(
+                message="Invalid OAuth provider",
+                status_code=500,
+                error_type="InternalServerError"
+            )
+        
+        log_structured(
+            level="info",
+            message="OAuth authorization URL generated",
+            correlation_id=correlation_id,
+            request=request,
+            provider=provider
+        )
+        
+        # Redirect to provider
+        return RedirectResponse(url=auth_url)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "oauth_authorize", "provider": provider},
+            correlation_id,
+            request
+        )
 
 
 @router.get("/oauth/{provider}/callback")
