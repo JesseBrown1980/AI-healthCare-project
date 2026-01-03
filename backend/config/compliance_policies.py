@@ -267,3 +267,14 @@ def is_field_level_encryption_required() -> bool:
     """
     policy = get_compliance_policy()
     return policy.field_level_encryption
+
+
+def is_data_deletion_allowed() -> bool:
+    """
+    Check if data deletion is allowed based on current region.
+    
+    Returns:
+        True if users can request data deletion, False otherwise
+    """
+    policy = get_compliance_policy()
+    return policy.allow_data_deletion
