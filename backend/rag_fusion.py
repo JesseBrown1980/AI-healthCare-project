@@ -35,11 +35,12 @@ class RAGFusion:
         self.embeddings = None
         self.knowledge_index = None
         self.retrieval_stats = []
+        self.region = get_region()  # Get current deployment region
         
         self._initialize_embeddings()
         self._load_knowledge_base()
         
-        logger.info("RAG-Fusion component initialized")
+        logger.info(f"RAG-Fusion component initialized (region: {self.region})")
     
     def _initialize_embeddings(self):
         """Initialize embedding model for semantic similarity"""
@@ -219,12 +220,27 @@ class RAGFusion:
             logger.error(f"Error retrieving knowledge: {str(e)}")
             return {"error": str(e), "query": query, "relevant_content": []}
     
-    def _search_guidelines(self, query: str) -> List[Dict]:
-        """Search clinical guidelines"""
+    def _search_guidelines(self, query: str, region: Optional[str] = None) -> List[Dict]:
+        """
+        Search clinical guidelines, filtered by region if specified.
+        
+        Args:
+            query: Search query
+            region: Optional region code to filter by (uses instance region if not provided)
+        """
+        if region is None:
+            region = self.region
+        
         keywords = query.lower().split()
         matching = []
         
         for guideline in self.knowledge_index.get("guidelines", []):
+            # Check region compatibility
+            guideline_regions = guideline.get("regions", ["DEFAULT"])
+            if region not in guideline_regions and "DEFAULT" not in guideline_regions:
+                continue  # Skip guidelines not applicable to this region
+            
+            # Check keyword match
             if any(kw in guideline.get("title", "").lower() or 
                    kw in guideline.get("content", "").lower() 
                    for kw in keywords):
