@@ -233,10 +233,10 @@ def validate_patient_id_list(patient_ids: list[str], max_count: int = 10) -> lis
     Args:
         patient_ids: List of patient IDs to validate
         max_count: Maximum number of patient IDs allowed
-        
+    
     Returns:
         List of validated patient IDs
-        
+    
     Raises:
         HTTPException: If validation fails
     """
@@ -267,3 +267,226 @@ def validate_patient_id_list(patient_ids: list[str], max_count: int = 10) -> lis
         validated_ids.append(validated_id)
     
     return validated_ids
+
+
+def sanitize_sql_input(value: str, max_length: int = 1000) -> str:
+    """
+    Sanitize input to prevent SQL injection attacks.
+    
+    Note: This is a basic sanitization. Always use parameterized queries
+    in database operations. This function provides an additional layer.
+    
+    Args:
+        value: Input string to sanitize
+        max_length: Maximum allowed length
+    
+    Returns:
+        Sanitized string
+    
+    Raises:
+        HTTPException: If input contains dangerous patterns
+    """
+    if not value:
+        return value
+    
+    # Check length
+    if len(value) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input too long. Maximum {max_length} characters allowed"
+        )
+    
+    # Dangerous SQL patterns
+    dangerous_patterns = [
+        r'(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE|UNION|SCRIPT)\b)',
+        r'(\b(OR|AND)\s+\d+\s*=\s*\d+)',  # SQL injection: OR 1=1
+        r'(\'|\"|;|--|\*|/\*|\*/)',  # SQL comment and quote patterns
+    ]
+    
+    value_upper = value.upper()
+    for pattern in dangerous_patterns:
+        if re.search(pattern, value_upper, re.IGNORECASE):
+            raise HTTPException(
+                status_code=400,
+                detail="Input contains potentially dangerous SQL patterns"
+            )
+    
+    return value.strip()
+
+
+def sanitize_xss_input(value: str, max_length: int = 10000) -> str:
+    """
+    Sanitize input to prevent XSS (Cross-Site Scripting) attacks.
+    
+    Note: This is basic sanitization. For production, use a proper HTML sanitizer
+    like bleach or html-sanitizer.
+    
+    Args:
+        value: Input string to sanitize
+        max_length: Maximum allowed length
+    
+    Returns:
+        Sanitized string
+    
+    Raises:
+        HTTPException: If input contains dangerous patterns
+    """
+    if not value:
+        return value
+    
+    # Check length
+    if len(value) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input too long. Maximum {max_length} characters allowed"
+        )
+    
+    # Dangerous XSS patterns
+    dangerous_patterns = [
+        r'<script[^>]*>.*?</script>',  # Script tags
+        r'javascript:',  # JavaScript protocol
+        r'on\w+\s*=',  # Event handlers (onclick, onerror, etc.)
+        r'<iframe[^>]*>',  # Iframe tags
+        r'<object[^>]*>',  # Object tags
+        r'<embed[^>]*>',  # Embed tags
+        r'expression\s*\(',  # CSS expressions
+    ]
+    
+    for pattern in dangerous_patterns:
+        if re.search(pattern, value, re.IGNORECASE | re.DOTALL):
+            raise HTTPException(
+                status_code=400,
+                detail="Input contains potentially dangerous XSS patterns"
+            )
+    
+    return value.strip()
+
+
+def validate_query_string(query: str, max_length: int = 500) -> str:
+    """
+    Validate and sanitize search query strings.
+    
+    Args:
+        query: Query string to validate
+        max_length: Maximum allowed length
+    
+    Returns:
+        Sanitized query string
+    
+    Raises:
+        HTTPException: If query is invalid
+    """
+    if not query:
+        raise HTTPException(status_code=400, detail="Query string is required")
+    
+    query = query.strip()
+    
+    if len(query) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Query string too long. Maximum {max_length} characters allowed"
+        )
+    
+    # Basic sanitization
+    query = sanitize_xss_input(query, max_length)
+    
+    return query
+
+
+def validate_url(url: str, allowed_schemes: list[str] = None) -> str:
+    """
+    Validate URL format and scheme.
+    
+    Args:
+        url: URL to validate
+        allowed_schemes: List of allowed URL schemes (default: ['http', 'https'])
+    
+    Returns:
+        Validated URL
+    
+    Raises:
+        HTTPException: If URL is invalid
+    """
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+    
+    url = url.strip()
+    
+    if allowed_schemes is None:
+        allowed_schemes = ['http', 'https']
+    
+    # Basic URL validation
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        
+        if not parsed.scheme:
+            raise HTTPException(status_code=400, detail="URL must include a scheme (http:// or https://)")
+        
+        if parsed.scheme.lower() not in [s.lower() for s in allowed_schemes]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"URL scheme must be one of: {', '.join(allowed_schemes)}"
+            )
+        
+        if not parsed.netloc:
+            raise HTTPException(status_code=400, detail="URL must include a hostname")
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid URL format: {str(e)}")
+    
+    return url
+
+
+def validate_password_strength(password: str, min_length: int = 8) -> str:
+    """
+    Validate password strength.
+    
+    Args:
+        password: Password to validate
+        min_length: Minimum password length
+    
+    Returns:
+        Validated password
+    
+    Raises:
+        HTTPException: If password doesn't meet strength requirements
+    """
+    if not password:
+        raise HTTPException(status_code=400, detail="Password is required")
+    
+    if len(password) < min_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at least {min_length} characters long"
+        )
+    
+    # Check for at least one uppercase letter
+    if not re.search(r'[A-Z]', password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one uppercase letter"
+        )
+    
+    # Check for at least one lowercase letter
+    if not re.search(r'[a-z]', password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one lowercase letter"
+        )
+    
+    # Check for at least one digit
+    if not re.search(r'\d', password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one digit"
+        )
+    
+    # Check for at least one special character
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one special character"
+        )
+    
+    return password

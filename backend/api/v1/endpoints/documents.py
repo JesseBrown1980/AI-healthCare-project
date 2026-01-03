@@ -7,7 +7,6 @@ Handles file uploads, OCR processing, and document linking to patients.
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Path, Request
 from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
-import logging
 import os
 
 from backend.security import TokenContext, auth_dependency
@@ -16,8 +15,9 @@ from backend.database import DatabaseService
 from backend.document_service import DocumentService
 from backend.audit_service import AuditService
 from backend.utils.validation import validate_patient_id, validate_document_id, validate_filename, validate_file_size, MAX_FILE_SIZE
-
-logger = logging.getLogger(__name__)
+from backend.utils.error_responses import create_http_exception, get_correlation_id
+from backend.utils.logging_utils import log_structured
+from backend.utils.service_error_handler import ServiceErrorHandler
 
 router = APIRouter()
 
@@ -50,16 +50,23 @@ async def upload_document(
     Returns document ID and metadata.
     """
     if not document_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Document service not available (database required)",
             status_code=503,
-            detail="Document service not available (database required)",
+            error_type="ServiceUnavailable"
         )
     
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
     
     try:
+        log_structured(
+            level="info",
+            message="Uploading document",
+            correlation_id=correlation_id,
+            request=request,
+            filename=file.filename[:50] if file.filename else None,
+            document_type=document_type
+        )
         # Validate filename
         if file.filename:
             validate_filename(file.filename)
@@ -78,9 +85,10 @@ async def upload_document(
         allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff"}
         file_ext = os.path.splitext(file.filename or "")[1].lower()
         if file_ext not in allowed_extensions:
-            raise HTTPException(
+            raise create_http_exception(
+                message=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}",
                 status_code=400,
-                detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}",
+                error_type="ValidationError"
             )
         
         # Validate patient_id if provided
@@ -110,6 +118,15 @@ async def upload_document(
                 event_type="document_upload",
             )
         
+        log_structured(
+            level="info",
+            message="Document uploaded successfully",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=result["id"],
+            duplicate=result.get("duplicate", False)
+        )
+        
         return {
             "status": "success",
             "document_id": result["id"],
@@ -122,8 +139,12 @@ async def upload_document(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error uploading document [%s]: %s", correlation_id, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "upload_document", "filename": file.filename},
+            correlation_id,
+            request
+        )
 
 
 @router.post("/documents/{document_id}/process")
@@ -147,20 +168,39 @@ async def process_document(
     document_id = validate_document_id(document_id)
     
     if not document_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Document service not available",
             status_code=503,
-            detail="Document service not available",
+            error_type="ServiceUnavailable"
         )
     
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
     
     try:
+        log_structured(
+            level="info",
+            message="Processing document with OCR",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id,
+            engine=engine,
+            language=language
+        )
+        
         result = await document_service.process_document_with_ocr(
             document_id=document_id,
             engine=engine,
             language=language,
+        )
+        
+        log_structured(
+            level="info",
+            message="Document processed successfully",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id,
+            word_count=result.get("word_count", 0),
+            confidence=result.get("confidence", 0)
         )
         
         # Audit log
@@ -184,13 +224,21 @@ async def process_document(
             "word_count": result["word_count"],
         }
     
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except (ValueError, FileNotFoundError) as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=404,
+            error_type="NotFound"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Error processing document [%s]: %s", correlation_id, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "process_document", "document_id": document_id},
+            correlation_id,
+            request
+        )
 
 
 @router.post("/documents/{document_id}/link-patient")
@@ -215,19 +263,36 @@ async def link_document_to_patient(
     patient_id = validate_patient_id(patient_id)
     
     if not document_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Document service not available",
             status_code=503,
-            detail="Document service not available",
+            error_type="ServiceUnavailable"
         )
     
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
     
     try:
+        log_structured(
+            level="info",
+            message="Linking document to patient",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id,
+            patient_id=patient_id
+        )
+        
         result = await document_service.link_document_to_patient(
             document_id=document_id,
             patient_id=patient_id,
+        )
+        
+        log_structured(
+            level="info",
+            message="Document linked to patient successfully",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id,
+            patient_id=patient_id
         )
         
         # Audit log
@@ -245,10 +310,20 @@ async def link_document_to_patient(
         return result
     
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise create_http_exception(
+            message=str(e),
+            status_code=404,
+            error_type="NotFound"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Error linking document [%s]: %s", correlation_id, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "link_document_to_patient", "document_id": document_id, "patient_id": patient_id},
+            correlation_id,
+            request
+        )
 
 
 @router.get("/patients/{patient_id}/documents")
@@ -271,26 +346,44 @@ async def get_patient_documents(
     patient_id = validate_patient_id(patient_id)
     
     if not database_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Database service not available",
             status_code=503,
-            detail="Database service not available",
+            error_type="ServiceUnavailable"
         )
     
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
     
     try:
         # Check patient access
         if auth.patient and auth.patient != patient_id:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Access denied to this patient's documents",
                 status_code=403,
-                detail="Access denied to this patient's documents",
+                error_type="PermissionDenied"
             )
+        
+        log_structured(
+            level="info",
+            message="Fetching patient documents",
+            correlation_id=correlation_id,
+            request=request,
+            patient_id=patient_id,
+            limit=limit
+        )
         
         documents = await database_service.get_patient_documents(
             patient_id=patient_id,
             limit=limit,
+        )
+        
+        log_structured(
+            level="info",
+            message="Patient documents fetched successfully",
+            correlation_id=correlation_id,
+            request=request,
+            patient_id=patient_id,
+            document_count=len(documents)
         )
         
         return {
@@ -303,8 +396,12 @@ async def get_patient_documents(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error fetching patient documents [%s]: %s", correlation_id, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_patient_documents", "patient_id": patient_id},
+            correlation_id,
+            request
+        )
 
 
 @router.get("/documents/{document_id}")
@@ -321,22 +418,46 @@ async def get_document(
     document_id = validate_document_id(document_id)
     
     if not database_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Database service not available",
             status_code=503,
-            detail="Database service not available",
+            error_type="ServiceUnavailable"
         )
     
+    correlation_id = get_correlation_id(request)
+    
     try:
+        log_structured(
+            level="info",
+            message="Fetching document",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id
+        )
+        
         document = await database_service.get_document(document_id)
         if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
+            raise create_http_exception(
+                message="Document not found",
+                status_code=404,
+                error_type="NotFound"
+            )
         
         # Check patient access
         if auth.patient and document.get("patient_id") != auth.patient:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Access denied to this document",
                 status_code=403,
-                detail="Access denied to this document",
+                error_type="PermissionDenied"
             )
+        
+        log_structured(
+            level="info",
+            message="Document fetched successfully",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id
+        )
         
         return {
             "status": "success",
@@ -346,8 +467,12 @@ async def get_document(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error fetching document: %s", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_document", "document_id": document_id},
+            correlation_id,
+            request
+        )
 
 
 @router.post("/documents/{document_id}/convert-fhir")
@@ -368,19 +493,37 @@ async def convert_document_to_fhir(
     from the extracted medical data.
     """
     if not document_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Document service not available",
             status_code=503,
-            detail="Document service not available",
+            error_type="ServiceUnavailable"
         )
     
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
     
     try:
+        log_structured(
+            level="info",
+            message="Converting document to FHIR resources",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id,
+            patient_id=patient_id or auth.patient
+        )
+        
         result = await document_service.convert_to_fhir_resources(
             document_id=document_id,
             patient_id=patient_id or auth.patient,
+        )
+        
+        log_structured(
+            level="info",
+            message="Document converted to FHIR successfully",
+            correlation_id=correlation_id,
+            request=request,
+            document_id=document_id,
+            patient_id=result.get("patient_id"),
+            resource_counts=result.get("fhir_resources", {}).keys()
         )
         
         # Audit log
@@ -409,8 +552,18 @@ async def convert_document_to_fhir(
         }
     
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Error converting document to FHIR [%s]: %s", correlation_id, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "convert_document_to_fhir", "document_id": document_id},
+            correlation_id,
+            request
+        )
 

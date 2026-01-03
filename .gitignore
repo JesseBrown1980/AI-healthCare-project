@@ -44,6 +44,10 @@ healthcare_ai.db
 *.swo
 *~
 
+# Cursor IDE
+.cursor/
+.cursorrules
+
 # OS
 .DS_Store
 Thumbs.db
@@ -63,3 +67,26 @@ alembic.ini.bak
 *.tmp
 *.bak
 *.pb
+nul
+updates/
+
+# System files
+*.ps1
+*.bat
+*.cmd
+*.sh
+*.exe
+*.msi
+*.dmg
+
+# Chat/Conversation files (if any)
+*chat*.txt
+*conversation*.txt
+*.chat
+*.conversation
+
+# Claude/Setup files (temporary)
+setup_claude_auth.ps1
+docs/CLAUDE_*.md
+docs/SETUP_COMPLETE.md
+docs/WORKFLOW_STUDIO_*.md

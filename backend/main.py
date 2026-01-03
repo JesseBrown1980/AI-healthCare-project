@@ -228,6 +228,9 @@ app.add_middleware(
     requests_per_hour=int(os.getenv("RATE_LIMIT_PER_HOUR", "1000")),
     burst_size=int(os.getenv("RATE_LIMIT_BURST", "10")),
     enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
+    use_redis=os.getenv("RATE_LIMIT_USE_REDIS", "false").lower() == "true",
+    user_requests_per_minute=int(os.getenv("RATE_LIMIT_USER_PER_MINUTE", "0")) or None,
+    user_requests_per_hour=int(os.getenv("RATE_LIMIT_USER_PER_HOUR", "0")) or None,
 )
 
 # Add CORS middleware
