@@ -204,7 +204,7 @@ class ConsentService:
                 "accepted": bool(consent.accepted),
                 "accepted_at": consent.accepted_at.isoformat() if consent.accepted_at else None,
                 "withdrawn_at": consent.withdrawn_at.isoformat() if consent.withdrawn_at else None,
-                "metadata": consent.metadata or {},
+                "metadata": consent.consent_metadata or {},
             }
         else:
             # Return all consents as a dictionary
