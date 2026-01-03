@@ -163,6 +163,56 @@ This document summarizes the comprehensive code quality and security improvement
 - Consistent error responses
 - Query string validation for user inputs
 
+#### Patient Endpoints (`backend/api/v1/endpoints/patients.py`)
+
+**All 7 endpoints updated:**
+- ✅ `GET /patients` - List patients
+- ✅ `GET /patients/dashboard` - Dashboard overview
+- ✅ `GET /alerts` - Alert feed
+- ✅ `POST /analyze-patient` - Patient analysis
+- ✅ `GET /patient/{patient_id}/fhir` - FHIR patient data
+- ✅ `GET /patient/{patient_id}/explain` - SHAP explanations
+- ✅ `GET /dashboard-summary` - Dashboard summary
+
+**Improvements Applied:**
+- Standardized error handling using `ServiceErrorHandler`
+- Structured logging with correlation IDs
+- Input validation (patient_id)
+- Consistent error responses
+- Enhanced error context for FHIR connector errors
+
+#### Auth Endpoints (`backend/api/v1/endpoints/auth.py`)
+
+**All 6 endpoints updated:**
+- ✅ `POST /login` - User authentication
+- ✅ `POST /register` - User registration
+- ✅ `POST /password-reset` - Password reset request
+- ✅ `POST /password-reset/confirm` - Password reset confirmation
+- ✅ `POST /verify-email` - Email verification request
+- ✅ `POST /verify-email/confirm` - Email verification confirmation
+
+**Improvements Applied:**
+- Standardized error handling using `ServiceErrorHandler`
+- Structured logging with correlation IDs
+- Input validation (email, password strength)
+- Consistent error responses
+- Enhanced security validation
+
+#### System Endpoints (`backend/api/v1/endpoints/system.py`)
+
+**All 5 endpoints updated:**
+- ✅ `GET /health` - Health check
+- ✅ `POST /cache/clear` - Clear caches
+- ✅ `POST /device/register` - Device registration
+- ✅ `GET /stats` - System statistics
+- ✅ `GET /adapters` - Adapter status
+
+**Improvements Applied:**
+- Standardized error handling using `ServiceErrorHandler`
+- Structured logging with correlation IDs
+- Consistent error responses
+- Enhanced health check logging
+
 ---
 
 ## 📊 Impact Metrics
@@ -174,7 +224,7 @@ This document summarizes the comprehensive code quality and security improvement
 - **File Upload Security**: Enhanced filename and file size validation
 
 ### Code Quality Improvements
-- **Error Handling**: Standardized across 15+ endpoints
+- **Error Handling**: Standardized across 33+ endpoints
 - **Logging**: Structured logging with correlation IDs
 - **Consistency**: Uniform patterns across all endpoints
 - **Maintainability**: Centralized utilities for reuse
@@ -278,6 +328,9 @@ password = validate_password_strength(user_password, min_length=8)
 - `backend/api/v1/endpoints/calendar.py` (refactored) - Applied improvements
 - `backend/api/v1/endpoints/documents.py` (refactored) - Applied improvements
 - `backend/api/v1/endpoints/clinical.py` (refactored) - Applied improvements
+- `backend/api/v1/endpoints/patients.py` (refactored) - Applied improvements
+- `backend/api/v1/endpoints/auth.py` (refactored) - Applied improvements
+- `backend/api/v1/endpoints/system.py` (refactored) - Applied improvements
 
 ### Test Files
 - `tests/test_calendar_integration.py` (+11 tests)
@@ -292,8 +345,12 @@ password = validate_password_strength(user_password, min_length=8)
 
 1. **Apply to More Endpoints**
    - ✅ Clinical endpoints (`backend/api/v1/endpoints/clinical.py`) - **COMPLETED**
-   - Patient endpoints (`backend/api/v1/endpoints/patients.py`)
-   - Auth endpoints (`backend/api/v1/endpoints/auth.py`)
+   - ✅ Patient endpoints (`backend/api/v1/endpoints/patients.py`) - **COMPLETED**
+   - ✅ Auth endpoints (`backend/api/v1/endpoints/auth.py`) - **COMPLETED**
+   - ✅ System endpoints (`backend/api/v1/endpoints/system.py`) - **COMPLETED**
+   - OAuth endpoints (`backend/api/v1/endpoints/oauth.py`) - Optional
+   - HL7 endpoints (`backend/api/v1/endpoints/hl7.py`) - Optional
+   - Graph visualization endpoints (`backend/api/v1/endpoints/graph_visualization.py`) - Optional
 
 2. **Performance Monitoring**
    - Add request timing to structured logs
