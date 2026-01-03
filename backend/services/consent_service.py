@@ -94,7 +94,7 @@ class ConsentService:
                 accepted_at=datetime.now(timezone.utc),
                 ip_address=ip_address,
                 user_agent=user_agent,
-                metadata=metadata or {},
+                consent_metadata=metadata or {},
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
@@ -214,7 +214,7 @@ class ConsentService:
                     "accepted": bool(c.accepted),
                     "accepted_at": c.accepted_at.isoformat() if c.accepted_at else None,
                     "withdrawn_at": c.withdrawn_at.isoformat() if c.withdrawn_at else None,
-                    "metadata": c.metadata or {},
+                    "metadata": c.consent_metadata or {},
                 }
                 for c in consents
             }
