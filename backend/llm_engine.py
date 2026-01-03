@@ -44,7 +44,15 @@ class LLMEngine:
         self.query_history = []
         self.token_usage = {"prompt": 0, "completion": 0}
         
-        logger.info(f"LLM Engine initialized with model: {model_name}")
+        # Initialize region-specific compliance attributes
+        self.region = get_region()
+        self.external_llm_allowed = is_external_llm_allowed()
+        self.local_llm_required = is_local_llm_required()
+        
+        # Validate provider compliance with region policy
+        self._validate_provider_compliance()
+        
+        logger.info(f"LLM Engine initialized with model: {model_name} (region: {self.region})")
     
     def _select_model_by_region(self) -> str:
         """
