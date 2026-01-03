@@ -22,6 +22,10 @@ from backend.auth import hash_password, verify_password, is_password_strong
 from backend.di import get_database_service
 from backend.database.service import DatabaseService
 from backend.database.user_service import UserService
+from backend.utils.error_responses import create_http_exception, get_correlation_id
+from backend.utils.logging_utils import log_structured, log_service_error
+from backend.utils.service_error_handler import ServiceErrorHandler
+from backend.utils.validation import validate_email, validate_password_strength
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +64,7 @@ def _issue_demo_token(email: str, patient: Optional[str] = None, scopes: Optiona
 
 @router.post("/login", response_model=DemoLoginResponse)
 async def login(
+    request: Request,
     payload: DemoLoginRequest,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
 ):
@@ -68,30 +73,63 @@ async def login(
     
     Supports both database-backed authentication and demo login mode.
     """
+    correlation_id = get_correlation_id(request)
+    
+    # Validate email
+    try:
+        validated_email = validate_email(payload.email)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
+    
     # Try database authentication first if available
     if db_service:
         try:
+            log_structured(
+                level="info",
+                message="Attempting database authentication",
+                correlation_id=correlation_id,
+                request=request,
+                email=validated_email
+            )
+            
             user_service = UserService()
-            user = await user_service.get_user_by_email(payload.email)
+            user = await user_service.get_user_by_email(validated_email)
             if user:
                 # Check if user is OAuth-only (no password)
                 if user.get('oauth_provider') and not user.get('password_hash'):
-                    raise HTTPException(
+                    raise create_http_exception(
+                        message=f"Please sign in with {user.get('oauth_provider', 'OAuth')}",
                         status_code=403,
-                        detail=f"Please sign in with {user.get('oauth_provider', 'OAuth')}"
+                        error_type="Forbidden"
                     )
                 
                 # Verify password (skip if OAuth user with dummy password)
                 password_hash = user.get('password_hash')
                 if not password_hash:
-                    raise HTTPException(status_code=403, detail="Invalid credentials")
+                    raise create_http_exception(
+                        message="Invalid credentials",
+                        status_code=403,
+                        error_type="Forbidden"
+                    )
                 
                 if not verify_password(payload.password, password_hash):
-                    raise HTTPException(status_code=403, detail="Invalid credentials")
+                    raise create_http_exception(
+                        message="Invalid credentials",
+                        status_code=403,
+                        error_type="Forbidden"
+                    )
                 
                 # Check if user is active
                 if not user.get('is_active', True):
-                    raise HTTPException(status_code=403, detail="User account is inactive")
+                    raise create_http_exception(
+                        message="User account is inactive",
+                        status_code=403,
+                        error_type="Forbidden"
+                    )
                 
                 # Update last login
                 await user_service.update_user_last_login(user['id'])
@@ -104,34 +142,75 @@ async def login(
                 elif 'clinician' in roles:
                     scopes += " patient/*.write"
                 
-                return _issue_demo_token(payload.email, payload.patient, scopes=scopes)
+                log_structured(
+                    level="info",
+                    message="User authenticated successfully",
+                    correlation_id=correlation_id,
+                    request=request,
+                    email=validated_email,
+                    roles=roles
+                )
+                
+                return _issue_demo_token(validated_email, payload.patient, scopes=scopes)
         except HTTPException:
             raise
         except Exception as e:
-            logger.warning(f"Database authentication failed: {e}")
+            log_structured(
+                level="warning",
+                message="Database authentication failed, falling back to demo login",
+                correlation_id=correlation_id,
+                request=request,
+                email=validated_email,
+                error=str(e)
+            )
             # Fall through to demo login
     
     # Fallback to demo login if database auth fails or is disabled
     if not demo_login_enabled:
-        raise HTTPException(status_code=404, detail="Login is disabled")
+        raise create_http_exception(
+            message="Login is disabled",
+            status_code=404,
+            error_type="NotFound"
+        )
 
     allowed_email = os.getenv("DEMO_LOGIN_EMAIL")
     allowed_password = os.getenv("DEMO_LOGIN_PASSWORD")
 
-    if allowed_email and payload.email.lower() != allowed_email.lower():
-        raise HTTPException(status_code=403, detail="Invalid credentials")
+    if allowed_email and validated_email.lower() != allowed_email.lower():
+        raise create_http_exception(
+            message="Invalid credentials",
+            status_code=403,
+            error_type="Forbidden"
+        )
 
     if allowed_password and payload.password != allowed_password:
-        raise HTTPException(status_code=403, detail="Invalid credentials")
+        raise create_http_exception(
+            message="Invalid credentials",
+            status_code=403,
+            error_type="Forbidden"
+        )
 
     if not allowed_email and not allowed_password and not payload.password:
-        raise HTTPException(status_code=400, detail="Password is required for demo login")
+        raise create_http_exception(
+            message="Password is required for demo login",
+            status_code=400,
+            error_type="ValidationError"
+        )
 
-    return _issue_demo_token(payload.email, payload.patient)
+    log_structured(
+        level="info",
+        message="Demo login successful",
+        correlation_id=correlation_id,
+        request=request,
+        email=validated_email
+    )
+
+    return _issue_demo_token(validated_email, payload.patient)
 
 
 @router.post("/register", response_model=RegisterResponse)
 async def register(
+    request: Request,
     payload: RegisterRequest,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
 ):
@@ -140,28 +219,63 @@ async def register(
     
     Requires database service to be available.
     """
+    correlation_id = get_correlation_id(request)
+    
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="User registration requires database service",
             status_code=503,
-            detail="User registration requires database service"
+            error_type="ServiceUnavailable"
+        )
+    
+    # Validate email
+    try:
+        validated_email = validate_email(payload.email)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
         )
     
     # Validate password strength
-    is_strong, error_msg = is_password_strong(payload.password)
-    if not is_strong:
-        raise HTTPException(status_code=400, detail=error_msg)
+    try:
+        validated_password = validate_password_strength(payload.password, min_length=8)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     try:
+        log_structured(
+            level="info",
+            message="Registering new user",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
+        
         # Hash password
-        password_hash = hash_password(payload.password)
+        password_hash = hash_password(validated_password)
         
         # Create user
         user_service = UserService()
         user = await user_service.create_user(
-            email=payload.email,
+            email=validated_email,
             password_hash=password_hash,
             full_name=payload.full_name,
             roles=payload.roles,
+        )
+        
+        log_structured(
+            level="info",
+            message="User registered successfully",
+            correlation_id=correlation_id,
+            request=request,
+            user_id=user['id'],
+            email=validated_email
         )
         
         return RegisterResponse(
@@ -171,10 +285,18 @@ async def register(
             roles=user.get('roles', ['viewer']),
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     except Exception as e:
-        logger.error(f"Registration failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Registration failed")
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "register", "email": validated_email},
+            correlation_id,
+            request
+        )
 
 
 @router.post("/password-reset", response_model=PasswordResetResponse)
@@ -213,6 +335,7 @@ async def password_reset(
 
 @router.post("/password-reset/confirm", response_model=PasswordResetConfirmResponse)
 async def password_reset_confirm(
+    request: Request,
     payload: PasswordResetConfirmRequest,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
 ):
@@ -221,43 +344,79 @@ async def password_reset_confirm(
     
     Validates the token and updates the user's password.
     """
+    correlation_id = get_correlation_id(request)
+    
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Password reset requires database service",
             status_code=503,
-            detail="Password reset requires database service"
+            error_type="ServiceUnavailable"
+        )
+    
+    # Validate email
+    try:
+        validated_email = validate_email(payload.email)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
         )
     
     # Validate password strength
-    is_strong, error_msg = is_password_strong(payload.new_password)
-    if not is_strong:
-        raise HTTPException(status_code=400, detail=error_msg)
+    try:
+        validated_password = validate_password_strength(payload.new_password, min_length=8)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
+        )
     
     try:
+        log_structured(
+            level="info",
+            message="Confirming password reset",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
+        
         user_service = UserService()
         
         # Verify token
-        is_valid = await user_service.verify_password_reset_token(payload.email, payload.token)
+        is_valid = await user_service.verify_password_reset_token(validated_email, payload.token)
         if not is_valid:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Invalid or expired password reset token",
                 status_code=400,
-                detail="Invalid or expired password reset token"
+                error_type="ValidationError"
             )
         
         # Hash new password
-        new_password_hash = hash_password(payload.new_password)
+        new_password_hash = hash_password(validated_password)
         
         # Reset password
         success = await user_service.reset_password_with_token(
-            payload.email,
+            validated_email,
             payload.token,
             new_password_hash
         )
         
         if not success:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Failed to reset password. Token may be invalid or expired.",
                 status_code=400,
-                detail="Failed to reset password. Token may be invalid or expired."
+                error_type="ValidationError"
             )
+        
+        log_structured(
+            level="info",
+            message="Password reset confirmed successfully",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
         
         return PasswordResetConfirmResponse(
             message="Password reset successfully"
@@ -265,8 +424,12 @@ async def password_reset_confirm(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Password reset confirmation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Password reset failed")
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "password_reset_confirm", "email": validated_email},
+            correlation_id,
+            request
+        )
 
 
 @router.post("/verify-email", response_model=EmailVerificationResponse)
@@ -305,6 +468,7 @@ async def verify_email_request(
 
 @router.post("/verify-email/confirm", response_model=EmailVerificationConfirmResponse)
 async def verify_email_confirm(
+    request: Request,
     payload: EmailVerificationConfirmRequest,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
 ):
@@ -313,22 +477,52 @@ async def verify_email_confirm(
     
     Validates the token and marks the user's email as verified.
     """
+    correlation_id = get_correlation_id(request)
+    
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Email verification requires database service",
             status_code=503,
-            detail="Email verification requires database service"
+            error_type="ServiceUnavailable"
+        )
+    
+    # Validate email
+    try:
+        validated_email = validate_email(payload.email)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
         )
     
     try:
+        log_structured(
+            level="info",
+            message="Confirming email verification",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
+        
         user_service = UserService()
         
         # Verify token
-        is_valid = await user_service.verify_email_with_token(payload.email, payload.token)
+        is_valid = await user_service.verify_email_with_token(validated_email, payload.token)
         if not is_valid:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Invalid or expired verification token",
                 status_code=400,
-                detail="Invalid or expired verification token"
+                error_type="ValidationError"
             )
+        
+        log_structured(
+            level="info",
+            message="Email verified successfully",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
         
         return EmailVerificationConfirmResponse(
             message="Email verified successfully"
@@ -336,6 +530,10 @@ async def verify_email_confirm(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Email verification confirmation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Email verification failed")
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "verify_email_confirm", "email": validated_email},
+            correlation_id,
+            request
+        )
 

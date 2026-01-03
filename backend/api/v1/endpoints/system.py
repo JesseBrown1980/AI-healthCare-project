@@ -27,6 +27,9 @@ from backend.rag_fusion import RAGFusion
 from backend.s_lora_manager import SLoRAManager
 from backend.mlc_learning import MLCLearning
 from backend.audit_service import AuditService
+from backend.utils.error_responses import create_http_exception, get_correlation_id
+from backend.utils.logging_utils import log_structured, log_service_error
+from backend.utils.service_error_handler import ServiceErrorHandler
 from datetime import datetime, timezone
 import logging
 import asyncio
@@ -56,15 +59,24 @@ def _register_device_token(
         HTTPException: If notifier is not initialized
     """
     if not notifier:
-        raise HTTPException(status_code=503, detail="Notifier not initialized")
+        raise create_http_exception(
+            message="Notifier not initialized",
+            status_code=503,
+            error_type="ServiceUnavailable"
+        )
 
+    correlation_id = get_correlation_id(request)
+    
     registered = notifier.register_device(
         registration.device_token, registration.platform
     )
 
-    correlation_id = getattr(request.state, "correlation_id", "")
-    logger.info(
-        "Registered device for notifications", extra={"correlation_id": correlation_id}
+    log_structured(
+        level="info",
+        message="Device registered for notifications",
+        correlation_id=correlation_id,
+        request=request,
+        platform=registration.platform
     )
 
     return {"status": "registered", "device": registered}
@@ -159,29 +171,57 @@ async def health_check(
 
 @router.post("/cache/clear", response_model=CacheClearResponse)
 async def clear_cache(
+    request: Request,
     auth: TokenContext = Depends(auth_dependency({"system/*.manage"})),
     analysis_job_manager: AnalysisJobManager = Depends(get_analysis_job_manager),
     patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
     patient_summary_cache: Dict[str, Dict[str, Any]] = Depends(get_patient_summary_cache),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> CacheClearResponse:
     """Clear all application caches."""
-    cleared_summaries = len(patient_summary_cache)
-    patient_summary_cache.clear()
+    correlation_id = get_correlation_id(request)
     
-    if analysis_job_manager:
-        analysis_job_manager.clear()
-    
-    cleared_analyses = 0
-    if patient_analyzer:
-        cleared_analyses = patient_analyzer.total_history_count()
-        patient_analyzer.clear_history()
+    try:
+        log_structured(
+            level="info",
+            message="Clearing application caches",
+            correlation_id=correlation_id,
+            request=request
+        )
+        
+        cleared_summaries = len(patient_summary_cache)
+        patient_summary_cache.clear()
+        
+        if analysis_job_manager:
+            analysis_job_manager.clear()
+        
+        cleared_analyses = 0
+        if patient_analyzer:
+            cleared_analyses = patient_analyzer.total_history_count()
+            patient_analyzer.clear_history()
 
-    return {
-        "status": "cleared",
-        "analysis_history_cleared": cleared_analyses,
-        "summary_cache_entries_cleared": cleared_summaries,
-        "analysis_cache_cleared": analysis_job_manager is not None,
-    }
+        log_structured(
+            level="info",
+            message="Application caches cleared successfully",
+            correlation_id=correlation_id,
+            request=request,
+            cleared_summaries=cleared_summaries,
+            cleared_analyses=cleared_analyses
+        )
+
+        return {
+            "status": "cleared",
+            "analysis_history_cleared": cleared_analyses,
+            "summary_cache_entries_cleared": cleared_summaries,
+            "analysis_cache_cleared": analysis_job_manager is not None,
+        }
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "clear_cache"},
+            correlation_id,
+            request
+        )
 
 @router.post("/device/register", response_model=DeviceRegistrationResponse)
 @router.post("/register-device", response_model=DeviceRegistrationResponse)
@@ -208,11 +248,16 @@ async def get_system_stats(
     """
     Get system statistics and performance metrics
     """
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
 
     try:
+        log_structured(
+            level="info",
+            message="Fetching system statistics",
+            correlation_id=correlation_id,
+            request=request
+        )
+        
         stats = {
             "llm": llm_engine.get_stats() if llm_engine else None,
             "rag": rag_fusion.get_stats() if rag_fusion else None,
@@ -221,6 +266,13 @@ async def get_system_stats(
             "rl": mlc_learning.get_rl_stats() if mlc_learning else None,
         }
         
+        log_structured(
+            level="info",
+            message="System statistics fetched successfully",
+            correlation_id=correlation_id,
+            request=request
+        )
+        
         return {
             "status": "success",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -228,33 +280,70 @@ async def get_system_stats(
         }
         
     except Exception as e:
-        logger.error("Error fetching stats [%s]: %s", correlation_id, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_system_stats"},
+            correlation_id,
+            request
+        )
 
 
 @router.get("/adapters", response_model=Dict[str, Any])
 async def get_adapters_status(
+    request: Request,
     s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> Dict[str, Any]:
     """
     Get status of S-LoRA adapters (active vs available).
     """
-    if not s_lora_manager:
-        return {
-            "status": "disabled",
-            "active_adapters": [],
-            "available_adapters": [],
-            "memory_usage": {},
-            "specialties": {},
-        }
-
-    status = await s_lora_manager.get_status()
+    correlation_id = get_correlation_id(request)
     
-    return {
-        "status": "success",
-        "active_adapters": status.get("active", []),
-        "available_adapters": status.get("available", []),
-        "memory_usage": status.get("memory", {}),
-        "specialties": status.get("specialties", {}),
-    }
+    try:
+        log_structured(
+            level="info",
+            message="Fetching adapter status",
+            correlation_id=correlation_id,
+            request=request
+        )
+        
+        if not s_lora_manager:
+            log_structured(
+                level="info",
+                message="S-LoRA manager not available",
+                correlation_id=correlation_id,
+                request=request
+            )
+            return {
+                "status": "disabled",
+                "active_adapters": [],
+                "available_adapters": [],
+                "memory_usage": {},
+                "specialties": {},
+            }
+
+        status = await s_lora_manager.get_status()
+        
+        log_structured(
+            level="info",
+            message="Adapter status fetched successfully",
+            correlation_id=correlation_id,
+            request=request,
+            active_count=len(status.get("active", [])),
+            available_count=len(status.get("available", []))
+        )
+        
+        return {
+            "status": "success",
+            "active_adapters": status.get("active", []),
+            "available_adapters": status.get("available", []),
+            "memory_usage": status.get("memory", {}),
+            "specialties": status.get("specialties", {}),
+        }
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_adapters_status"},
+            correlation_id,
+            request
+        )

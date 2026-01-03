@@ -31,6 +31,9 @@ from backend.audit_service import AuditService
 from backend.explainability import explain_risk
 from backend.patient_data_service import PatientDataService
 from backend.utils.validation import validate_patient_id, validate_patient_id_list
+from backend.utils.error_responses import create_http_exception, get_correlation_id
+from backend.utils.logging_utils import log_structured, log_service_error
+from backend.utils.service_error_handler import ServiceErrorHandler
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +203,11 @@ async def _get_patient_summary(
         return cached["summary"]
 
     if not patient_analyzer or not fhir_connector:
-        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+        raise create_http_exception(
+            message="Patient analyzer not initialized",
+            status_code=503,
+            error_type="ServiceUnavailable"
+        )
 
     if latest_analysis:
         summary = _extract_summary_from_analysis(latest_analysis)
@@ -283,24 +290,35 @@ async def list_patients(
     fhir_connector: FhirResourceService = Depends(get_fhir_connector),
     audit_service: AuditService = Depends(get_audit_service),
 ):
+    correlation_id = get_correlation_id(request)
+    
     if not patient_analyzer or not fhir_connector:
-        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+        raise create_http_exception(
+            message="Patient analyzer not initialized",
+            status_code=503,
+            error_type="ServiceUnavailable"
+        )
 
     patients = _dashboard_patient_list()
 
     if auth.patient:
         patients = [p for p in patients if p.get("patient_id") == auth.patient]
         if not patients:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Token is scoped to a patient outside the configured roster",
                 status_code=403,
-                detail="Token is scoped to a patient outside the configured roster",
+                error_type="Forbidden"
             )
 
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
-
     try:
+        log_structured(
+            level="info",
+            message="Fetching patient roster",
+            correlation_id=correlation_id,
+            request=request,
+            patient_count=len(patients)
+        )
+        
         async with fhir_connector.request_context(
             auth.access_token, auth.scopes, auth.patient
         ):
@@ -312,24 +330,37 @@ async def list_patients(
                         patient["patient_id"]
                     )
                 except Exception as exc:
-                    from backend.utils.logging_utils import log_warning
-                    log_warning(
-                        "Unable to fetch demographics for %s: %s",
-                        patient.get("patient_id"),
-                        str(exc),
+                    log_structured(
+                        level="warning",
+                        message="Unable to fetch demographics for patient",
+                        correlation_id=correlation_id,
                         request=request,
+                        patient_id=patient.get("patient_id"),
+                        error=str(exc)
                     )
 
                 roster.append(
                     await _build_patient_list_entry(patient, patient_data, patient_analyzer)
                 )
 
+        log_structured(
+            level="info",
+            message="Patient roster fetched successfully",
+            correlation_id=correlation_id,
+            request=request,
+            roster_size=len(roster)
+        )
+        
         return {"patients": roster}
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error("Error fetching patient roster [%s]: %s", correlation_id, str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "list_patients", "patient_count": len(patients)},
+            correlation_id,
+            request
+        )
 
 
 @router.get("/patients/dashboard", response_model=List[DashboardEntry])
@@ -346,17 +377,27 @@ async def get_dashboard_patients(
         get_patient_summary_cache
     ),
 ):
+    correlation_id = get_correlation_id(request)
+    
     if not patient_analyzer or not fhir_connector:
-        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+        raise create_http_exception(
+            message="Patient analyzer not initialized",
+            status_code=503,
+            error_type="ServiceUnavailable"
+        )
 
     patients = _dashboard_patient_list()
     patient_ids = [patient["patient_id"] for patient in patients]
 
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
-
     try:
+        log_structured(
+            level="info",
+            message="Building dashboard overview",
+            correlation_id=correlation_id,
+            request=request,
+            patient_count=len(patient_ids)
+        )
+        
         async with fhir_connector.request_context(
             auth.access_token, auth.scopes, auth.patient
         ):
@@ -381,14 +422,24 @@ async def get_dashboard_patients(
                 summary["specialty"] = patient.get("specialty")
             dashboard_entries.append(_build_dashboard_entry_from_summary(summary, fallback_name=patient.get("name")))
 
+        log_structured(
+            level="info",
+            message="Dashboard overview built successfully",
+            correlation_id=correlation_id,
+            request=request,
+            entry_count=len(dashboard_entries)
+        )
+        
         return dashboard_entries
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(
-            "Error building dashboard overview [%s]: %s", correlation_id, str(exc)
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_dashboard_patients", "patient_count": len(patient_ids)},
+            correlation_id,
+            request
         )
-        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/alerts", response_model=AlertsResponse)
@@ -401,26 +452,50 @@ async def get_alerts(
     patient_analyzer: PatientAnalyzer = Depends(get_patient_analyzer),
     audit_service: AuditService = Depends(get_audit_service),
 ):
+    correlation_id = get_correlation_id(request)
+    
     if not patient_analyzer:
-        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
-
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+        raise create_http_exception(
+            message="Patient analyzer not initialized",
+            status_code=503,
+            error_type="ServiceUnavailable"
+        )
 
     try:
+        log_structured(
+            level="info",
+            message="Collecting alert feed",
+            correlation_id=correlation_id,
+            request=request,
+            limit=limit,
+            patient_id=auth.patient
+        )
+        
         roster_lookup = {p["patient_id"]: p.get("name") for p in _dashboard_patient_list()}
         alerts = patient_analyzer.collect_recent_alerts(
             limit,
             patient_id=auth.patient,
             roster_lookup=roster_lookup,
         )
+        
+        log_structured(
+            level="info",
+            message="Alert feed collected successfully",
+            correlation_id=correlation_id,
+            request=request,
+            alert_count=len(alerts)
+        )
+        
         return {"alerts": alerts}
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error("Error collecting alert feed [%s]: %s", correlation_id, str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "get_alerts", "limit": limit, "patient_id": auth.patient},
+            correlation_id,
+            request
+        )
 
 
 @router.post(
@@ -455,7 +530,11 @@ async def analyze_patient(
 
     try:
         if not patient_analyzer or not fhir_connector:
-            raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+            raise create_http_exception(
+                message="Patient analyzer not initialized",
+                status_code=503,
+                error_type="ServiceUnavailable"
+            )
 
         payload_patient_id = None
         if analysis:
@@ -539,8 +618,11 @@ async def analyze_patient(
         return result
 
     except FHIRConnectorError as exc:
-        logger.error(
-            "FHIR connector error during analysis [%s]: %s", correlation_id, exc.message
+        log_service_error(
+            exc,
+            {"operation": "analyze_patient", "patient_id": patient_id},
+            correlation_id,
+            request
         )
         if audit_service:
             await audit_service.record_event(
@@ -562,15 +644,12 @@ async def analyze_patient(
     except HTTPException:
         raise
     except Exception as e:
-        from backend.utils.logging_utils import log_error
-        log_error(
-            "Error analyzing patient: %s",
-            str(e),
-            correlation_id=correlation_id,
-            request=request,
-            exc_info=True,
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "analyze_patient", "patient_id": patient_id},
+            correlation_id,
+            request
         )
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/patient/{patient_id}/fhir", response_model=PatientFHIRResponse)
@@ -589,18 +668,29 @@ async def get_patient_fhir(
     # Validate patient_id
     patient_id = validate_patient_id(patient_id)
     
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
 
     try:
+        log_structured(
+            level="info",
+            message="Fetching FHIR patient data",
+            correlation_id=correlation_id,
+            request=request,
+            patient_id=patient_id
+        )
+        
         if not fhir_connector:
-            raise HTTPException(status_code=503, detail="FHIR connector not initialized")
+            raise create_http_exception(
+                message="FHIR connector not initialized",
+                status_code=503,
+                error_type="ServiceUnavailable"
+            )
 
         if auth.patient and auth.patient != patient_id:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Token is scoped to a different patient context",
                 status_code=403,
-                detail="Token is scoped to a different patient context",
+                error_type="Forbidden"
             )
 
         async with fhir_connector.request_context(
@@ -659,18 +749,29 @@ async def explain_patient_risk(
     # Validate patient_id
     patient_id = validate_patient_id(patient_id)
     
-    correlation_id = getattr(
-        request.state, "correlation_id", audit_service.new_correlation_id() if audit_service else ""
-    )
+    correlation_id = get_correlation_id(request)
 
     try:
+        log_structured(
+            level="info",
+            message="Generating SHAP explanations for patient risk",
+            correlation_id=correlation_id,
+            request=request,
+            patient_id=patient_id
+        )
+        
         if not patient_analyzer:
-            raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+            raise create_http_exception(
+                message="Patient analyzer not initialized",
+                status_code=503,
+                error_type="ServiceUnavailable"
+            )
 
         if auth.patient and auth.patient != patient_id:
-            raise HTTPException(
+            raise create_http_exception(
+                message="Token is scoped to a different patient context",
                 status_code=403,
-                detail="Token is scoped to a different patient context",
+                error_type="Forbidden"
             )
 
         analysis = await patient_analyzer.analyze(
@@ -733,8 +834,14 @@ async def dashboard_summary(
         get_patient_summary_cache
     ),
 ):
+    correlation_id = get_correlation_id(request)
+    
     if not patient_analyzer:
-        raise HTTPException(status_code=503, detail="Patient analyzer not initialized")
+        raise create_http_exception(
+            message="Patient analyzer not initialized",
+            status_code=503,
+            error_type="ServiceUnavailable"
+        )
 
     if not patient_ids:
         seen: set = set()
@@ -748,41 +855,69 @@ async def dashboard_summary(
     if not patient_ids:
         return []
 
-    # Optimize: Use asyncio.gather for parallel processing
-    async with fhir_connector.request_context(
-        auth.access_token, auth.scopes, auth.patient
-    ):
-        summary_tasks = [
-            _get_patient_summary(
-                patient_id,
-                auth,
-                patient_analyzer=patient_analyzer,
-                fhir_connector=fhir_connector,
-                analysis_job_manager=analysis_job_manager,
-                patient_summary_cache=patient_summary_cache,
-                use_request_context=False,
-            )
-            for patient_id in patient_ids
-        ]
-        summaries = await asyncio.gather(*summary_tasks)
+    try:
+        log_structured(
+            level="info",
+            message="Building dashboard summary",
+            correlation_id=correlation_id,
+            request=request,
+            patient_count=len(patient_ids),
+            sort_by=sort_by,
+            limit=limit
+        )
+        
+        # Optimize: Use asyncio.gather for parallel processing
+        async with fhir_connector.request_context(
+            auth.access_token, auth.scopes, auth.patient
+        ):
+            summary_tasks = [
+                _get_patient_summary(
+                    patient_id,
+                    auth,
+                    patient_analyzer=patient_analyzer,
+                    fhir_connector=fhir_connector,
+                    analysis_job_manager=analysis_job_manager,
+                    patient_summary_cache=patient_summary_cache,
+                    use_request_context=False,
+                )
+                for patient_id in patient_ids
+            ]
+            summaries = await asyncio.gather(*summary_tasks)
 
-    def _timestamp_value(value: Optional[str]) -> datetime:
-        try:
-            return datetime.fromisoformat(value) if value else datetime.min.replace(tzinfo=timezone.utc)
-        except ValueError:
-            return datetime.min.replace(tzinfo=timezone.utc)
+        def _timestamp_value(value: Optional[str]) -> datetime:
+            try:
+                return datetime.fromisoformat(value) if value else datetime.min.replace(tzinfo=timezone.utc)
+            except ValueError:
+                return datetime.min.replace(tzinfo=timezone.utc)
 
-    sort_options = {
-        "cardiovascular_risk": lambda s: s.get("cardiovascular_risk") or 0,
-        "readmission_risk": lambda s: s.get("readmission_risk") or 0,
-        "critical_alerts": lambda s: s.get("critical_alerts") or 0,
-        "last_analysis": lambda s: _timestamp_value(s.get("last_analysis")),
-    }
+        sort_options = {
+            "cardiovascular_risk": lambda s: s.get("cardiovascular_risk") or 0,
+            "readmission_risk": lambda s: s.get("readmission_risk") or 0,
+            "critical_alerts": lambda s: s.get("critical_alerts") or 0,
+            "last_analysis": lambda s: _timestamp_value(s.get("last_analysis")),
+        }
 
-    sort_key = sort_options.get(sort_by, sort_options["cardiovascular_risk"])
-    summaries.sort(key=sort_key, reverse=True)
+        sort_key = sort_options.get(sort_by, sort_options["cardiovascular_risk"])
+        summaries.sort(key=sort_key, reverse=True)
 
-    if limit is not None:
-        summaries = summaries[:limit]
+        if limit is not None:
+            summaries = summaries[:limit]
 
-    return summaries
+        log_structured(
+            level="info",
+            message="Dashboard summary built successfully",
+            correlation_id=correlation_id,
+            request=request,
+            summary_count=len(summaries)
+        )
+
+        return summaries
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise ServiceErrorHandler.handle_service_error(
+            e,
+            {"operation": "dashboard_summary", "patient_count": len(patient_ids) if patient_ids else 0},
+            correlation_id,
+            request
+        )
