@@ -111,54 +111,59 @@ class RAGFusion:
         ]
     
     def _load_conditions_kb(self) -> Dict:
-        """Load condition-specific knowledge with region tags"""
+        """Load condition-specific knowledge"""
         return {
             "hypertension": {
                 "definition": "Sustained elevation of blood pressure",
                 "risk_factors": ["age", "family_history", "obesity", "salt_intake"],
-                "complications": ["MI", "stroke", "kidney_disease", "heart_failure"],
-                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Universal condition
+                "complications": ["MI", "stroke", "kidney_disease", "heart_failure"]
             },
             "diabetes": {
                 "definition": "Metabolic disorder characterized by hyperglycemia",
                 "types": ["type1", "type2", "gestational"],
-                "monitoring": ["HbA1c", "fasting_glucose", "lipid_panel"],
-                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Universal condition
+                "monitoring": ["HbA1c", "fasting_glucose", "lipid_panel"]
             }
         }
     
     def _load_drug_database(self) -> Dict:
-        """Load drug database with interactions and info"""
+        """Load drug database with interactions and region-specific availability"""
         return {
             "metformin": {
                 "class": "biguanide",
                 "indication": "Type 2 diabetes",
                 "contraindications": ["eGFR < 30", "liver_disease"],
-                "interactions": ["contrast_dye", "certain_antibiotics"]
+                "interactions": ["contrast_dye", "certain_antibiotics"],
+                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Widely available
             },
             "lisinopril": {
                 "class": "ACE-inhibitor",
                 "indication": "Hypertension, heart failure",
                 "side_effects": ["dry_cough", "hyperkalemia"],
-                "monitoring": ["K+", "creatinine"]
+                "monitoring": ["K+", "creatinine"],
+                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Widely available
             }
         }
     
-    async def retrieve_relevant_knowledge(self, query: str) -> Dict[str, Any]:
+    async def retrieve_relevant_knowledge(self, query: str, region: Optional[str] = None) -> Dict[str, Any]:
         """
-        Retrieve relevant medical knowledge for a query
+        Retrieve relevant medical knowledge for a query, filtered by region.
         
         Args:
             query: Medical question or topic
+            region: Optional region code to filter by (uses instance region if not provided)
             
         Returns:
-            Dictionary with relevant guidelines, protocols, and sources
+            Dictionary with relevant guidelines, protocols, and sources (region-filtered)
         """
-        logger.info(f"Retrieving knowledge for: {query[:50]}...")
+        if region is None:
+            region = self.region
+        
+        logger.info(f"Retrieving knowledge for: {query[:50]}... (region: {region})")
         
         try:
             results = {
                 "query": query,
+                "region": region,
                 "relevant_content": [],
                 "sources": [],
                 "guidelines": [],
@@ -168,28 +173,28 @@ class RAGFusion:
                 "retrieved_at": datetime.now().isoformat()
             }
             
-            # 1. Search guidelines
-            guideline_results = self._search_guidelines(query)
+            # 1. Search guidelines (region-filtered)
+            guideline_results = self._search_guidelines(query, region=region)
             results["guidelines"].extend(guideline_results)
             for g in guideline_results:
                 results["relevant_content"].append(f"Guideline ({g['source']}): {g['content'][:200]}")
                 results["sources"].append(g["source"])
             
-            # 2. Search protocols
-            protocol_results = self._search_protocols(query)
+            # 2. Search protocols (region-filtered)
+            protocol_results = self._search_protocols(query, region=region)
             results["protocols"].extend(protocol_results)
             for p in protocol_results:
                 results["relevant_content"].append(f"Protocol ({p['title']}): {', '.join(p.get('steps', []))}")
                 results["sources"].append(p["title"])
             
-            # 3. Search condition knowledge
-            condition_results = self._search_conditions(query)
+            # 3. Search condition knowledge (region-filtered)
+            condition_results = self._search_conditions(query, region=region)
             for cond, info in condition_results.items():
                 results["relevant_content"].append(f"Condition ({cond}): {json.dumps(info)[:200]}")
                 results["sources"].append(f"Condition DB: {cond}")
             
-            # 4. Search drug database
-            drug_results = self._search_drugs(query)
+            # 4. Search drug database (region-filtered)
+            drug_results = self._search_drugs(query, region=region)
             results["drug_info"].extend(drug_results)
             for drug, info in drug_results:
                 results["relevant_content"].append(f"Drug ({drug}): {json.dumps(info)[:200]}")
@@ -227,12 +232,27 @@ class RAGFusion:
         
         return matching
     
-    def _search_protocols(self, query: str) -> List[Dict]:
-        """Search clinical protocols"""
+    def _search_protocols(self, query: str, region: Optional[str] = None) -> List[Dict]:
+        """
+        Search clinical protocols, filtered by region if specified.
+        
+        Args:
+            query: Search query
+            region: Optional region code to filter by (uses instance region if not provided)
+        """
+        if region is None:
+            region = self.region
+        
         keywords = query.lower().split()
         matching = []
         
         for protocol in self.knowledge_index.get("protocols", []):
+            # Check region compatibility
+            protocol_regions = protocol.get("regions", ["DEFAULT"])
+            if region not in protocol_regions and "DEFAULT" not in protocol_regions:
+                continue  # Skip protocols not applicable to this region
+            
+            # Check keyword match
             if any(kw in protocol.get("title", "").lower() for kw in keywords):
                 matching.append(protocol)
         

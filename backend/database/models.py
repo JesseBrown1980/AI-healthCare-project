@@ -185,3 +185,22 @@ class Consent(Base):
         Index("idx_consent_user_accepted", "user_id", "accepted"),
     )
 
+
+class TwoFactorAuth(Base):
+    """Store 2FA configuration for users."""
+    
+    __tablename__ = "two_factor_auth"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, unique=True, index=True)
+    secret_key = Column(String(255), nullable=False)  # Encrypted TOTP secret
+    enabled = Column(Integer, default=0)  # 0 = disabled, 1 = enabled
+    backup_codes = Column(JSONColumn())  # List of backup codes (encrypted)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        Index("idx_2fa_user_enabled", "user_id", "enabled"),
+    )
+

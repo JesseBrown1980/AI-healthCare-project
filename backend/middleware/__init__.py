@@ -7,6 +7,7 @@ from .timeout import TimeoutMiddleware
 from .security_headers import SecurityHeadersMiddleware
 from .performance_monitoring import PerformanceMonitoringMiddleware, get_performance_metrics
 from .input_validation import InputValidationMiddleware
+from .https_enforcement import HTTPSEnforcementMiddleware
 
 __all__ = [
     "RateLimitMiddleware",
@@ -15,5 +16,6 @@ __all__ = [
     "PerformanceMonitoringMiddleware",
     "get_performance_metrics",
     "InputValidationMiddleware",
+    "HTTPSEnforcementMiddleware",
 ]
 

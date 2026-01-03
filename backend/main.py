@@ -42,6 +42,7 @@ from backend.middleware import (
     SecurityHeadersMiddleware,
     PerformanceMonitoringMiddleware,
     InputValidationMiddleware,
+    HTTPSEnforcementMiddleware,
 )
 from backend.anomaly_detector.api import router as anomaly_router
 from backend.anomaly_detector.service import anomaly_service
@@ -209,7 +210,14 @@ app.include_router(v1_router, prefix="/api/v1")
 # Register Anomaly Detector Router (keep as separate or could be included in v1)
 app.include_router(anomaly_router, prefix="/api/v1/anomaly", tags=["Anomaly Detection"])
 
-# Add security headers middleware (first, so it applies to all responses)
+# Add HTTPS enforcement middleware (first, before other middleware)
+app.add_middleware(
+    HTTPSEnforcementMiddleware,
+    enabled=os.getenv("HTTPS_ENFORCEMENT_ENABLED", "true").lower() == "true",
+    production_mode=os.getenv("ENVIRONMENT", "development").lower() in ["production", "prod"],
+)
+
+# Add security headers middleware (applies to all responses)
 app.add_middleware(
     SecurityHeadersMiddleware,
     enabled=os.getenv("SECURITY_HEADERS_ENABLED", "true").lower() == "true",
