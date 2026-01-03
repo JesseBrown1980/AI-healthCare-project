@@ -16,7 +16,9 @@ from backend.config.compliance_policies import (
     is_external_llm_allowed,
     is_local_llm_required,
     get_region,
+    is_anonymization_required,
 )
+from backend.utils.anonymization import prepare_data_for_external_service
 
 logger = logging.getLogger(__name__)
 
