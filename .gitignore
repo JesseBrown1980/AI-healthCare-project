@@ -70,14 +70,17 @@ alembic.ini.bak
 nul
 updates/
 
-# System files
-*.ps1
-*.bat
-*.cmd
-*.sh
+# System/Setup scripts (exclude system-specific setup files)
+setup_*.ps1
+setup_*.bat
+setup_*.cmd
+disable_*.ps1
+verify_*.ps1
 *.exe
 *.msi
 *.dmg
+
+# Note: Project utility scripts (like cleanup_remote_branches.ps1) should be tracked
 
 # Chat/Conversation files (if any)
 *chat*.txt
