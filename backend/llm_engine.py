@@ -16,9 +16,7 @@ from backend.config.compliance_policies import (
     is_external_llm_allowed,
     is_local_llm_required,
     get_region,
-    is_anonymization_required,
 )
-from backend.utils.anonymization import prepare_data_for_external_service
 
 logger = logging.getLogger(__name__)
 
@@ -315,10 +313,18 @@ Important guidelines:
         include_reasoning: bool = True,
         language: str = DEFAULT_LANGUAGE
     ) -> str:
-        """Build user prompt with context"""
+        """Build user prompt with context, anonymizing if required for external services"""
         prompt = f"Question: {question}\n\n"
         
         if patient_context:
+            # Anonymize patient context if sending to external LLM and required by region
+            if self.provider in ["openai", "anthropic"] and is_anonymization_required():
+                patient_context = prepare_data_for_external_service(
+                    patient_context,
+                    service_type="llm"
+                )
+                logger.debug("Patient context anonymized for external LLM call")
+            
             prompt += "Patient Context:\n"
             if patient_context.get("patient"):
                 p = patient_context["patient"]

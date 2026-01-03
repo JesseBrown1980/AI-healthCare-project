@@ -2,6 +2,7 @@
 RAG-Fusion Component
 Retrieval-Augmented Generation with medical knowledge bases
 Integrates clinical guidelines, literature, and protocols
+Supports region-specific knowledge filtering for compliance
 """
 
 import logging
@@ -9,6 +10,8 @@ from typing import Dict, List, Optional, Any
 import os
 import json
 from datetime import datetime
+
+from backend.config.compliance_policies import get_region
 
 logger = logging.getLogger(__name__)
 
@@ -89,28 +92,38 @@ class RAGFusion:
         ]
     
     def _load_protocols(self) -> List[Dict]:
-        """Load clinical protocols"""
+        """Load clinical protocols with region tags"""
         return [
             {
                 "id": "protocol_001",
                 "title": "Sepsis Management",
                 "source": "Surviving Sepsis",
-                "steps": ["Blood cultures", "Broad-spectrum antibiotics", "Fluid resuscitation"]
-            }
+                "steps": ["Blood cultures", "Broad-spectrum antibiotics", "Fluid resuscitation"],
+                "regions": ["US", "EU", "DEFAULT"],  # Universal protocol
+            },
+            {
+                "id": "protocol_002",
+                "title": "Antibiotic Stewardship (EU)",
+                "source": "ECDC Guidelines",
+                "steps": ["Culture before antibiotics", "Narrow spectrum when possible", "Review after 48h"],
+                "regions": ["EU", "DEFAULT"],
+            },
         ]
     
     def _load_conditions_kb(self) -> Dict:
-        """Load condition-specific knowledge"""
+        """Load condition-specific knowledge with region tags"""
         return {
             "hypertension": {
                 "definition": "Sustained elevation of blood pressure",
                 "risk_factors": ["age", "family_history", "obesity", "salt_intake"],
-                "complications": ["MI", "stroke", "kidney_disease", "heart_failure"]
+                "complications": ["MI", "stroke", "kidney_disease", "heart_failure"],
+                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Universal condition
             },
             "diabetes": {
                 "definition": "Metabolic disorder characterized by hyperglycemia",
                 "types": ["type1", "type2", "gestational"],
-                "monitoring": ["HbA1c", "fasting_glucose", "lipid_panel"]
+                "monitoring": ["HbA1c", "fasting_glucose", "lipid_panel"],
+                "regions": ["US", "EU", "APAC", "DEFAULT"],  # Universal condition
             }
         }
     
