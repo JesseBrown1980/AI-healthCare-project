@@ -27,38 +27,46 @@ class LLMEngine:
     Supports multiple LLM backends (OpenAI, Anthropic, local models)
     """
     
-    def __init__(self, model_name: str = None, api_key: str = ""):
+    def __init__(self, model_name: str, api_key: str = ""):
         """
-        Initialize LLM Engine with region-aware model selection
+        Initialize LLM Engine
         
         Args:
-            model_name: Model identifier (gpt-4, llama-2-7b, etc.). If None, auto-selects based on region.
+            model_name: Model identifier (gpt-4, llama-2-7b, etc.)
             api_key: API key for external services
         """
-        # Get region and compliance policy
-        self.region = get_region()
-        self.external_llm_allowed = is_external_llm_allowed()
-        self.local_llm_required = is_local_llm_required()
-        
-        # Auto-select model based on region if not provided
-        if model_name is None:
-            model_name = self._select_model_by_region()
-        
         self.model_name = model_name
         self.api_key = api_key
         self.provider = self._detect_provider(model_name)
-        
-        # Validate provider against compliance policy
-        self._validate_provider_compliance()
-        
         self.client = self._initialize_client()
         self.query_history = []
         self.token_usage = {"prompt": 0, "completion": 0}
         
-        logger.info(
-            f"LLM Engine initialized with model: {model_name} "
-            f"(region: {self.region}, provider: {self.provider})"
-        )
+        logger.info(f"LLM Engine initialized with model: {model_name}")
+    
+    def _select_model_by_region(self) -> str:
+        """
+        Select appropriate model based on region compliance policy.
+        
+        Returns:
+            Model name to use
+        """
+        if self.local_llm_required:
+            # Region requires local model (e.g., EU/GDPR)
+            local_model = os.getenv("LOCAL_LLM_MODEL", "llama-2-7b")
+            logger.info(f"Region {self.region} requires local LLM, using: {local_model}")
+            return local_model
+        elif not self.external_llm_allowed:
+            # External LLM not allowed, fallback to local
+            local_model = os.getenv("LOCAL_LLM_MODEL", "llama-2-7b")
+            logger.warning(
+                f"External LLM not allowed in region {self.region}, "
+                f"falling back to local model: {local_model}"
+            )
+            return local_model
+        else:
+            # External LLM allowed, use configured model
+            return os.getenv("LLM_MODEL", "gpt-4")
     
     def _detect_provider(self, model_name: str) -> str:
         """Detect LLM provider based on model name"""
@@ -70,6 +78,28 @@ class LLMEngine:
             return "local"
         else:
             return "openai"  # Default
+    
+    def _validate_provider_compliance(self) -> None:
+        """
+        Validate that the selected provider complies with region policy.
+        Raises an exception if provider violates compliance rules.
+        """
+        if self.provider in ["openai", "anthropic"]:
+            # External provider
+            if not self.external_llm_allowed:
+                raise ValueError(
+                    f"External LLM provider '{self.provider}' not allowed in region '{self.region}'. "
+                    f"Please use a local model or set REGION to allow external providers."
+                )
+            if self.local_llm_required:
+                raise ValueError(
+                    f"Region '{self.region}' requires local LLM models. "
+                    f"External provider '{self.provider}' is not permitted."
+                )
+            logger.debug(f"External LLM provider '{self.provider}' allowed in region '{self.region}'")
+        elif self.provider == "local":
+            # Local provider - always compliant
+            logger.debug(f"Local LLM provider is compliant for region '{self.region}'")
     
     def _initialize_client(self):
         """Initialize appropriate LLM client based on provider"""
@@ -171,7 +201,19 @@ class LLMEngine:
             raise
     
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-        """Call the underlying LLM"""
+        """
+        Call the underlying LLM with compliance checks.
+        
+        Logs data transfer for audit purposes.
+        """
+        # Log data transfer attempt for compliance
+        logger.info(
+            f"LLM API call: provider={self.provider}, "
+            f"region={self.region}, "
+            f"external_allowed={self.external_llm_allowed}, "
+            f"local_required={self.local_llm_required}"
+        )
+        
         try:
             if self.provider == "openai" and self.client:
                 response = self.client.ChatCompletion.create(

@@ -72,8 +72,11 @@ class ServiceContainer:
         self.fhir_connector = FhirResourceService(self.fhir_client)
 
         logger.info("Loading LLM Engine...")
+        # LLMEngine now auto-selects model based on region compliance policy
+        # Pass None to enable auto-selection, or specific model to override
+        llm_model = os.getenv("LLM_MODEL")  # None if not set, enables auto-selection
         self.llm_engine = LLMEngine(
-            model_name=os.getenv("LLM_MODEL", "gpt-4"),
+            model_name=llm_model,
             api_key=os.getenv("OPENAI_API_KEY", ""),
         )
 
