@@ -161,3 +161,27 @@ class AuditLog(Base):
         Index("idx_audit_patient_timestamp", "patient_id", "timestamp"),
     )
 
+
+class Consent(Base):
+    """Store user consent records for GDPR and regional compliance."""
+    
+    __tablename__ = "consents"
+    
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    consent_type = Column(String(50), nullable=False)  # 'privacy_policy', 'terms_of_service', 'data_processing', etc.
+    version = Column(String(50))  # Version of the policy/terms
+    accepted = Column(Integer, default=1)  # 1 = accepted, 0 = withdrawn
+    accepted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    withdrawn_at = Column(DateTime(timezone=True), nullable=True)
+    ip_address = Column(String(45))  # IP address when consent was given/withdrawn
+    user_agent = Column(Text)  # User agent when consent was given/withdrawn
+    metadata = Column(JSONColumn())  # Additional metadata (e.g., consent method, language)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        Index("idx_consent_user_type", "user_id", "consent_type"),
+        Index("idx_consent_user_accepted", "user_id", "accepted"),
+    )
+
