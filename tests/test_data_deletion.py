@@ -10,6 +10,8 @@ from unittest.mock import patch
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from sqlalchemy import select
+
 from backend.services.data_deletion_service import DataDeletionService
 from backend.services.consent_service import ConsentService
 from backend.database.models import AnalysisHistory, UserSession, Consent
@@ -218,7 +220,6 @@ class TestDataDeletionCompleteness:
         # Verify sessions are deleted
         async with get_db_session() as session:
             from backend.database.models import UserSession
-            from sqlalchemy import select
             stmt = select(UserSession).where(UserSession.user_id == user_id)
             result_check = await session.execute(stmt)
             remaining_sessions = result_check.scalars().all()
