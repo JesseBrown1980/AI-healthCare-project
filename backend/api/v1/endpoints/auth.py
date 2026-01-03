@@ -301,6 +301,7 @@ async def register(
 
 @router.post("/password-reset", response_model=PasswordResetResponse)
 async def password_reset(
+    request: Request,
     payload: PasswordResetRequest,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
 ):
@@ -310,15 +311,44 @@ async def password_reset(
     Generates a secure token and stores it with the user account.
     In production, this token would be sent via email.
     """
+    correlation_id = get_correlation_id(request)
+    
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Password reset requires database service",
             status_code=503,
-            detail="Password reset requires database service"
+            error_type="ServiceUnavailable"
+        )
+    
+    # Validate email
+    try:
+        validated_email = validate_email(payload.email)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
         )
     
     try:
+        log_structured(
+            level="info",
+            message="Requesting password reset token",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
+        
         user_service = UserService()
-        token = await user_service.generate_password_reset_token(payload.email)
+        token = await user_service.generate_password_reset_token(validated_email)
+        
+        log_structured(
+            level="info",
+            message="Password reset token generated",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
         
         # Always return success message (don't reveal if user exists)
         # In production, only send email if user exists
@@ -326,7 +356,14 @@ async def password_reset(
             message="If an account with that email exists, a password reset token has been generated."
         )
     except Exception as e:
-        logger.error(f"Password reset request failed: {e}", exc_info=True)
+        log_structured(
+            level="error",
+            message="Password reset request failed",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email,
+            error=str(e)
+        )
         # Still return success to prevent email enumeration
         return PasswordResetResponse(
             message="If an account with that email exists, a password reset token has been generated."
@@ -434,6 +471,7 @@ async def password_reset_confirm(
 
 @router.post("/verify-email", response_model=EmailVerificationResponse)
 async def verify_email_request(
+    request: Request,
     payload: EmailVerificationRequest,
     db_service: Optional[DatabaseService] = Depends(get_database_service),
 ):
@@ -443,15 +481,44 @@ async def verify_email_request(
     Generates a secure token and stores it with the user account.
     In production, this token would be sent via email.
     """
+    correlation_id = get_correlation_id(request)
+    
     if not db_service:
-        raise HTTPException(
+        raise create_http_exception(
+            message="Email verification requires database service",
             status_code=503,
-            detail="Email verification requires database service"
+            error_type="ServiceUnavailable"
+        )
+    
+    # Validate email
+    try:
+        validated_email = validate_email(payload.email)
+    except ValueError as e:
+        raise create_http_exception(
+            message=str(e),
+            status_code=400,
+            error_type="ValidationError"
         )
     
     try:
+        log_structured(
+            level="info",
+            message="Requesting email verification token",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
+        
         user_service = UserService()
-        token = await user_service.generate_verification_token(payload.email)
+        token = await user_service.generate_verification_token(validated_email)
+        
+        log_structured(
+            level="info",
+            message="Email verification token generated",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
+        )
         
         # Always return success message (don't reveal if user exists)
         # In production, only send email if user exists
@@ -459,7 +526,14 @@ async def verify_email_request(
             message="If an account with that email exists, a verification token has been generated."
         )
     except Exception as e:
-        logger.error(f"Email verification request failed: {e}", exc_info=True)
+        log_structured(
+            level="error",
+            message="Email verification request failed",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email,
+            error=str(e)
+        )
         # Still return success to prevent email enumeration
         return EmailVerificationResponse(
             message="If an account with that email exists, a verification token has been generated."
