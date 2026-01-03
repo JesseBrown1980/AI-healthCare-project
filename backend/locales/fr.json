@@ -139,5 +139,40 @@
     "medical_context": "Contexte Médical",
     "patient_context": "Contexte du Patient",
     "reasoning_required": "Veuillez fournir un raisonnement étape par étape"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 Assistant IA pour la Santé",
+      "subtitle": "Aide à la Décision Clinique Intelligente avec Intégration FHIR",
+      "metric_features": "Fonctionnalités Actives",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "DSE Connecté",
+      "metric_ehr_value": "Prêt",
+      "metric_ehr_delta": "Protocole FHIR",
+      "metric_model": "Modèle",
+      "metric_model_delta": "Avec Adaptateurs",
+      "getting_started": "Pour Commencer",
+      "step1_title": "Analyse du Patient",
+      "step1_desc": "Sélectionnez un patient et analysez son tableau clinique complet",
+      "step2_title": "Requête Médicale",
+      "step2_desc": "Posez des questions cliniques avec des réponses fondées sur des preuves",
+      "step3_title": "Surveillance des Alertes",
+      "step3_desc": "Visualisez et répondez aux alertes critiques",
+      "step4_title": "Aide à la Décision",
+      "step4_desc": "Accédez à des recommandations alimentées par l'IA alignées sur les directives",
+      "capabilities": "Capacités Clés",
+      "cap_fhir": "Intégration FHIR",
+      "cap_fhir_desc": "Récupérez les données des patients des systèmes DSE de manière transparente",
+      "cap_ai": "IA Avancée",
+      "cap_ai_desc": "S-LoRA, Méta-Apprentissage, RAG-Fusion, Algorithme de Pensée",
+      "cap_meds": "Révision des Médicaments",
+      "cap_meds_desc": "Vérification des interactions médicamenteuses et optimisation",
+      "cap_alerts": "Système d'Alertes",
+      "cap_alerts_desc": "Détection des signaux d'alarme et notifications cliniques",
+      "cap_evidence": "Basé sur des Preuves",
+      "cap_evidence_desc": "Recommandations fondées sur des directives médicales",
+      "cap_personalization": "Personnalisation",
+      "cap_personalization_desc": "Apprend des commentaires pour améliorer la précision"
+    }
   }
 }

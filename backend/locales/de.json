@@ -139,5 +139,40 @@
     "medical_context": "Medizinischer Kontext",
     "patient_context": "Patientenkontext",
     "reasoning_required": "Bitte geben Sie eine schrittweise Begründung an"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 Gesundheits-KI-Assistent",
+      "subtitle": "Intelligente klinische Entscheidungsunterstützung mit FHIR-Integration",
+      "metric_features": "Aktive Funktionen",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "Verbundenes EHR",
+      "metric_ehr_value": "Bereit",
+      "metric_ehr_delta": "FHIR-Protokoll",
+      "metric_model": "Modell",
+      "metric_model_delta": "Mit Adaptern",
+      "getting_started": "Erste Schritte",
+      "step1_title": "Patientenanalyse",
+      "step1_desc": "Wählen Sie einen Patienten aus und analysieren Sie sein vollständiges klinisches Bild",
+      "step2_title": "Medizinische Anfrage",
+      "step2_desc": "Stellen Sie klinische Fragen mit evidenzbasierten Antworten",
+      "step3_title": "Warnungsüberwachung",
+      "step3_desc": "Anzeigen und Reagieren auf kritische Warnungen",
+      "step4_title": "Entscheidungsunterstützung",
+      "step4_desc": "Zugriff auf KI-gestützte Empfehlungen, die mit Richtlinien übereinstimmen",
+      "capabilities": "Hauptfunktionen",
+      "cap_fhir": "FHIR-Integration",
+      "cap_fhir_desc": "Nahtloses Abrufen von Patientendaten aus EHR-Systemen",
+      "cap_ai": "Fortschrittliche KI",
+      "cap_ai_desc": "S-LoRA, Meta-Lernen, RAG-Fusion, Denkalgorithmus",
+      "cap_meds": "Medikamentenprüfung",
+      "cap_meds_desc": "Arzneimittelwechselwirkungsprüfung und Optimierung",
+      "cap_alerts": "Warnsystem",
+      "cap_alerts_desc": "Erkennung von Warnsignalen und klinische Benachrichtigungen",
+      "cap_evidence": "Evidenzbasiert",
+      "cap_evidence_desc": "Empfehlungen, die auf medizinischen Richtlinien basieren",
+      "cap_personalization": "Personalisierung",
+      "cap_personalization_desc": "Lernt aus Feedback, um die Genauigkeit zu verbessern"
+    }
   }
 }

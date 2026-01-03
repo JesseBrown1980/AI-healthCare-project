@@ -139,5 +139,40 @@
     "medical_context": "Medische context",
     "patient_context": "Patiëntcontext",
     "reasoning_required": "Geef alstublieft een stapsgewijze redenering"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 Gezondheidszorg AI-assistent",
+      "subtitle": "Intelligente klinische beslissingsondersteuning met FHIR-integratie",
+      "metric_features": "Actieve functies",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "Verbonden EPD",
+      "metric_ehr_value": "Klaar",
+      "metric_ehr_delta": "FHIR-protocol",
+      "metric_model": "Model",
+      "metric_model_delta": "Met adapters",
+      "getting_started": "Aan de slag",
+      "step1_title": "Patiëntanalyse",
+      "step1_desc": "Selecteer een patiënt en analyseer hun volledige klinische beeld",
+      "step2_title": "Medische vraag",
+      "step2_desc": "Stel klinische vragen met evidence-based antwoorden",
+      "step3_title": "Waarschuwingsmonitoring",
+      "step3_desc": "Bekijk en reageer op kritieke waarschuwingen",
+      "step4_title": "Beslissingsondersteuning",
+      "step4_desc": "Toegang tot AI-aangedreven aanbevelingen afgestemd op richtlijnen",
+      "capabilities": "Belangrijkste mogelijkheden",
+      "cap_fhir": "FHIR-integratie",
+      "cap_fhir_desc": "Naadloos patiëntgegevens ophalen uit EPD-systemen",
+      "cap_ai": "Geavanceerde AI",
+      "cap_ai_desc": "S-LoRA, Meta-leren, RAG-fusie, Denkalgoritme",
+      "cap_meds": "Medicijnbeoordeling",
+      "cap_meds_desc": "Controle op geneesmiddelinteracties en optimalisatie",
+      "cap_alerts": "Waarschuwingssysteem",
+      "cap_alerts_desc": "Detectie van waarschuwingssignalen en klinische meldingen",
+      "cap_evidence": "Evidence-based",
+      "cap_evidence_desc": "Aanbevelingen gebaseerd op medische richtlijnen",
+      "cap_personalization": "Personalisatie",
+      "cap_personalization_desc": "Leert van feedback om de nauwkeurigheid te verbeteren"
+    }
   }
 }

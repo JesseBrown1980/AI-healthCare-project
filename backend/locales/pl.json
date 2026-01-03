@@ -139,5 +139,40 @@
     "medical_context": "Kontekst medyczny",
     "patient_context": "Kontekst pacjenta",
     "reasoning_required": "Proszę podać krok po kroku rozumowanie"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 Asystent AI w Opiece Zdrowotnej",
+      "subtitle": "Inteligentne wsparcie decyzji klinicznych z integracją FHIR",
+      "metric_features": "Aktywne funkcje",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "Połączony EHR",
+      "metric_ehr_value": "Gotowe",
+      "metric_ehr_delta": "Protokół FHIR",
+      "metric_model": "Model",
+      "metric_model_delta": "Z adapterami",
+      "getting_started": "Wprowadzenie",
+      "step1_title": "Analiza pacjenta",
+      "step1_desc": "Wybierz pacjenta i przeanalizuj jego pełny obraz kliniczny",
+      "step2_title": "Zapytanie medyczne",
+      "step2_desc": "Zadawaj pytania kliniczne z odpowiedziami opartymi na dowodach",
+      "step3_title": "Monitorowanie alertów",
+      "step3_desc": "Przeglądaj i reaguj na krytyczne alerty",
+      "step4_title": "Wsparcie decyzji",
+      "step4_desc": "Uzyskaj dostęp do rekomendacji opartych na AI zgodnych z wytycznymi",
+      "capabilities": "Kluczowe możliwości",
+      "cap_fhir": "Integracja FHIR",
+      "cap_fhir_desc": "Bezproblemowe pobieranie danych pacjentów z systemów EHR",
+      "cap_ai": "Zaawansowana AI",
+      "cap_ai_desc": "S-LoRA, Meta-uczenie, RAG-Fuzja, Algorytm myślenia",
+      "cap_meds": "Przegląd leków",
+      "cap_meds_desc": "Sprawdzanie interakcji leków i optymalizacja",
+      "cap_alerts": "System alertów",
+      "cap_alerts_desc": "Wykrywanie sygnałów ostrzegawczych i powiadomienia kliniczne",
+      "cap_evidence": "Oparte na dowodach",
+      "cap_evidence_desc": "Rekomendacje oparte na wytycznych medycznych",
+      "cap_personalization": "Personalizacja",
+      "cap_personalization_desc": "Uczy się z opinii, aby poprawić dokładność"
+    }
   }
 }

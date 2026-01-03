@@ -139,5 +139,40 @@
     "medical_context": "医疗背景",
     "patient_context": "患者背景",
     "reasoning_required": "请提供逐步推理"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 医疗AI助手",
+      "subtitle": "智能临床决策支持与FHIR集成",
+      "metric_features": "活跃功能",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "已连接电子病历",
+      "metric_ehr_value": "就绪",
+      "metric_ehr_delta": "FHIR协议",
+      "metric_model": "模型",
+      "metric_model_delta": "带适配器",
+      "getting_started": "开始使用",
+      "step1_title": "患者分析",
+      "step1_desc": "选择患者并分析其完整的临床情况",
+      "step2_title": "医疗查询",
+      "step2_desc": "提出临床问题并获得基于证据的答案",
+      "step3_title": "警报监控",
+      "step3_desc": "查看并响应关键警报",
+      "step4_title": "决策支持",
+      "step4_desc": "访问符合指南的AI驱动建议",
+      "capabilities": "核心功能",
+      "cap_fhir": "FHIR集成",
+      "cap_fhir_desc": "无缝获取电子病历系统中的患者数据",
+      "cap_ai": "高级AI",
+      "cap_ai_desc": "S-LoRA、元学习、RAG融合、思维算法",
+      "cap_meds": "药物审查",
+      "cap_meds_desc": "药物相互作用检查和优化",
+      "cap_alerts": "警报系统",
+      "cap_alerts_desc": "红旗检测和临床通知",
+      "cap_evidence": "基于证据",
+      "cap_evidence_desc": "基于医疗指南的建议",
+      "cap_personalization": "个性化",
+      "cap_personalization_desc": "从反馈中学习以提高准确性"
+    }
   }
 }

@@ -139,5 +139,40 @@
     "medical_context": "Medicinsk kontext",
     "patient_context": "Patientkontext",
     "reasoning_required": "Vänligen ge steg-för-steg-resonemang"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 Hälsovård AI-assistent",
+      "subtitle": "Intelligent kliniskt beslutsstöd med FHIR-integration",
+      "metric_features": "Aktiva funktioner",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "Ansluten journal",
+      "metric_ehr_value": "Redo",
+      "metric_ehr_delta": "FHIR-protokoll",
+      "metric_model": "Modell",
+      "metric_model_delta": "Med adaptrar",
+      "getting_started": "Kom igång",
+      "step1_title": "Patientanalys",
+      "step1_desc": "Välj en patient och analysera deras fullständiga kliniska bild",
+      "step2_title": "Medicinsk fråga",
+      "step2_desc": "Ställ kliniska frågor med evidensbaserade svar",
+      "step3_title": "Varningsövervakning",
+      "step3_desc": "Visa och svara på kritiska varningar",
+      "step4_title": "Beslutsstöd",
+      "step4_desc": "Få tillgång till AI-drivna rekommendationer anpassade till riktlinjer",
+      "capabilities": "Nyckelfunktioner",
+      "cap_fhir": "FHIR-integration",
+      "cap_fhir_desc": "Sömlös hämtning av patientdata från journalsystem",
+      "cap_ai": "Avancerad AI",
+      "cap_ai_desc": "S-LoRA, Meta-inlärning, RAG-fusion, Tankealgoritm",
+      "cap_meds": "Läkemedelsgranskning",
+      "cap_meds_desc": "Kontroll av läkemedelsinteraktioner och optimering",
+      "cap_alerts": "Varningssystem",
+      "cap_alerts_desc": "Detektering av varningssignaler och kliniska notifikationer",
+      "cap_evidence": "Evidensbaserad",
+      "cap_evidence_desc": "Rekommendationer grundade på medicinska riktlinjer",
+      "cap_personalization": "Personalisering",
+      "cap_personalization_desc": "Lär sig från feedback för att förbättra noggrannheten"
+    }
   }
 }

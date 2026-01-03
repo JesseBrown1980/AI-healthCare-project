@@ -139,5 +139,40 @@
     "medical_context": "Contexto Médico",
     "patient_context": "Contexto del Paciente",
     "reasoning_required": "Por favor proporciona un razonamiento paso a paso"
+  },
+  "ui": {
+    "home": {
+      "title": "🏥 Asistente de IA para la Salud",
+      "subtitle": "Soporte Inteligente para Decisiones Clínicas con Integración FHIR",
+      "metric_features": "Características Activas",
+      "metric_features_delta": "S-LoRA, RAG, AoT, MLC",
+      "metric_ehr": "EHR Conectado",
+      "metric_ehr_value": "Listo",
+      "metric_ehr_delta": "Protocolo FHIR",
+      "metric_model": "Modelo",
+      "metric_model_delta": "Con Adaptadores",
+      "getting_started": "Cómo Empezar",
+      "step1_title": "Análisis de Paciente",
+      "step1_desc": "Seleccione un paciente y analice su cuadro clínico completo",
+      "step2_title": "Consulta Médica",
+      "step2_desc": "Haga preguntas clínicas con respuestas basadas en evidencia",
+      "step3_title": "Monitoreo de Alertas",
+      "step3_desc": "Vea y responda a alertas críticas",
+      "step4_title": "Soporte para Decisiones",
+      "step4_desc": "Acceda a recomendaciones impulsadas por IA alineadas con pautas",
+      "capabilities": "Capacidades Clave",
+      "cap_fhir": "Integración FHIR",
+      "cap_fhir_desc": "Obtenga datos de pacientes de sistemas EHR sin problemas",
+      "cap_ai": "IA Avanzada",
+      "cap_ai_desc": "S-LoRA, Meta-Aprendizaje, RAG-Fusión, Algoritmo de Pensamiento",
+      "cap_meds": "Revisión de Medicamentos",
+      "cap_meds_desc": "Verificación de interacciones farmacológicas y optimización",
+      "cap_alerts": "Sistema de Alertas",
+      "cap_alerts_desc": "Detección de señales de alerta y notificaciones clínicas",
+      "cap_evidence": "Basado en Evidencia",
+      "cap_evidence_desc": "Recomendaciones fundamentadas en pautas médicas",
+      "cap_personalization": "Personalización",
+      "cap_personalization_desc": "Aprende de los comentarios para mejorar la precisión"
+    }
   }
 }
