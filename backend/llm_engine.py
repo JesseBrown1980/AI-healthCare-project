@@ -2,14 +2,21 @@
 LLM Engine Module
 Interfaces with Large Language Models (GPT-4, LLaMA, etc.)
 Handles prompt engineering and medical context processing
+Enforces region-specific data transfer controls for compliance
 """
 
 import logging
+import os
 from typing import Dict, Optional, Any, List
 import json
 from datetime import datetime
 
 from backend.utils.i18n import translate, DEFAULT_LANGUAGE
+from backend.config.compliance_policies import (
+    is_external_llm_allowed,
+    is_local_llm_required,
+    get_region,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,22 +27,38 @@ class LLMEngine:
     Supports multiple LLM backends (OpenAI, Anthropic, local models)
     """
     
-    def __init__(self, model_name: str, api_key: str = ""):
+    def __init__(self, model_name: str = None, api_key: str = ""):
         """
-        Initialize LLM Engine
+        Initialize LLM Engine with region-aware model selection
         
         Args:
-            model_name: Model identifier (gpt-4, llama-2-7b, etc.)
+            model_name: Model identifier (gpt-4, llama-2-7b, etc.). If None, auto-selects based on region.
             api_key: API key for external services
         """
+        # Get region and compliance policy
+        self.region = get_region()
+        self.external_llm_allowed = is_external_llm_allowed()
+        self.local_llm_required = is_local_llm_required()
+        
+        # Auto-select model based on region if not provided
+        if model_name is None:
+            model_name = self._select_model_by_region()
+        
         self.model_name = model_name
         self.api_key = api_key
         self.provider = self._detect_provider(model_name)
+        
+        # Validate provider against compliance policy
+        self._validate_provider_compliance()
+        
         self.client = self._initialize_client()
         self.query_history = []
         self.token_usage = {"prompt": 0, "completion": 0}
         
-        logger.info(f"LLM Engine initialized with model: {model_name}")
+        logger.info(
+            f"LLM Engine initialized with model: {model_name} "
+            f"(region: {self.region}, provider: {self.provider})"
+        )
     
     def _detect_provider(self, model_name: str) -> str:
         """Detect LLM provider based on model name"""
