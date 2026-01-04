@@ -5,7 +5,10 @@ Provides database connection management, models, and services.
 """
 
 from .connection import get_db_session, get_redis_client, init_database, close_database
-from .models import Base, AnalysisHistory, Document, OCRExtraction, UserSession, AuditLog, Consent, TwoFactorAuth
+from .models import (
+    Base, AnalysisHistory, Document, OCRExtraction, UserSession, AuditLog, Consent, TwoFactorAuth,
+    PatientMedication, CareTeamMember, PatientProfile
+)
 from .service import DatabaseService
 
 __all__ = [
@@ -22,5 +25,8 @@ __all__ = [
     "AuditLog",
     "Consent",
     "TwoFactorAuth",
+    "PatientMedication",
+    "CareTeamMember",
+    "PatientProfile",
 ]
 

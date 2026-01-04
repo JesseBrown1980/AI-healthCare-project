@@ -204,3 +204,83 @@ class TwoFactorAuth(Base):
         Index("idx_2fa_user_enabled", "user_id", "enabled"),
     )
 
+
+class PatientMedication(Base):
+    """Store patient-managed medications (Personal Health Wallet)."""
+    
+    __tablename__ = "patient_medications"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    patient_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)  # User who added this medication
+    medication_name = Column(String(255), nullable=False)
+    dosage = Column(String(100))  # e.g., "500mg", "10mg twice daily"
+    frequency = Column(String(100))  # e.g., "twice daily", "as needed"
+    route = Column(String(50))  # e.g., "oral", "topical", "injection"
+    start_date = Column(DateTime(timezone=True))
+    end_date = Column(DateTime(timezone=True), nullable=True)  # None if currently taking
+    prescribed_by = Column(String(255))  # Doctor/clinic name
+    notes = Column(Text)  # Patient notes about this medication
+    fhir_medication_id = Column(String(255), nullable=True)  # Link to FHIR Medication if synced
+    is_active = Column(Integer, default=1)  # 1 = currently taking, 0 = discontinued
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        Index("idx_patient_medication_patient_active", "patient_id", "is_active"),
+        Index("idx_patient_medication_user", "user_id"),
+    )
+
+
+class CareTeamMember(Base):
+    """Store care team members for a patient (Personal Health Wallet)."""
+    
+    __tablename__ = "care_team_members"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    patient_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)  # User who added this member
+    member_name = Column(String(255), nullable=False)
+    role = Column(String(100))  # e.g., "Primary Care Physician", "Cardiologist", "Nurse"
+    specialty = Column(String(100))  # e.g., "Cardiology", "Endocrinology"
+    organization = Column(String(255))  # Clinic/hospital name
+    phone = Column(String(50))
+    email = Column(String(255))
+    address = Column(Text)
+    notes = Column(Text)  # Patient notes about this care team member
+    fhir_practitioner_id = Column(String(255), nullable=True)  # Link to FHIR Practitioner if synced
+    is_active = Column(Integer, default=1)  # 1 = active, 0 = removed
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        Index("idx_care_team_patient_active", "patient_id", "is_active"),
+        Index("idx_care_team_user", "user_id"),
+    )
+
+
+class PatientProfile(Base):
+    """Store patient profile information (Personal Health Wallet)."""
+    
+    __tablename__ = "patient_profiles"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    patient_id = Column(String(255), nullable=False, unique=True, index=True)
+    user_id = Column(String(255), nullable=False, unique=True, index=True)  # One profile per user
+    emergency_contact_name = Column(String(255))
+    emergency_contact_phone = Column(String(50))
+    emergency_contact_relation = Column(String(100))
+    allergies = Column(JSONColumn())  # List of allergies
+    chronic_conditions = Column(JSONColumn())  # List of chronic conditions
+    insurance_provider = Column(String(255))
+    insurance_policy_number = Column(String(100))
+    preferred_language = Column(String(10), default="en")
+    timezone = Column(String(50), default="UTC")
+    preferences = Column(JSONColumn())  # User preferences (notifications, sharing, etc.)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        Index("idx_patient_profile_user", "user_id"),
+    )
+
