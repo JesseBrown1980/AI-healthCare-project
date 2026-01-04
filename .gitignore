@@ -99,22 +99,26 @@ verify_*.ps1
 *.cursor-chat
 
 # AI Conversation Artifacts - Internal notes, NOT for public repo!
+# These are AI session summaries and planning documents, not project docs
 *SESSION*.md
 *COMPLETION*.md
-*SUMMARY*.md
 *NEXT_STEPS*.md
+*NEXT_STEPS_SUMMARY*.md
 *FINAL_STATUS*.md
 *PROJECT_STATUS*.md
-*IMPROVEMENTS*.md
 *PHASE*_COMPLETION*.md
 *BRANCH_STATUS*.md
-# But keep legitimate documentation (README, CONTRIBUTING, etc.)
+# Improvement summaries (AI-generated reports)
+*IMPROVEMENTS*.md
+*IMPROVEMENT*.md
+# But keep legitimate documentation
 !README*.md
 !CONTRIBUTING*.md
 !GETTING_STARTED*.md
 !INSTALL*.md
 !QUICK_REFERENCE*.md
 !DATABASE_SETUP*.md
+!DATABASE_MIGRATION*.md
 !TESTING*.md
 
 # Claude/Setup files (temporary)
