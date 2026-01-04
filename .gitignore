@@ -66,7 +66,6 @@ alembic.ini.bak
 # Temporary files
 *.tmp
 *.bak
-*.pb
 nul
 updates/
 
@@ -82,11 +81,22 @@ verify_*.ps1
 
 # Note: Project utility scripts (like cleanup_remote_branches.ps1) should be tracked
 
-# Chat/Conversation files (if any)
+# Chat/Conversation files - NEVER commit these!
 *chat*.txt
 *conversation*.txt
 *.chat
 *.conversation
+*chat*.md
+*conversation*.md
+*chat*.json
+*conversation*.json
+# Protocol buffer files (often used for chat/conversation storage)
+*.pb
+*.protobuf
+# Cursor/IDE chat history
+.cursor/chats/
+.cursor/conversations/
+*.cursor-chat
 
 # Claude/Setup files (temporary)
 setup_claude_auth.ps1
