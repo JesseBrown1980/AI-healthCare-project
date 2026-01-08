@@ -10,4 +10,4 @@ python-dotenv==1.0.0
 
 # Data processing
 pandas==2.2.3
-numpy<2.0.0
+numpy<3.0.0
