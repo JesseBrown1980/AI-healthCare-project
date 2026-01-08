@@ -13,16 +13,16 @@
   "dependencies": {
     "i18next": "^23.16.8",
     "i18next-browser-languagedetector": "^7.2.2",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-i18next": "^13.5.0",
-    "react-router-dom": "^7.10.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-i18next": "^16.5.1",
+    "react-router-dom": "^7.12.0",
     "zustand": "^4.5.2",
     "recharts": "^2.12.3"
   },
   "devDependencies": {
-    "@types/react": "^18.2.15",
-    "@types/react-dom": "^18.2.7",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "@vitejs/plugin-react": "^4.0.3",
