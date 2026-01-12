@@ -1,6 +1,6 @@
 # Core app dependencies
 streamlit==1.28.0
-plotly==5.18.0
+plotly==6.5.1
 requests==2.31.0
 streamlit-autorefresh==1.0.1
 
