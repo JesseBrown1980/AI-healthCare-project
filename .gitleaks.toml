@@ -1,0 +1,22 @@
+# Gitleaks configuration
+# These files contain intentionally dummy/demo credentials or encryption keys
+# for the crypto-shredding compliance feature (HIPAA/GDPR)
+
+title = "AI Healthcare Project Gitleaks Config"
+
+[allowlist]
+description = "Allowlist for demo and compliance files"
+
+# Demo environment file with placeholder credentials
+paths = [
+    '''.env''',
+    '''\.env\.example''',
+    '''compliance_keys\.json''',
+]
+
+# Specific patterns that are intentionally demo/test values
+regexes = [
+    '''sk-dummy''',
+    '''demo-secret-key-123''',
+    '''test-secret''',
+]
