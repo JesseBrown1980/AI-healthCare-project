@@ -395,6 +395,27 @@ async def root_health():
     }
 
 
+@app.get("/version", tags=["System"])
+async def get_version():
+    """
+    Regulatory Requirement: Semantic Versioning and Build Traceability
+    REQ-ID: REQ-00-VERSION
+    """
+    import subprocess
+    build_id = "unknown"
+    try:
+        build_id = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).strip().decode("utf-8")
+    except Exception:
+        pass
+
+    return {
+        "version": "1.0.0",
+        "build_id": build_id,
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
 @app.websocket("/ws/patient-updates")
 async def patient_updates(websocket: WebSocket):
     """Provide real-time dashboard updates via WebSocket."""
