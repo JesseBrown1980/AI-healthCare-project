@@ -16,6 +16,7 @@ An intelligent healthcare data bridge that connects Electronic Health Record (EH
 - **Cross-App Communication**: Send insights and notifications to external applications and clinician interfaces
 - [NEW] **Edge-Level Anomaly Detection**: Graph Neural Network (GNN) models for detecting security anomalies in FHIR/API logs
 - [NEW] **Persistent Database Storage**: PostgreSQL with Redis caching for scalable, production-ready data storage
+- [NEW] **GDPR/HIPAA Compliance**: Crypto-shredding for audit logs, consent management API, and privacy controls
 - **Continuous Learning**: Adapt to corrections and feedback to improve recommendations over time
 
 ---
@@ -416,10 +417,13 @@ response = llm.generate(prompt, adapters=adapters)
 ## 🔒 Security & Compliance
 
 - **HIPAA Ready**: Built with healthcare data privacy as default
+- **GDPR Compliant**: Right to be forgotten, data export, and consent management
+- **Crypto-Shredding**: PII in audit logs encrypted with patient-specific keys for secure deletion
 - **OAuth2 Authentication**: Secure EHR system access
 - **Data Encryption**: End-to-end encryption for sensitive patient data
-- **Audit Logging**: Complete audit trail of all patient data access
+- **Audit Logging**: SOC2-compliant audit trail of all patient data access
 - **Role-Based Access Control**: Clinician, admin, researcher roles
+- **Consent API**: Granular consent management for data processing
 
 ---
 
@@ -512,12 +516,14 @@ MIT License - See `LICENSE` file
 
 ## 🎯 Roadmap
 
-- [ ] Integration with major EHR systems (Epic, Cerner)
-- [ ] Mobile app (iOS/Android) for clinician alerts
-- [ ] Advanced MLC with reinforcement learning
+- [x] Integration with major EHR systems (Epic, Cerner) - SMART-on-FHIR support
+- [x] Mobile app (iOS/Android) for clinician alerts
+- [x] Advanced MLC with reinforcement learning
 - [x] Explainability dashboards with SHAP analysis
 - [x] Edge-Level Anomaly Detection (GNN Integration)
-- [ ] Real-time multi-patient dashboard
+- [x] Real-time multi-patient dashboard
+- [x] GDPR/HIPAA compliance with crypto-shredding
+- [x] SOC2-compliant audit logging
 - [ ] Regulatory approvals (FDA, CE marking)
 
 ---
