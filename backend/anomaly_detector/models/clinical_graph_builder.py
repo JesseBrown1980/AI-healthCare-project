@@ -687,11 +687,13 @@ class ClinicalGraphBuilder:
             # Medications affecting kidney function
             'nsaid': ['creatinine', 'bun', 'egfr'],
             'ace_inhibitor': ['creatinine', 'potassium'],
+            'lisinopril': ['creatinine', 'potassium'], # Specific drug
             'arb': ['creatinine', 'potassium'],
             'diuretic': ['creatinine', 'sodium', 'potassium'],
             
             # Medications affecting liver function
             'statin': ['alt', 'ast', 'liver'],
+            'atorvastatin': ['alt', 'ast', 'liver'], # Specific drug
             'acetaminophen': ['alt', 'ast', 'liver'],
             
             # Medications affecting blood glucose

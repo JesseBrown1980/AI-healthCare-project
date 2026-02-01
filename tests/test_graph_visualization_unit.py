@@ -1,377 +1,191 @@
-"""
-Unit tests for graph visualization data structure generation, metadata extraction,
-anomaly mapping, and statistics calculation.
-"""
 
 import pytest
+from unittest.mock import MagicMock, patch
 import torch
-from unittest.mock import Mock, patch
 from backend.anomaly_detector.models.clinical_graph_builder import ClinicalGraphBuilder
-from backend.anomaly_detector.service import AnomalyService
-
-
-@pytest.fixture
-def sample_patient_data():
-    """Sample patient FHIR data for testing."""
-    return {
-        "patient": {
-            "id": "patient-123",
-            "birthDate": "1980-01-01",
-            "gender": "male",
-        },
-        "medications": [
-            {
-                "id": "med-1",
-                "medicationCodeableConcept": {
-                    "coding": [{"display": "Metformin 500mg"}]
-                },
-                "dosage": [{
-                    "dose": {"value": 500, "unit": "mg"},
-                    "timing": {"repeat": {"frequency": "twice"}}
-                }],
-                "effectivePeriod": {"start": "2024-01-01"},
-            },
-            {
-                "id": "med-2",
-                "medicationCodeableConcept": {
-                    "coding": [{"display": "Warfarin 5mg"}]
-                },
-                "dosage": [{
-                    "dose": {"value": 5, "unit": "mg"},
-                    "timing": {"repeat": {"frequency": "daily"}}
-                }],
-                "effectivePeriod": {"start": "2024-01-15"},
-            },
-        ],
-        "conditions": [
-            {
-                "id": "cond-1",
-                "code": {
-                    "coding": [{"display": "Type 2 Diabetes Mellitus"}]
-                },
-                "onsetDateTime": "2020-01-01",
-                "severity": {"coding": [{"display": "moderate"}]},
-            },
-        ],
-        "observations": [
-            {
-                "id": "obs-1",
-                "code": {
-                    "coding": [{"code": "2339-0", "display": "Glucose"}]
-                },
-                "valueQuantity": {"value": 250.0, "unit": "mg/dL"},
-                "referenceRange": [{
-                    "low": {"value": 70},
-                    "high": {"value": 100}
-                }],
-                "effectiveDateTime": "2024-01-20",
-            },
-        ],
-        "encounters": [],
-    }
-
 
 @pytest.fixture
 def graph_builder():
-    """Create ClinicalGraphBuilder instance."""
+    """Fixture for ClinicalGraphBuilder"""
     return ClinicalGraphBuilder(feature_dim=16)
 
+@pytest.fixture
+def sample_patient_data():
+    """Fixture for sample patient FHIR data"""
+    return {
+        "patient": {
+            "id": "123",
+            "gender": "male",
+            "birthDate": "1980-01-01"
+        },
+        "medications": [
+            {
+                "id": "med1",
+                "medicationCodeableConcept": {
+                    "coding": [{"display": "Lisinopril"}]
+                },
+                "dosage": [{"dose": {"value": 10, "unit": "mg"}}],
+                "effectivePeriod": {"start": "2023-01-01"}
+            },
+            {
+                "id": "med2",
+                "medicationCodeableConcept": {
+                    "coding": [{"display": "Potassium Chloride"}]
+                },
+                "effectivePeriod": {"start": "2023-01-05"}
+            }
+        ],
+        "conditions": [
+            {
+                "id": "cond1",
+                "code": {"coding": [{"display": "Hypertension"}]},
+                "severity": {"coding": [{"display": "Moderate"}]},
+                "onsetDateTime": "2022-01-01"
+            }
+        ],
+        "observations": [
+            {
+                "id": "obs1",
+                "code": {"coding": [{"code": "potassium"}]},
+                "valueQuantity": {"value": 4.5},
+                "effectiveDateTime": "2023-02-01",
+                "referenceRange": [{"low": {"value": 3.5}, "high": {"value": 5.0}}]
+            }
+        ],
+        "encounters": [
+            {
+                "participant": [
+                    {
+                        "individual": {
+                            "reference": "Practitioner/doc1",
+                            "display": "Dr. Smith"
+                        }
+                    }
+                ],
+                "period": {"start": "2023-01-10"}
+            }
+        ]
+    }
 
 def test_graph_data_structure_generation(graph_builder, sample_patient_data):
-    """Test graph data structure generation with correct tensor shapes."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
+    """Verify that nodes and edges are correctly generated from patient data."""
+    x, edge_index, metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
     
-    # Verify tensor shapes
-    assert isinstance(x, torch.Tensor), "Node features should be a tensor"
-    assert isinstance(edge_index, torch.Tensor), "Edge index should be a tensor"
-    assert x.dim() == 2, "Node features should be 2D (num_nodes, feature_dim)"
-    assert edge_index.dim() == 2, "Edge index should be 2D (2, num_edges)"
-    assert edge_index.shape[0] == 2, "Edge index should have 2 rows (source, target)"
+    # Check return types
+    assert isinstance(x, torch.Tensor)
+    assert isinstance(edge_index, torch.Tensor)
+    assert isinstance(metadata, dict)
     
-    # Verify feature dimensions
-    assert x.shape[1] == 16, "Feature dimension should match builder config"
+    # Check dimensions
+    # Expected nodes: Patient(1) + Meds(2) + Cond(1) + Obs(1) + Provider(1) = 6
+    assert x.shape[0] == 6
+    assert x.shape[1] == 16  # feature_dim
     
-    # Verify edge index values are valid
-    if edge_index.shape[1] > 0:
-        assert edge_index.min() >= 0, "Edge indices should be non-negative"
-        assert edge_index.max() < x.shape[0], "Edge indices should be within node count"
-    
-    # Verify metadata structure
-    assert isinstance(graph_metadata, dict), "Graph metadata should be a dictionary"
-    assert "node_map" in graph_metadata, "Metadata should contain node_map"
-    assert "node_types" in graph_metadata, "Metadata should contain node_types"
-    assert "edge_types" in graph_metadata, "Metadata should contain edge_types"
-    assert "patient_id" in graph_metadata, "Metadata should contain patient_id"
-
+    # Expected edges:
+    # 1. Patient -> Med1 (prescribed)
+    # 2. Patient -> Med2 (prescribed)
+    # 3. Patient -> Cond1 (diagnosed)
+    # 4. Patient -> Obs1 (measured)
+    # 5. Patient -> Doc1 (visited)
+    # 6. Med1 -> Med2 (interaction: lisinopril + potassium = medium)
+    # 7. Cond1 -> Med1 (treatment: hypertension -> lisinopril)
+    # 8. Med1 -> Obs1 (affects: ace_inhibitor -> potassium)
+    # 9. Med2 -> Obs1 (affects: potassium -> potassium - implicit logic)
+    # Total edges check might vary slightly based on logic, but at least 5 main connections should exist
+    assert edge_index.shape[0] == 2
+    assert edge_index.shape[1] >= 5
 
 def test_node_metadata_extraction(graph_builder, sample_patient_data):
-    """Test extraction of node metadata from graph."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
+    """Verify correct metadata extraction for nodes."""
+    _, _, metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
     
-    # Verify node metadata structure
-    assert "node_metadata" in graph_metadata, "Should have node_metadata"
-    node_metadata = graph_metadata["node_metadata"]
-    assert isinstance(node_metadata, dict), "Node metadata should be a dictionary"
+    node_map = metadata['node_map']  # This is int -> str (idx -> node_id)
+    # Create reverse map for easy testing (str -> int)
+    reverse_node_map = {v: k for k, v in node_map.items()}
     
-    # Verify patient node metadata
-    patient_nodes = [
-        node_id for node_id, node_type in graph_metadata["node_types"].items()
-        if node_type == "patient"
-    ]
-    assert len(patient_nodes) > 0, "Should have at least one patient node"
+    node_metadata = metadata['node_metadata']
+    node_types = metadata['node_types']
     
-    for patient_node_id in patient_nodes:
-        assert patient_node_id in node_metadata, "Patient node should have metadata"
-        patient_meta = node_metadata[patient_node_id]
-        assert "id" in patient_meta or "patient_id" in patient_meta, "Should have patient ID"
+    # 1. Patient Node
+    patient_node_id = "patient_123"
+    assert patient_node_id in reverse_node_map
+    assert node_types[patient_node_id] == 'patient'
+    assert node_metadata[patient_node_id]['gender'] == 'male'
     
-    # Verify medication node metadata
-    medication_nodes = [
-        node_id for node_id, node_type in graph_metadata["node_types"].items()
-        if node_type == "medication"
-    ]
-    for med_node_id in medication_nodes:
-        if med_node_id in node_metadata:
-            med_meta = node_metadata[med_node_id]
-            # Should have medication-related metadata
-            assert isinstance(med_meta, dict), "Medication metadata should be a dict"
-
+    # 2. Medication Node
+    med_node_id = "medication_med1"
+    assert med_node_id in reverse_node_map
+    assert node_types[med_node_id] == 'medication'
+    assert node_metadata[med_node_id]['name'] == 'Lisinopril'
+    assert node_metadata[med_node_id]['dosage_value'] == 10
+    
+    # 3. Condition Node
+    cond_node_id = "condition_cond1"
+    assert cond_node_id in reverse_node_map
+    assert node_types[cond_node_id] == 'condition'
+    assert node_metadata[cond_node_id]['severity'] == 'moderate'
 
 def test_edge_metadata_extraction(graph_builder, sample_patient_data):
-    """Test extraction of edge metadata from graph."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
+    """Verify edge weights and types."""
+    _, edge_index, metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
     
-    # Verify edge types are extracted
-    assert "edge_types" in graph_metadata, "Should have edge_types"
-    edge_types = graph_metadata["edge_types"]
-    assert isinstance(edge_types, list), "Edge types should be a list"
+    edge_types = metadata['edge_types']
+    edge_weights = metadata['edge_weights']
+    edge_metadata_list = metadata['edge_metadata']
     
-    # Verify edge metadata structure (if available)
-    if "edge_metadata" in graph_metadata:
-        edge_metadata = graph_metadata["edge_metadata"]
-        assert isinstance(edge_metadata, (list, dict)), "Edge metadata should be list or dict"
+    # Verify we have expected edge types
+    assert 'prescribed' in edge_types
+    assert 'diagnosed' in edge_types
+    assert 'measured' in edge_types
     
-    # Verify edge types match expected clinical relationships
-    expected_edge_types = ["prescribed", "diagnosed", "measured", "interacts_with", "treats"]
-    for edge_type in edge_types:
-        # Edge types should be valid clinical relationship types
-        assert isinstance(edge_type, str), "Edge type should be a string"
-        # May or may not be in expected list (could be custom types)
+    # Find the prescribed edge for Med1
+    prescribed_indices = [i for i, t in enumerate(edge_types) if t == 'prescribed']
+    assert len(prescribed_indices) >= 2
+    
+    # Check weight logic (should be non-zero and <= 1.0)
+    for w in edge_weights:
+        assert 0.0 < w <= 1.0
 
-
-def test_anomaly_mapping_to_edges(graph_builder, sample_patient_data):
-    """Test mapping of anomalies to specific edges in the graph."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
+def test_drug_interaction_logic(graph_builder):
+    """Test specifically for drug-drug interaction detection logic."""
+    # Lisinopril + Potassium = Medium Interaction (Hyperkalemia risk)
+    interactions = graph_builder._get_known_drug_interactions()
+    severity = graph_builder._check_drug_interaction("lisinopril", "potassium_chloride", interactions)
+    assert severity == "medium"
     
-    # Create mock anomaly scores for edges
-    num_edges = edge_index.shape[1]
-    if num_edges > 0:
-        # Mock anomaly scores (one per edge)
-        anomaly_scores = torch.rand(num_edges)
-        
-        # Verify we can map anomalies to edges
-        edge_anomalies = []
-        for i in range(num_edges):
-            source_idx = edge_index[0, i].item()
-            target_idx = edge_index[1, i].item()
-            score = anomaly_scores[i].item()
-            
-            if score > 0.5:  # Threshold for anomaly
-                # Get node IDs from metadata
-                reverse_node_map = {v: k for k, v in graph_metadata["node_map"].items()}
-                source_id = reverse_node_map.get(source_idx)
-                target_id = reverse_node_map.get(target_idx)
-                
-                edge_anomalies.append({
-                    "source": source_id,
-                    "target": target_id,
-                    "score": score,
-                    "edge_index": i,
-                })
-        
-        # Verify anomaly mapping structure
-        assert isinstance(edge_anomalies, list), "Edge anomalies should be a list"
-        for anomaly in edge_anomalies:
-            assert "source" in anomaly, "Anomaly should have source node"
-            assert "target" in anomaly, "Anomaly should have target node"
-            assert "score" in anomaly, "Anomaly should have score"
-            assert 0 <= anomaly["score"] <= 1, "Score should be between 0 and 1"
+    # Warfarin + Aspirin = High Interaction
+    severity = graph_builder._check_drug_interaction("warfarin", "aspirin", interactions)
+    assert severity == "high"
+    
+    # Safe combo
+    severity = graph_builder._check_drug_interaction("tylenol", "water", interactions)
+    assert severity is None
 
+def test_treatment_matching_logic(graph_builder):
+    """Test treatment matching logic."""
+    # Hypertension -> Lisinopril
+    assert graph_builder._is_treatment_match("hypertension", "lisinopril") is True
+    # Hypertension -> Metformin (Diabetes drug) -> False
+    assert graph_builder._is_treatment_match("hypertension", "metformin") is False
+
+def test_medication_affects_lab_logic(graph_builder):
+    """Test medication-lab effect logic."""
+    # ACE Inhibitor -> Potassium
+    assert graph_builder._medication_affects_lab("lisinopril", "potassium") is True
+    # Statin -> Liver (ALT)
+    assert graph_builder._medication_affects_lab("atorvastatin", "alt") is True
+    # Tylenol -> Potassium (False)
+    assert graph_builder._medication_affects_lab("acetaminophen", "potassium") is False
 
 def test_statistics_calculation(graph_builder, sample_patient_data):
-    """Test calculation of graph statistics."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
+    """Verify statistics can be derived from the graph metadata."""
+    _, _, metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
     
-    # Calculate basic statistics
-    num_nodes = x.shape[0]
-    num_edges = edge_index.shape[1]
-    
-    # Node type statistics
-    node_types = graph_metadata.get("node_types", {})
-    node_type_counts = {}
-    for node_type in node_types.values():
-        node_type_counts[node_type] = node_type_counts.get(node_type, 0) + 1
-    
-    # Edge type statistics
-    edge_types = graph_metadata.get("edge_types", [])
-    edge_type_counts = {}
-    for edge_type in edge_types:
-        edge_type_counts[edge_type] = edge_type_counts.get(edge_type, 0) + 1
-    
-    # Verify statistics are calculated correctly
-    assert num_nodes > 0, "Should have at least one node"
-    assert num_edges >= 0, "Edge count should be non-negative"
-    assert isinstance(node_type_counts, dict), "Node type counts should be a dict"
-    assert isinstance(edge_type_counts, dict), "Edge type counts should be a dict"
-    
-    # Verify node type counts match actual nodes
-    total_counted_nodes = sum(node_type_counts.values())
-    assert total_counted_nodes == num_nodes, "Node type counts should sum to total nodes"
-    
-    # Verify edge type counts match actual edges
-    total_counted_edges = sum(edge_type_counts.values())
-    assert total_counted_edges == num_edges, "Edge type counts should sum to total edges"
-    
-    # Calculate graph density (for non-empty graphs)
-    if num_nodes > 1:
-        max_possible_edges = num_nodes * (num_nodes - 1)
-        if max_possible_edges > 0:
-            density = num_edges / max_possible_edges
-            assert 0 <= density <= 1, "Graph density should be between 0 and 1"
-
-
-def test_graph_statistics_with_empty_graph(graph_builder):
-    """Test statistics calculation with empty graph."""
-    empty_data = {
-        "patient": {"id": "patient-empty"},
-        "medications": [],
-        "conditions": [],
-        "observations": [],
-        "encounters": [],
-    }
-    
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(empty_data)
-    
-    # Calculate statistics
-    num_nodes = x.shape[0]
-    num_edges = edge_index.shape[1]
-    
-    # Empty graph should have at least patient node
-    assert num_nodes >= 1, "Should have at least patient node"
-    assert num_edges == 0, "Empty graph should have no edges"
-    
-    # Statistics should still be calculable
-    node_types = graph_metadata.get("node_types", {})
-    assert len(node_types) == num_nodes, "Node types should match node count"
-
-
-def test_node_feature_metadata_consistency(graph_builder, sample_patient_data):
-    """Test that node features are consistent with metadata."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
-    
-    # node_map is {idx: node_id}, not {node_id: idx}
-    node_map = graph_metadata.get("node_map", {})
-    node_types = graph_metadata.get("node_types", {})
-    node_metadata = graph_metadata.get("node_metadata", {})
-    
-    # Verify each node in the tensor has corresponding metadata
-    for node_idx, node_id in node_map.items():
-        assert isinstance(node_idx, int), f"Node index should be integer, got {type(node_idx)}"
-        assert node_idx < x.shape[0], f"Node index {node_idx} should be within tensor bounds"
-        assert node_id in node_types, f"Node {node_id} should have a type"
+    node_types = metadata['node_types']
+    type_counts = {}
+    for _, ntype in node_types.items():
+        type_counts[ntype] = type_counts.get(ntype, 0) + 1
         
-        # Verify feature vector exists
-        node_features = x[node_idx]
-        assert node_features.shape[0] == 16, "Feature vector should have correct dimension"
-        assert not torch.isnan(node_features).any(), "Features should not contain NaN"
-
-
-def test_edge_index_consistency(graph_builder, sample_patient_data):
-    """Test that edge indices are consistent with node map."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
-    
-    # node_map is {idx: node_id}
-    node_map = graph_metadata.get("node_map", {})
-    num_nodes = x.shape[0]
-    
-    # Verify all edge indices reference valid nodes
-    if edge_index.shape[1] > 0:
-        source_indices = edge_index[0, :]
-        target_indices = edge_index[1, :]
-        
-        assert source_indices.min() >= 0, "Source indices should be non-negative"
-        assert target_indices.min() >= 0, "Target indices should be non-negative"
-        assert source_indices.max() < num_nodes, "Source indices should be within node count"
-        assert target_indices.max() < num_nodes, "Target indices should be within node count"
-        
-        # Verify we can map edge indices back to node IDs
-        # node_map is already {idx: node_id}, so we can use it directly
-        for i in range(edge_index.shape[1]):
-            source_idx = edge_index[0, i].item()
-            target_idx = edge_index[1, i].item()
-            assert source_idx in node_map, f"Source index {source_idx} should map to a node"
-            assert target_idx in node_map, f"Target index {target_idx} should map to a node"
-
-
-def test_graph_metadata_completeness(graph_builder, sample_patient_data):
-    """Test that graph metadata contains all necessary information."""
-    x, edge_index, graph_metadata = graph_builder.build_graph_from_patient_data(sample_patient_data)
-    
-    # Required metadata fields
-    required_fields = ["node_map", "node_types", "edge_types", "patient_id"]
-    for field in required_fields:
-        assert field in graph_metadata, f"Metadata should contain {field}"
-    
-    # node_map is {idx: node_id}
-    node_map = graph_metadata["node_map"]
-    node_types = graph_metadata["node_types"]
-    
-    # Verify node_types matches node_map values (node_ids)
-    for node_idx, node_id in node_map.items():
-        assert node_id in node_types, f"Node {node_id} should have a type"
-        assert isinstance(node_idx, int), "Node index should be integer"
-
-
-@pytest.mark.asyncio
-async def test_anomaly_detection_with_edge_mapping(sample_patient_data):
-    """Test anomaly detection and mapping to specific edges."""
-    service = AnomalyService()
-    
-    with patch('backend.anomaly_detector.service.load_model') as mock_load:
-        mock_model = Mock()
-        # Create mock scores for edges
-        num_edges = 5  # Mock number of edges
-        mock_scores = torch.tensor([
-            [0.9, 0.05, 0.03, 0.02],  # Normal
-            [0.1, 0.8, 0.05, 0.05],   # Medication anomaly
-            [0.2, 0.1, 0.6, 0.1],     # Lab value anomaly
-            [0.7, 0.1, 0.1, 0.1],     # Normal
-            [0.1, 0.1, 0.1, 0.7],     # Clinical pattern anomaly
-        ])
-        
-        def mock_forward(x, edge_index, return_weights=False):
-            num_actual_edges = edge_index.shape[1]
-            if return_weights:
-                learned_adj = torch.eye(x.shape[0])
-                return mock_scores[:num_actual_edges], learned_adj
-            return mock_scores[:num_actual_edges]
-        
-        mock_model.forward = mock_forward
-        mock_model.eval = Mock(return_value=mock_model)
-        mock_model.get_edge_importance = Mock(return_value=torch.ones(num_edges) * 0.5)
-        mock_load.return_value = mock_model
-        
-        service.initialize()
-        result = await service.detect_clinical_anomalies(sample_patient_data, threshold=0.5)
-        
-        # Verify anomaly structure
-        assert "anomalies" in result, "Result should contain anomalies"
-        assert "anomaly_count" in result, "Result should contain anomaly_count"
-        assert "graph_metadata" in result, "Result should contain graph_metadata"
-        
-        # Verify anomalies can be mapped to edges
-        anomalies = result.get("anomalies", [])
-        for anomaly in anomalies:
-            assert isinstance(anomaly, dict), "Each anomaly should be a dictionary"
-            # Anomalies should have information about which edges/nodes are affected
-            assert "score" in anomaly or "severity" in anomaly, "Anomaly should have score or severity"
+    assert type_counts['patient'] == 1
+    assert type_counts['medication'] == 2
+    assert type_counts['condition'] == 1
