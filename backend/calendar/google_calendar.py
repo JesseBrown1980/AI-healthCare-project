@@ -49,7 +49,7 @@ class GoogleCalendarService:
                 self.access_token = data.get("access_token")
                 return self.access_token
         except Exception as e:
-            logger.error(f"Failed to refresh Google Calendar token: {e}")
+            logger.exception(f"Failed to refresh Google Calendar token: {e}")
             return None
     
     async def _get_headers(self) -> Dict[str, str]:
@@ -122,7 +122,7 @@ class GoogleCalendarService:
                 response.raise_for_status()
                 return response.json()
         except Exception as e:
-            logger.error(f"Failed to create Google Calendar event: {e}")
+            logger.exception(f"Failed to create Google Calendar event: {e}")
             return None
     
     async def list_events(
@@ -156,7 +156,7 @@ class GoogleCalendarService:
                 data = response.json()
                 return data.get("items", [])
         except Exception as e:
-            logger.error(f"Failed to list Google Calendar events: {e}")
+            logger.exception(f"Failed to list Google Calendar events: {e}")
             return []
     
     async def delete_event(
@@ -175,6 +175,6 @@ class GoogleCalendarService:
                 response.raise_for_status()
                 return True
         except Exception as e:
-            logger.error(f"Failed to delete Google Calendar event: {e}")
+            logger.exception(f"Failed to delete Google Calendar event: {e}")
             return False
 
