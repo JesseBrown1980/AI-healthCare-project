@@ -524,7 +524,7 @@ MIT License - See `LICENSE` file
 - [x] Real-time multi-patient dashboard
 - [x] GDPR/HIPAA compliance with crypto-shredding
 - [x] SOC2-compliant audit logging
-- [ ] Regulatory approvals (FDA, CE marking)
+- [ ] Phase 4: Regulatory approvals (FDA, CE marking) preparation
 
 ---
 

@@ -20,6 +20,30 @@ Because the full stack depends on external services (FHIR data sources, LLM keys
 - External calls (LLM providers) and SHAP explanations will dominate latency; both are invoked asynchronously so concurrent requests can make progress during I/O waits.
 - Uvicorn reload is disabled by default in production settings to avoid hot-reload overhead.
 
+## Security & Compliance Testing
+To verify the system's compliance with HIPAA/GDPR and resistance to common vulnerabilities, run the dedicated security test suites:
+
+### 1. Verification of Crypto-Shredding & Compliance
+Run the compliance test suite to verify that:
+- PII in audit logs is encrypted.
+- Deleting a patient's key renders their logs unreadable (crypto-shredding).
+- Data export requests return the expected format.
+- "Right to be Forgotten" requests are processed correctly.
+
+```bash
+pytest tests/test_compliance.py -v
+```
+
+### 2. OWASP Security Checks
+Run the security test suite to verify:
+- Protection against Broken Access Control (BAC).
+- Secure Headers (HSTS, X-Content-Type-Options, etc.).
+- Input validation and injection prevention.
+
+```bash
+pytest tests/test_owasp_security.py -v
+```
+
 ## Production-Readiness Checklist
 - **Align API contracts with the frontend/mobile clients**: Add any missing routes or adjust client calls so that dashboards, login flows, and analysis requests share the same URL patterns.
 - **Exercise critical flows with real inputs**: Once API alignment is complete, run dashboard and analyze requests from the mobile app (or Postman) to ensure end-to-end data retrieval, risk scoring, and alert surfaces all succeed.
