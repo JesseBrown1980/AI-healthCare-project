@@ -10,8 +10,12 @@ from collections import defaultdict
 import threading
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+
+from backend.utils.service_error_handler import ServiceErrorHandler
+from backend.utils.error_responses import get_correlation_id
+from backend.utils.logging_utils import log_structured
 
 router = APIRouter(prefix="/security", tags=["Security"])
 
@@ -261,6 +265,7 @@ def get_metrics_collector() -> SecurityMetricsCollector:
 
 @router.get("/metrics", response_model=SecurityMetricsResponse)
 async def get_security_metrics(
+    request: Request,
     period_hours: int = 24,
     collector: SecurityMetricsCollector = Depends(get_metrics_collector),
 ) -> SecurityMetricsResponse:
@@ -272,12 +277,20 @@ async def get_security_metrics(
     Returns:
         Security metrics including auth, access, rate limiting, and security events.
     """
-    metrics = collector.get_metrics(period_hours)
-    return SecurityMetricsResponse(**metrics)
+    correlation_id = get_correlation_id(request)
+    
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_security_metrics", "period_hours": period_hours},
+        correlation_id,
+        request
+    ):
+        metrics = collector.get_metrics(period_hours)
+        return SecurityMetricsResponse(**metrics)
 
 
 @router.get("/health")
 async def security_health(
+    request: Request,
     collector: SecurityMetricsCollector = Depends(get_metrics_collector),
 ) -> Dict[str, Any]:
     """
@@ -286,14 +299,21 @@ async def security_health(
     Returns:
         Simple health status based on security score.
     """
-    metrics = collector.get_metrics()
-    score = metrics["summary"]["security_score"]
+    correlation_id = get_correlation_id(request)
     
-    status = "healthy" if score >= 80 else "warning" if score >= 50 else "critical"
-    
-    return {
-        "status": status,
-        "security_score": score,
-        "active_sessions": metrics["active_sessions"],
-        "recent_failed_logins": metrics["authentication"]["failed_logins"],
-    }
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "security_health"},
+        correlation_id,
+        request
+    ):
+        metrics = collector.get_metrics()
+        score = metrics["summary"]["security_score"]
+        
+        status = "healthy" if score >= 80 else "warning" if score >= 50 else "critical"
+        
+        return {
+            "status": status,
+            "security_score": score,
+            "active_sessions": metrics["active_sessions"],
+            "recent_failed_logins": metrics["authentication"]["failed_logins"],
+        }

@@ -58,7 +58,11 @@ async def upload_document(
     
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "upload_document", "filename": file.filename},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Uploading document",
@@ -135,16 +139,6 @@ async def upload_document(
             "duplicate": result.get("duplicate", False),
             "message": "Document uploaded successfully. Use /documents/{id}/process to run OCR.",
         }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "upload_document", "filename": file.filename},
-            correlation_id,
-            request
-        )
 
 
 @router.post("/documents/{document_id}/process")
@@ -176,7 +170,11 @@ async def process_document(
     
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "process_document", "document_id": document_id},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Processing document with OCR",
@@ -187,11 +185,18 @@ async def process_document(
             language=language
         )
         
-        result = await document_service.process_document_with_ocr(
-            document_id=document_id,
-            engine=engine,
-            language=language,
-        )
+        try:
+            result = await document_service.process_document_with_ocr(
+                document_id=document_id,
+                engine=engine,
+                language=language,
+            )
+        except (ValueError, FileNotFoundError) as e:
+            raise create_http_exception(
+                message=str(e),
+                status_code=404,
+                error_type="NotFound"
+            )
         
         log_structured(
             level="info",
@@ -223,22 +228,6 @@ async def process_document(
             "engine": result["engine"],
             "word_count": result["word_count"],
         }
-    
-    except (ValueError, FileNotFoundError) as e:
-        raise create_http_exception(
-            message=str(e),
-            status_code=404,
-            error_type="NotFound"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "process_document", "document_id": document_id},
-            correlation_id,
-            request
-        )
 
 
 @router.post("/documents/{document_id}/link-patient")
@@ -271,7 +260,11 @@ async def link_document_to_patient(
     
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "link_document_to_patient", "document_id": document_id, "patient_id": patient_id},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Linking document to patient",
@@ -281,10 +274,17 @@ async def link_document_to_patient(
             patient_id=patient_id
         )
         
-        result = await document_service.link_document_to_patient(
-            document_id=document_id,
-            patient_id=patient_id,
-        )
+        try:
+            result = await document_service.link_document_to_patient(
+                document_id=document_id,
+                patient_id=patient_id,
+            )
+        except ValueError as e:
+            raise create_http_exception(
+                message=str(e),
+                status_code=404,
+                error_type="NotFound"
+            )
         
         log_structured(
             level="info",
@@ -308,22 +308,6 @@ async def link_document_to_patient(
             )
         
         return result
-    
-    except ValueError as e:
-        raise create_http_exception(
-            message=str(e),
-            status_code=404,
-            error_type="NotFound"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "link_document_to_patient", "document_id": document_id, "patient_id": patient_id},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/patients/{patient_id}/documents")
@@ -354,7 +338,11 @@ async def get_patient_documents(
     
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_patient_documents", "patient_id": patient_id},
+        correlation_id,
+        request
+    ):
         # Check patient access
         if auth.patient and auth.patient != patient_id:
             raise create_http_exception(
@@ -392,16 +380,6 @@ async def get_patient_documents(
             "documents": documents,
             "count": len(documents),
         }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_patient_documents", "patient_id": patient_id},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/documents/{document_id}")
@@ -426,7 +404,11 @@ async def get_document(
     
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_document", "document_id": document_id},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Fetching document",
@@ -463,16 +445,6 @@ async def get_document(
             "status": "success",
             "document": document,
         }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_document", "document_id": document_id},
-            correlation_id,
-            request
-        )
 
 
 @router.post("/documents/{document_id}/convert-fhir")
@@ -501,7 +473,11 @@ async def convert_document_to_fhir(
     
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "convert_document_to_fhir", "document_id": document_id},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Converting document to FHIR resources",
@@ -511,10 +487,17 @@ async def convert_document_to_fhir(
             patient_id=patient_id or auth.patient
         )
         
-        result = await document_service.convert_to_fhir_resources(
-            document_id=document_id,
-            patient_id=patient_id or auth.patient,
-        )
+        try:
+            result = await document_service.convert_to_fhir_resources(
+                document_id=document_id,
+                patient_id=patient_id or auth.patient,
+            )
+        except ValueError as e:
+            raise create_http_exception(
+                message=str(e),
+                status_code=400,
+                error_type="ValidationError"
+            )
         
         log_structured(
             level="info",
@@ -550,20 +533,4 @@ async def convert_document_to_fhir(
             },
             "message": "FHIR resources created. Use FHIR connector to submit to FHIR server.",
         }
-    
-    except ValueError as e:
-        raise create_http_exception(
-            message=str(e),
-            status_code=400,
-            error_type="ValidationError"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "convert_document_to_fhir", "document_id": document_id},
-            correlation_id,
-            request
-        )
 

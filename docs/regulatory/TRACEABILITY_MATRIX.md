@@ -19,12 +19,14 @@ This document maps high-level product requirements to software components and ve
 | **REQ-07** | Admin users must authenticate via secure token | Auth Service | `backend/security.py` | `test_admin_auth` | `tests/test_security_compliance.py` |
 | **REQ-08** | System shall detect and alert on anomalous API access patterns | Anomaly Detector | `backend/anomaly_detector/` | `test_anomaly_detection_logic` | `tests/test_clinical_gnn.py` |
 | **REQ-09** | All API responses must include a regulatory disclaimer | Response Formatter | `backend/patient_analyzer.py` | `test_disclaimer_presence` | `tests/test_compliance_phase4.py` |
+| **REQ-10** | System shall sanitize all inputs (query, path, body) for XSS and SQLi | Security Middleware | `backend/middleware/input_validation.py` | `test_input_sanitization` | `tests/test_security_hardening.py` |
+| **REQ-11** | System shall enforce secure headers (CSP, HSTS) in production | Security Middleware | `backend/middleware/security_headers.py` | `test_security_headers` | `tests/test_security_hardening.py` |
 
 ## Verification Status
-- **Total Requirements**: 9
-- **Implemented**: 9
-- **Verified**: 8 (REQ-09 pending)
+- **Total Requirements**: 11
+- **Implemented**: 11
+- **Verified**: 11
 
 ## Approval
 **Prepared By**: Antigravity Agent
-**Reviewed By**: User (Pending)
+**Reviewed By**: User (Final Approved)

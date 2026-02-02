@@ -419,10 +419,8 @@ response = llm.generate(prompt, adapters=adapters)
 - **HIPAA Ready**: Built with healthcare data privacy as default
 - **GDPR Compliant**: Right to be forgotten, data export, and consent management
 - **Crypto-Shredding**: PII in audit logs encrypted with patient-specific keys for secure deletion
-- **OAuth2 Authentication**: Secure EHR system access
-- **Data Encryption**: End-to-end encryption for sensitive patient data
-- **Audit Logging**: SOC2-compliant audit trail of all patient data access
-- **Role-Based Access Control**: Clinician, admin, researcher roles
+- **Security Headers & CSP**: Enforced restrictive Content Security Policy and secure headers in production
+- **Input Validation**: Automated XSS and SQL injection detection for request bodies and query parameters
 - **Consent API**: Granular consent management for data processing
 
 ---

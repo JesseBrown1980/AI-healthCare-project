@@ -99,8 +99,10 @@ class InputValidationMiddleware(BaseHTTPMiddleware):
         Returns:
             True if SQL injection pattern detected
         """
-        # Only check if it looks like SQL (has SQL keywords)
-        if not any(keyword in value.upper() for keyword in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'UNION']):
+        # Fast bypass check for values that clearly don't look like SQL
+        # We look for common SQL keywords or special injection characters like ' or --
+        upper_val = value.upper()
+        if not any(k in upper_val for k in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'UNION', ' OR ', ' AND ', "'", '--', '#']):
             return False
         
         for pattern in self.sql_patterns:
@@ -129,78 +131,42 @@ class InputValidationMiddleware(BaseHTTPMiddleware):
         
         return value
     
-    def _validate_query_params(self, request: Request) -> Optional[JSONResponse]:
-        """
-        Validate query parameters.
+    async def dispatch(self, request: Request, call_next):
+        """Process request and validate inputs."""
+        if not self.enabled:
+            return await call_next(request)
         
-        Args:
-            request: FastAPI request
-            
-        Returns:
-            JSONResponse with error if validation fails, None otherwise
-        """
-        query_string = str(request.url.query)
+        # Allow dynamic override via environment variable
+        current_strict = self.strict_mode or os.getenv("INPUT_VALIDATION_STRICT", "false").lower() == "true"
         
-        # Check query string length
-        if len(query_string) > self.max_query_length:
-            logger.warning(
-                "Query string too long: %d characters (max: %d) from %s",
-                len(query_string),
-                self.max_query_length,
-                request.client.host if request.client else "unknown"
-            )
-            if self.strict_mode:
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content={
-                        "status": "error",
-                        "error_type": "ValidationError",
-                        "message": f"Query string too long (max {self.max_query_length} characters)"
-                    }
-                )
-        
-        # Check for XSS in query parameters
-        for key, value in request.query_params.items():
-            if isinstance(value, str):
-                if self._detect_xss(value):
-                    logger.warning(
-                        "XSS pattern detected in query parameter %s from %s",
-                        key,
-                        request.client.host if request.client else "unknown"
-                    )
-                    if self.strict_mode:
-                        return JSONResponse(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            content={
-                                "status": "error",
-                                "error_type": "ValidationError",
-                                "message": "Invalid characters detected in query parameters"
-                            }
-                        )
-        
-        return None
-    
-    def _validate_path(self, request: Request) -> Optional[JSONResponse]:
-        """
-        Validate request path.
-        
-        Args:
-            request: FastAPI request
-            
-        Returns:
-            JSONResponse with error if validation fails, None otherwise
-        """
+        # Skip validation for certain paths
         path = request.url.path
+        if any(path.startswith(p) for p in self.skip_paths):
+            return await call_next(request)
         
-        # Check path length
+        # Validate path
+        path_error = self._validate_path(request, current_strict)
+        if path_error:
+            return path_error
+        
+        # Validate query parameters
+        query_error = self._validate_query_params(request, current_strict)
+        if query_error:
+            return query_error
+            
+        # Validate request body
+        body_error = await self._validate_body(request, current_strict)
+        if body_error:
+            return body_error
+        
+        # Process request
+        return await call_next(request)
+
+    def _validate_path(self, request: Request, strict_mode: bool) -> Optional[JSONResponse]:
+        path = request.url.path
         if len(path) > self.max_path_length:
-            logger.warning(
-                "Path too long: %d characters (max: %d) from %s",
-                len(path),
-                self.max_path_length,
-                request.client.host if request.client else "unknown"
-            )
-            if self.strict_mode:
+            logger.warning(f"Path too long from {request.client.host if request.client else 'unknown'}")
+            if strict_mode:
                 return JSONResponse(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={
@@ -210,45 +176,63 @@ class InputValidationMiddleware(BaseHTTPMiddleware):
                     }
                 )
         
-        # Check for path traversal attempts
         if ".." in path or "//" in path:
-            logger.warning(
-                "Path traversal attempt detected: %s from %s",
-                path,
-                request.client.host if request.client else "unknown"
-            )
+            logger.warning(f"Path traversal attempt: {path}")
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={
-                    "status": "error",
-                    "error_type": "ValidationError",
-                    "message": "Invalid path"
-                }
+                content={"status": "error", "message": "Invalid path"}
             )
-        
         return None
-    
-    async def dispatch(self, request: Request, call_next):
-        """Process request and validate inputs."""
+
+    def _validate_query_params(self, request: Request, strict_mode: bool) -> Optional[JSONResponse]:
+        for key, value in request.query_params.items():
+            if self._detect_xss(value) or self._detect_sql_injection(value):
+                logger.warning(f"Malicious pattern in query param '{key}'")
+                if strict_mode:
+                    return JSONResponse(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        content={
+                            "status": "error",
+                            "message": "Malicious patterns detected in request"
+                        }
+                    )
+        return None
+
+    async def _validate_body(self, request: Request, strict_mode: bool) -> Optional[JSONResponse]:
+        if request.method not in ("POST", "PUT", "PATCH"):
+            return None
         
-        if not self.enabled:
-            return await call_next(request)
+        content_type = request.headers.get("Content-Type", "").lower()
+        if "application/json" not in content_type:
+            return None
         
-        # Skip validation for certain paths
-        if request.url.path in self.skip_paths:
-            return await call_next(request)
-        
-        # Validate path
-        path_error = self._validate_path(request)
-        if path_error:
-            return path_error
-        
-        # Validate query parameters
-        query_error = self._validate_query_params(request)
-        if query_error:
-            return query_error
-        
-        # Process request
-        response = await call_next(request)
-        
-        return response
+        try:
+            body_bytes = await request.body()
+            if not body_bytes:
+                return None
+            
+            body_str = body_bytes.decode('utf-8', errors='ignore')
+            
+            if self._detect_xss(body_str) or self._detect_sql_injection(body_str):
+                logger.warning(f"Malicious pattern in request body")
+                if strict_mode:
+                    return JSONResponse(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        content={
+                            "status": "error",
+                            "message": "Malicious patterns detected in request body"
+                        }
+                    )
+            
+            async def receive():
+                return {"type": "http.request", "body": body_bytes}
+            request._receive = receive
+            
+        except Exception as e:
+            logger.error(f"Error validating body: {e}")
+            if strict_mode:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"status": "error", "message": "Invalid request body"}
+                )
+        return None

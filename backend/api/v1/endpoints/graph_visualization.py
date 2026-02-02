@@ -48,7 +48,11 @@ async def get_patient_graph_visualization(
     # Validate patient_id
     patient_id = validate_patient_id(patient_id)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_patient_graph_visualization", "patient_id": patient_id},
+        correlation_id,
+        request
+    ):
         # Fetch patient data
         patient_data_service = PatientDataService(fhir_connector)
         patient_data = await patient_data_service.fetch_patient_data(patient_id)
@@ -224,14 +228,6 @@ async def get_patient_graph_visualization(
         )
         
         return response
-        
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_patient_graph_visualization", "patient_id": patient_id},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/patients/{patient_id}/anomaly-timeline")
@@ -277,7 +273,11 @@ async def get_anomaly_timeline(
             error_type="ServiceUnavailable"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_anomaly_timeline", "patient_id": patient_id, "days": days},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Generating anomaly timeline",
@@ -352,14 +352,6 @@ async def get_anomaly_timeline(
             'timeline': timeline_data,
             'total_points': len(timeline_data),
         }
-        
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_anomaly_timeline", "patient_id": patient_id, "days": days},
-            correlation_id,
-            request
-        )
 
 
 @router.post("/patients/compare-graphs")
@@ -406,7 +398,11 @@ async def compare_patient_graphs(
             error_type="ValidationError"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "compare_patient_graphs", "patient_count": len(patient_ids)},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Comparing patient graphs",
@@ -543,12 +539,4 @@ async def compare_patient_graphs(
             'comparison_results': comparison_results,
             'comparison_metrics': comparison_metrics,
         }
-        
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "compare_patient_graphs", "patient_count": len(patient_ids)},
-            correlation_id,
-            request
-        )
 

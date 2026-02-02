@@ -68,7 +68,11 @@ async def medical_query(
     except HTTPException:
         raise
 
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "medical_query", "patient_id": validated_patient_id},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Processing medical query",
@@ -79,95 +83,91 @@ async def medical_query(
             question_length=len(question)
         )
 
-        # Get patient context if provided
-        patient_context = None
-        if validated_patient_id:
-            (
-                access_token,
-                scopes,
-                _existing_patient,
-                user_context,
-            ) = fhir_connector.client.get_effective_context()
+        try:
+            # Get patient context if provided
+            patient_context = None
+            if validated_patient_id:
+                (
+                    access_token,
+                    scopes,
+                    _existing_patient,
+                    user_context,
+                ) = fhir_connector.client.get_effective_context()
 
-            async with fhir_connector.request_context(
-                access_token, scopes, validated_patient_id, user_context
-            ):
-                patient_context = await fhir_connector.get_patient(validated_patient_id)
-        
-        # Get language preference from request
-        language = get_language_from_request(request)
-        
-        # Generate response with RAG and AoT
-        response = await llm_engine.query_with_rag(
-            question=question,
-            patient_context=patient_context,
-            rag_component=rag_fusion,
-            aot_reasoner=aot_reasoner,
-            include_reasoning=include_reasoning,
-            language=language
-        )
-        
-        result = {
-            "status": "success",
-            "question": question,
-            "answer": response.get("answer"),
-            "reasoning": response.get("reasoning") if include_reasoning else None,
-            "sources": response.get("sources"),
-            "confidence": response.get("confidence")
-        }
+                async with fhir_connector.request_context(
+                    access_token, scopes, validated_patient_id, user_context
+                ):
+                    patient_context = await fhir_connector.get_patient(validated_patient_id)
+            
+            # Get language preference from request
+            language = get_language_from_request(request)
+            
+            # Generate response with RAG and AoT
+            response = await llm_engine.query_with_rag(
+                question=question,
+                patient_context=patient_context,
+                rag_component=rag_fusion,
+                aot_reasoner=aot_reasoner,
+                include_reasoning=include_reasoning,
+                language=language
+            )
+            
+            result = {
+                "status": "success",
+                "question": question,
+                "answer": response.get("answer"),
+                "reasoning": response.get("reasoning") if include_reasoning else None,
+                "sources": response.get("sources"),
+                "confidence": response.get("confidence")
+            }
 
-        log_structured(
-            level="info",
-            message="Medical query processed successfully",
-            correlation_id=correlation_id,
-            request=request,
-            patient_id=validated_patient_id,
-            confidence=response.get("confidence"),
-            has_sources=bool(response.get("sources"))
-        )
-
-        if audit_service:
-            await audit_service.record_event(
-                action="E",
-                patient_id=validated_patient_id,
-                user_context=None,
+            log_structured(
+                level="info",
+                message="Medical query processed successfully",
                 correlation_id=correlation_id,
-                outcome="0",
-                outcome_desc="Medical query processed",
-                event_type="question",
+                request=request,
+                patient_id=validated_patient_id,
+                confidence=response.get("confidence"),
+                has_sources=bool(response.get("sources"))
             )
 
-        return result
+            if audit_service:
+                await audit_service.record_event(
+                    action="E",
+                    patient_id=validated_patient_id,
+                    user_context=None,
+                    correlation_id=correlation_id,
+                    outcome="0",
+                    outcome_desc="Medical query processed",
+                    event_type="question",
+                )
 
-    except HTTPException as exc:
-        if audit_service:
-            await audit_service.record_event(
-                action="E",
-                patient_id=validated_patient_id,
-                user_context=None,
-                correlation_id=correlation_id,
-                outcome="8",
-                outcome_desc=str(exc.detail),
-                event_type="question",
-            )
-        raise
-    except Exception as e:
-        if audit_service:
-            await audit_service.record_event(
-                action="E",
-                patient_id=validated_patient_id,
-                user_context=None,
-                correlation_id=correlation_id,
-                outcome="8",
-                outcome_desc=str(e),
-                event_type="question",
-            )
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "medical_query", "patient_id": validated_patient_id},
-            correlation_id,
-            request
-        )
+            return result
+
+        except HTTPException as exc:
+            if audit_service:
+                await audit_service.record_event(
+                    action="E",
+                    patient_id=validated_patient_id,
+                    user_context=None,
+                    correlation_id=correlation_id,
+                    outcome="8",
+                    outcome_desc=str(exc.detail),
+                    event_type="question",
+                )
+            raise
+        except Exception as e:
+            if audit_service:
+                await audit_service.record_event(
+                    action="E",
+                    patient_id=validated_patient_id,
+                    user_context=None,
+                    correlation_id=correlation_id,
+                    outcome="8",
+                    outcome_desc=str(e),
+                    event_type="question",
+                )
+            raise
 
 
 @router.post("/feedback", response_model=FeedbackResponse)
@@ -184,7 +184,11 @@ async def provide_feedback(
     """
     correlation_id = get_correlation_id(request)
 
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "provide_feedback", "query_id": query_id, "feedback_type": feedback_type},
+        correlation_id,
+        request
+    ):
         if not mlc_learning:
             raise create_http_exception(
                 message="MLC learning system not initialized",
@@ -234,15 +238,6 @@ async def provide_feedback(
             "message": "Feedback processed and learning model updated",
             "query_id": query_id
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "provide_feedback", "query_id": query_id, "feedback_type": feedback_type},
-            correlation_id,
-            request
-        )
 
 
 
@@ -259,7 +254,11 @@ async def activate_adapter(
     """
     correlation_id = get_correlation_id(request)
 
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "activate_adapter", "adapter_name": adapter_name, "specialty": specialty},
+        correlation_id,
+        request
+    ):
         # Validate adapter_name (basic validation)
         if not adapter_name or len(adapter_name) > 255:
             raise create_http_exception(
@@ -293,13 +292,3 @@ async def activate_adapter(
             "adapter": adapter_name,
             "active": result
         }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "activate_adapter", "adapter_name": adapter_name, "specialty": specialty},
-            correlation_id,
-            request
-        )

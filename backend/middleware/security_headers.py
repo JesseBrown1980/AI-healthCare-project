@@ -92,19 +92,37 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Content Security Policy (CSP)
         # Controls which resources can be loaded and from where
         if self.enable_csp:
-            # Default CSP - can be customized per environment
-            csp_policy = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # Allow inline scripts for development
-                "style-src 'self' 'unsafe-inline'; "  # Allow inline styles
-                "img-src 'self' data: https:; "
-                "font-src 'self' data:; "
-                "connect-src 'self' https:; "
-                "frame-ancestors 'none'; "
-                "base-uri 'self'; "
-                "form-action 'self'; "
-                "upgrade-insecure-requests"
-            )
+            # Determine if we're in a "high security" environment (production)
+            is_prod = os.getenv("ENVIRONMENT", "development").lower() in ["production", "prod"]
+            
+            # Default CSP - more restrictive for production
+            if is_prod:
+                csp_policy = (
+                    "default-src 'self'; "
+                    "script-src 'self'; "  # No inline scripts in production
+                    "style-src 'self'; "   # No inline styles in production
+                    "img-src 'self' data: https:; "
+                    "font-src 'self' data:; "
+                    "connect-src 'self' https:; "
+                    "frame-ancestors 'none'; "
+                    "base-uri 'self'; "
+                    "form-action 'self'; "
+                    "upgrade-insecure-requests"
+                )
+            else:
+                # Allow inline scripts/styles for development (Streamlit/Swagger UI often need these)
+                csp_policy = (
+                    "default-src 'self'; "
+                    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                    "style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data: https:; "
+                    "font-src 'self' data:; "
+                    "connect-src 'self' https:; "
+                    "frame-ancestors 'none'; "
+                    "base-uri 'self'; "
+                    "form-action 'self'; "
+                    "upgrade-insecure-requests"
+                )
             response.headers["Content-Security-Policy"] = csp_policy
         
         # X-XSS-Protection (legacy, but still useful for older browsers)

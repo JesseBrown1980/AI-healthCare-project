@@ -63,7 +63,11 @@ async def accept_consent(
     """
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"user_id": auth.user_id, "consent_type": consent_data.consent_type},
+        correlation_id,
+        request
+    ):
         # Extract IP address and user agent
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -101,14 +105,6 @@ async def accept_consent(
             "message": "Consent accepted",
             "consent_id": consent_id,
         }
-    
-    except Exception as e:
-        log_service_error(e, {"user_id": auth.user_id, "consent_type": consent_data.consent_type}, correlation_id, request)
-        raise create_http_exception(
-            message="Failed to record consent",
-            status_code=500,
-            error_type="InternalServerError"
-        )
 
 
 @router.post("/withdraw", response_model=Dict[str, str])
@@ -123,7 +119,11 @@ async def withdraw_consent(
     """
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"user_id": auth.user_id, "consent_type": consent_data.consent_type},
+        correlation_id,
+        request
+    ):
         # Extract IP address and user agent
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -164,16 +164,6 @@ async def withdraw_consent(
             "status": "success",
             "message": "Consent withdrawn",
         }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_service_error(e, {"user_id": auth.user_id, "consent_type": consent_data.consent_type}, correlation_id, request)
-        raise create_http_exception(
-            message="Failed to withdraw consent",
-            status_code=500,
-            error_type="InternalServerError"
-        )
 
 
 @router.get("/status", response_model=Union[ConsentStatusResponse, ConsentListResponse])
@@ -188,7 +178,11 @@ async def get_consent_status(
     """
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"user_id": auth.user_id},
+        correlation_id,
+        request
+    ):
         if consent_type:
             status = await consent_service.get_consent_status(auth.user_id, consent_type)
             if not status:
@@ -217,13 +211,3 @@ async def get_consent_status(
                 consents=all_consents,
                 has_required_consent=has_required,
             )
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_service_error(e, {"user_id": auth.user_id}, correlation_id, request)
-        raise create_http_exception(
-            message="Failed to get consent status",
-            status_code=500,
-            error_type="InternalServerError"
-        )

@@ -87,127 +87,132 @@ async def login(
             error_type="ValidationError"
         )
     
-    # Try database authentication first if available
-    if db_service:
-        try:
-            log_structured(
-                level="info",
-                message="Attempting database authentication",
-                correlation_id=correlation_id,
-                request=request,
-                email=validated_email
-            )
-            
-            user_service = UserService()
-            user = await user_service.get_user_by_email(validated_email)
-            if user:
-                # Check if user is OAuth-only (no password)
-                if user.get('oauth_provider') and not user.get('password_hash'):
-                    raise create_http_exception(
-                        message=f"Please sign in with {user.get('oauth_provider', 'OAuth')}",
-                        status_code=403,
-                        error_type="Forbidden"
-                    )
-                
-                # Verify password (skip if OAuth user with dummy password)
-                password_hash = user.get('password_hash')
-                if not password_hash:
-                    raise create_http_exception(
-                        message="Invalid credentials",
-                        status_code=403,
-                        error_type="Forbidden"
-                    )
-                
-                if not verify_password(payload.password, password_hash):
-                    raise create_http_exception(
-                        message="Invalid credentials",
-                        status_code=403,
-                        error_type="Forbidden"
-                    )
-                
-                # Check if user is active
-                if not user.get('is_active', True):
-                    raise create_http_exception(
-                        message="User account is inactive",
-                        status_code=403,
-                        error_type="Forbidden"
-                    )
-                
-                # Update last login
-                await user_service.update_user_last_login(user['id'])
-                
-                # Issue token with user roles
-                roles = user.get('roles', ['viewer'])
-                scopes = "patient/*.read user/*.read system/*.read"
-                if 'admin' in roles:
-                    scopes += " patient/*.write user/*.write system/*.write"
-                elif 'clinician' in roles:
-                    scopes += " patient/*.write"
-                
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "login", "email": validated_email},
+        correlation_id,
+        request
+    ):
+        # Try database authentication first if available
+        if db_service:
+            try:
                 log_structured(
                     level="info",
-                    message="User authenticated successfully",
+                    message="Attempting database authentication",
+                    correlation_id=correlation_id,
+                    request=request,
+                    email=validated_email
+                )
+                
+                user_service = UserService()
+                user = await user_service.get_user_by_email(validated_email)
+                if user:
+                    # Check if user is OAuth-only (no password)
+                    if user.get('oauth_provider') and not user.get('password_hash'):
+                        raise create_http_exception(
+                            message=f"Please sign in with {user.get('oauth_provider', 'OAuth')}",
+                            status_code=403,
+                            error_type="Forbidden"
+                        )
+                    
+                    # Verify password (skip if OAuth user with dummy password)
+                    password_hash = user.get('password_hash')
+                    if not password_hash:
+                        raise create_http_exception(
+                            message="Invalid credentials",
+                            status_code=403,
+                            error_type="Forbidden"
+                        )
+                    
+                    if not verify_password(payload.password, password_hash):
+                        raise create_http_exception(
+                            message="Invalid credentials",
+                            status_code=403,
+                            error_type="Forbidden"
+                        )
+                    
+                    # Check if user is active
+                    if not user.get('is_active', True):
+                        raise create_http_exception(
+                            message="User account is inactive",
+                            status_code=403,
+                            error_type="Forbidden"
+                        )
+                    
+                    # Update last login
+                    await user_service.update_user_last_login(user['id'])
+                    
+                    # Issue token with user roles
+                    roles = user.get('roles', ['viewer'])
+                    scopes = "patient/*.read user/*.read system/*.read"
+                    if 'admin' in roles:
+                        scopes += " patient/*.write user/*.write system/*.write"
+                    elif 'clinician' in roles:
+                        scopes += " patient/*.write"
+                    
+                    log_structured(
+                        level="info",
+                        message="User authenticated successfully",
+                        correlation_id=correlation_id,
+                        request=request,
+                        email=validated_email,
+                        roles=roles
+                    )
+                    
+                    return _issue_demo_token(validated_email, payload.patient, scopes=scopes)
+            except HTTPException:
+                raise
+            except Exception as e:
+                log_structured(
+                    level="warning",
+                    message="Database authentication failed, falling back to demo login",
                     correlation_id=correlation_id,
                     request=request,
                     email=validated_email,
-                    roles=roles
+                    error=str(e)
                 )
-                
-                return _issue_demo_token(validated_email, payload.patient, scopes=scopes)
-        except HTTPException:
-            raise
-        except Exception as e:
-            log_structured(
-                level="warning",
-                message="Database authentication failed, falling back to demo login",
-                correlation_id=correlation_id,
-                request=request,
-                email=validated_email,
-                error=str(e)
+                # Fall through to demo login
+        
+        # Fallback to demo login if database auth fails or is disabled
+        if not demo_login_enabled:
+            raise create_http_exception(
+                message="Login is disabled",
+                status_code=404,
+                error_type="NotFound"
             )
-            # Fall through to demo login
-    
-    # Fallback to demo login if database auth fails or is disabled
-    if not demo_login_enabled:
-        raise create_http_exception(
-            message="Login is disabled",
-            status_code=404,
-            error_type="NotFound"
+
+        allowed_email = os.getenv("DEMO_LOGIN_EMAIL")
+        allowed_password = os.getenv("DEMO_LOGIN_PASSWORD")
+
+        if allowed_email and validated_email.lower() != allowed_email.lower():
+            raise create_http_exception(
+                message="Invalid credentials",
+                status_code=403,
+                error_type="Forbidden"
+            )
+
+        if allowed_password and payload.password != allowed_password:
+            raise create_http_exception(
+                message="Invalid credentials",
+                status_code=403,
+                error_type="Forbidden"
+            )
+
+        if not allowed_email and not allowed_password and not payload.password:
+            raise create_http_exception(
+                message="Password is required for demo login",
+                status_code=400,
+                error_type="ValidationError"
+            )
+
+        log_structured(
+            level="info",
+            message="Demo login successful",
+            correlation_id=correlation_id,
+            request=request,
+            email=validated_email
         )
 
-    allowed_email = os.getenv("DEMO_LOGIN_EMAIL")
-    allowed_password = os.getenv("DEMO_LOGIN_PASSWORD")
-
-    if allowed_email and validated_email.lower() != allowed_email.lower():
-        raise create_http_exception(
-            message="Invalid credentials",
-            status_code=403,
-            error_type="Forbidden"
-        )
-
-    if allowed_password and payload.password != allowed_password:
-        raise create_http_exception(
-            message="Invalid credentials",
-            status_code=403,
-            error_type="Forbidden"
-        )
-
-    if not allowed_email and not allowed_password and not payload.password:
-        raise create_http_exception(
-            message="Password is required for demo login",
-            status_code=400,
-            error_type="ValidationError"
-        )
-
-    log_structured(
-        level="info",
-        message="Demo login successful",
-        correlation_id=correlation_id,
-        request=request,
-        email=validated_email
-    )
-
-    return _issue_demo_token(validated_email, payload.patient)
+        return _issue_demo_token(validated_email, payload.patient)
 
 
 @router.post("/register", response_model=RegisterResponse)
@@ -250,7 +255,11 @@ async def register(
             error_type="ValidationError"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "register", "email": validated_email},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Registering new user",
@@ -285,19 +294,6 @@ async def register(
             email=user['email'],
             full_name=user.get('full_name'),
             roles=user.get('roles', ['viewer']),
-        )
-    except ValueError as e:
-        raise create_http_exception(
-            message=str(e),
-            status_code=400,
-            error_type="ValidationError"
-        )
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "register", "email": validated_email},
-            correlation_id,
-            request
         )
 
 
@@ -412,7 +408,11 @@ async def password_reset_confirm(
             error_type="ValidationError"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "password_reset_confirm", "email": validated_email},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Confirming password reset",
@@ -459,15 +459,6 @@ async def password_reset_confirm(
         
         return PasswordResetConfirmResponse(
             message="Password reset successfully"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "password_reset_confirm", "email": validated_email},
-            correlation_id,
-            request
         )
 
 
@@ -572,7 +563,11 @@ async def verify_email_confirm(
             error_type="ValidationError"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "verify_email_confirm", "email": validated_email},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Confirming email verification",
@@ -602,14 +597,5 @@ async def verify_email_confirm(
         
         return EmailVerificationConfirmResponse(
             message="Email verified successfully"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "verify_email_confirm", "email": validated_email},
-            correlation_id,
-            request
         )
 

@@ -182,7 +182,11 @@ async def clear_cache(
     """Clear all application caches."""
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "clear_cache"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Clearing application caches",
@@ -216,13 +220,6 @@ async def clear_cache(
             "summary_cache_entries_cleared": cleared_summaries,
             "analysis_cache_cleared": analysis_job_manager is not None,
         }
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "clear_cache"},
-            correlation_id,
-            request
-        )
 
 @router.post("/device/register", response_model=DeviceRegistrationResponse)
 @router.post("/register-device", response_model=DeviceRegistrationResponse)
@@ -240,6 +237,7 @@ async def register_device(
 @router.get("/stats", response_model=StatsResponse)
 async def get_system_stats(
     request: Request,
+    auth: TokenContext = Depends(auth_dependency()),
     llm_engine: Optional[LLMEngine] = Depends(get_optional_llm_engine),
     rag_fusion: Optional[RAGFusion] = Depends(get_optional_rag_fusion),
     s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
@@ -251,7 +249,11 @@ async def get_system_stats(
     """
     correlation_id = get_correlation_id(request)
 
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_system_stats"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Fetching system statistics",
@@ -279,14 +281,6 @@ async def get_system_stats(
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": stats
         }
-        
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_system_stats"},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/performance", response_model=Dict[str, Any])
@@ -303,7 +297,11 @@ async def get_performance_metrics(
     """
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_performance_metrics"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Fetching performance metrics",
@@ -327,19 +325,12 @@ async def get_performance_metrics(
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "performance": performance_stats
         }
-        
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_performance_metrics"},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/adapters", response_model=Dict[str, Any])
 async def get_adapters_status(
     request: Request,
+    auth: TokenContext = Depends(auth_dependency()),
     s_lora_manager: Optional[SLoRAManager] = Depends(get_optional_s_lora_manager),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> Dict[str, Any]:
@@ -348,7 +339,11 @@ async def get_adapters_status(
     """
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_adapters_status"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Fetching adapter status",
@@ -389,10 +384,3 @@ async def get_adapters_status(
             "memory_usage": status.get("memory", {}),
             "specialties": status.get("specialties", {}),
         }
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_adapters_status"},
-            correlation_id,
-            request
-        )

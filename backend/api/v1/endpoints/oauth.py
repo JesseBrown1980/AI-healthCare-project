@@ -125,7 +125,11 @@ async def oauth_authorize(
             )
             redirect_after = None
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "oauth_authorize", "provider": provider},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Initiating OAuth authorization",
@@ -168,15 +172,6 @@ async def oauth_authorize(
         
         # Redirect to provider
         return RedirectResponse(url=auth_url)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "oauth_authorize", "provider": provider},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/oauth/{provider}/callback")
@@ -249,7 +244,11 @@ async def oauth_callback(
             error_type="ServiceUnavailable"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "oauth_callback", "provider": provider},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Processing OAuth callback",
@@ -549,23 +548,6 @@ async def oauth_callback(
         )
         
         return RedirectResponse(url=redirect_url)
-        
-    except HTTPException:
-        raise
-    except ValueError as e:
-        # Validation errors
-        raise create_http_exception(
-            message=str(e),
-            status_code=400,
-            error_type="ValidationError"
-        )
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "oauth_callback", "provider": provider},
-            correlation_id,
-            request
-        )
 
 
 @router.post("/oauth/{provider}/refresh")
@@ -600,7 +582,11 @@ async def refresh_oauth_token(
             error_type="ServiceUnavailable"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "refresh_oauth_token", "provider": provider},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Refreshing OAuth token",
@@ -734,16 +720,6 @@ async def refresh_oauth_token(
             "message": "Access token refreshed successfully",
             "expires_in": expires_in
         }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "refresh_oauth_token", "provider": provider},
-            correlation_id,
-            request
-        )
 
 
 @router.post("/oauth/{provider}/link")

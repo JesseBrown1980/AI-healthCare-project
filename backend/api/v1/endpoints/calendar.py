@@ -27,7 +27,11 @@ async def create_google_calendar_event(
     """Create a Google Calendar event."""
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "create_google_calendar_event", "provider": "google"},
+        correlation_id,
+        request
+    ):
         # Validate input
         summary = event_data.get("summary", "").strip()
         if not summary:
@@ -78,15 +82,6 @@ async def create_google_calendar_event(
         )
         
         return {"status": "success", "event": result}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "create_google_calendar_event", "provider": "google"},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/google/events")
@@ -101,7 +96,11 @@ async def list_google_calendar_events(
     """List Google Calendar events."""
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "list_google_calendar_events", "provider": "google"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Listing Google Calendar events",
@@ -130,15 +129,6 @@ async def list_google_calendar_events(
         )
         
         return {"status": "success", "events": events, "count": len(events)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "list_google_calendar_events", "provider": "google"},
-            correlation_id,
-            request
-        )
 
 
 @router.post("/microsoft/events")
@@ -152,7 +142,11 @@ async def create_microsoft_calendar_event(
     """Create a Microsoft Calendar event."""
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "create_microsoft_calendar_event", "provider": "microsoft"},
+        correlation_id,
+        request
+    ):
         # Validate input
         subject = event_data.get("subject", "").strip()
         if not subject:
@@ -203,15 +197,6 @@ async def create_microsoft_calendar_event(
         )
         
         return {"status": "success", "event": result}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "create_microsoft_calendar_event", "provider": "microsoft"},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/microsoft/events")
@@ -226,7 +211,11 @@ async def list_microsoft_calendar_events(
     """List Microsoft Calendar events."""
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "list_microsoft_calendar_events", "provider": "microsoft"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Listing Microsoft Calendar events",
@@ -255,15 +244,6 @@ async def list_microsoft_calendar_events(
         )
         
         return {"status": "success", "events": events, "count": len(events)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "list_microsoft_calendar_events", "provider": "microsoft"},
-            correlation_id,
-            request
-        )
 
 
 @router.delete("/google/events/{event_id}")
@@ -278,7 +258,11 @@ async def delete_google_calendar_event(
     """Delete a Google Calendar event."""
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "delete_google_calendar_event", "provider": "google", "event_id": event_id},
+        correlation_id,
+        request
+    ):
         # Validate event_id (basic validation)
         if not event_id or len(event_id) > 255:
             raise create_http_exception(
@@ -318,15 +302,6 @@ async def delete_google_calendar_event(
         )
         
         return {"status": "success", "message": "Event deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "delete_google_calendar_event", "provider": "google", "event_id": event_id},
-            correlation_id,
-            request
-        )
 
 
 @router.delete("/microsoft/events/{event_id}")
@@ -341,7 +316,11 @@ async def delete_microsoft_calendar_event(
     """Delete a Microsoft Calendar event."""
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "delete_microsoft_calendar_event", "provider": "microsoft", "event_id": event_id},
+        correlation_id,
+        request
+    ):
         # Validate event_id (basic validation)
         if not event_id or len(event_id) > 255:
             raise create_http_exception(
@@ -381,12 +360,3 @@ async def delete_microsoft_calendar_event(
         )
         
         return {"status": "success", "message": "Event deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "delete_microsoft_calendar_event", "provider": "microsoft", "event_id": event_id},
-            correlation_id,
-            request
-        )

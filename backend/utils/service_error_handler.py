@@ -13,6 +13,7 @@ from backend.utils.error_responses import (
 )
 from backend.utils.logging_utils import log_service_error
 import logging
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,36 @@ class ServiceErrorHandler:
             status_code=status_code,
             error_type=error_type,
         )
+
+    @staticmethod
+    @contextlib.contextmanager
+    def safe_execution(
+        context: Dict[str, Any],
+        correlation_id: Optional[str] = None,
+        request: Optional[Request] = None,
+    ):
+        """
+        Context manager for safe execution of service operations.
+        
+        Args:
+            context: Context for error logging
+            correlation_id: Request correlation ID
+            request: FastAPI request object
+            
+        Yields:
+            None
+            
+        Raises:
+            HTTPException: If an error occurs (standardized)
+        """
+        try:
+            yield
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServiceErrorHandler.handle_service_error(
+                e, context, correlation_id, request
+            )
     
     @staticmethod
     async def handle_async_service_call(

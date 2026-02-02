@@ -311,7 +311,11 @@ async def list_patients(
                 error_type="Forbidden"
             )
 
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "list_patients", "patient_count": len(patients)},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Fetching patient roster",
@@ -353,15 +357,6 @@ async def list_patients(
         )
         
         return {"patients": roster}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "list_patients", "patient_count": len(patients)},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/patients/dashboard", response_model=List[DashboardEntry])
@@ -390,7 +385,11 @@ async def get_dashboard_patients(
     patients = _dashboard_patient_list()
     patient_ids = [patient["patient_id"] for patient in patients]
 
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_dashboard_patients", "patient_count": len(patient_ids)},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Building dashboard overview",
@@ -432,15 +431,6 @@ async def get_dashboard_patients(
         )
         
         return dashboard_entries
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_dashboard_patients", "patient_count": len(patient_ids)},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/alerts", response_model=AlertsResponse)
@@ -462,7 +452,11 @@ async def get_alerts(
             error_type="ServiceUnavailable"
         )
 
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_alerts", "limit": limit, "patient_id": auth.patient},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Collecting alert feed",
@@ -488,15 +482,6 @@ async def get_alerts(
         )
         
         return {"alerts": alerts}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_alerts", "limit": limit, "patient_id": auth.patient},
-            correlation_id,
-            request
-        )
 
 
 @router.post(

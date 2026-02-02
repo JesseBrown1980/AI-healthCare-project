@@ -66,7 +66,11 @@ async def receive_hl7_message(
     """
     correlation_id = get_correlation_id(request)
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "receive_hl7_message"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Receiving HL7 message",
@@ -77,7 +81,15 @@ async def receive_hl7_message(
         )
         
         # Parse HL7 message
-        parsed_message = parser.parse(message)
+        try:
+            parsed_message = parser.parse(message)
+        except HL7ParseError as e:
+            raise create_http_exception(
+                message=f"Invalid HL7 message: {str(e)}",
+                status_code=400,
+                error_type="ValidationError"
+            )
+
         message_type = parsed_message.get("message_type", "UNKNOWN")
         
         log_structured(
@@ -185,26 +197,6 @@ async def receive_hl7_message(
         )
         
         return response
-    
-    except HL7ParseError as e:
-        log_service_error(
-            e,
-            {"operation": "receive_hl7_message", "message_type": message_type if 'message_type' in locals() else "unknown"},
-            correlation_id,
-            request
-        )
-        raise create_http_exception(
-            message=f"Invalid HL7 message: {str(e)}",
-            status_code=400,
-            error_type="ValidationError"
-        )
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "receive_hl7_message"},
-            correlation_id,
-            request
-        )
 
 
 @router.get("/hl7/messages")
@@ -270,7 +262,11 @@ async def get_hl7_message(
             error_type="ServiceUnavailable"
         )
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "get_hl7_message", "message_id": message_id},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Fetching HL7 message",
@@ -284,15 +280,6 @@ async def get_hl7_message(
             message="HL7 message storage not yet implemented",
             status_code=404,
             error_type="NotFound"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "get_hl7_message", "message_id": message_id},
-            correlation_id,
-            request
         )
 
 
@@ -311,7 +298,11 @@ async def validate_hl7_message(
     correlation_id = get_correlation_id(request)
     message = body.get("message", "")
     
-    try:
+    with ServiceErrorHandler.safe_execution(
+        {"operation": "validate_hl7_message"},
+        correlation_id,
+        request
+    ):
         log_structured(
             level="info",
             message="Validating HL7 message",
@@ -326,7 +317,20 @@ async def validate_hl7_message(
                 error_type="ValidationError"
             )
         
-        parsed_message = parser.parse(message)
+        try:
+            parsed_message = parser.parse(message)
+        except HL7ParseError as e:
+            log_structured(
+                level="warning",
+                message="HL7 message validation failed",
+                correlation_id=correlation_id,
+                request=request,
+                error=str(e)
+            )
+            return {
+                "status": "invalid",
+                "error": str(e),
+            }
         
         log_structured(
             level="info",
@@ -344,24 +348,3 @@ async def validate_hl7_message(
             "has_encounter": "pv1" in parsed_message,
             "segments": list(parsed_message.get("segments", {}).keys()),
         }
-    except HL7ParseError as e:
-        log_structured(
-            level="warning",
-            message="HL7 message validation failed",
-            correlation_id=correlation_id,
-            request=request,
-            error=str(e)
-        )
-        return {
-            "status": "invalid",
-            "error": str(e),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise ServiceErrorHandler.handle_service_error(
-            e,
-            {"operation": "validate_hl7_message"},
-            correlation_id,
-            request
-        )
