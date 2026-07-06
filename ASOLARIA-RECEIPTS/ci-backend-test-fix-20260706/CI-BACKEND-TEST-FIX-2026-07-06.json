@@ -1,0 +1,53 @@
+{
+  "schema": "asolaria.ci_fix_receipt.v1",
+  "evidence_class": "MEASURED_ACER_LOCAL",
+  "repo": "JesseBrown1980/AI-healthCare-project",
+  "pr": 242,
+  "branch": "codex/readme-clinical-boundary-20260706",
+  "generated_at": "2026-07-06T13:30:09.864Z",
+  "scope": "backend GitHub Actions tests job repair after clinical-boundary PR byte verification",
+  "root_causes": [
+    "backend/middleware/input_validation.py used os.getenv without importing os",
+    "tests/test_legacy_routes_missing_services.py inspected app.routes directly, but FastAPI included routers now expose effective_route_contexts",
+    "adapter and stats endpoint tests omitted auth headers for endpoints that require auth_dependency",
+    "integration LLM fixture used a real OpenAI client whenever OPENAI_API_KEY existed, making CI/local tests external-call sensitive"
+  ],
+  "fixes": [
+    "add import os to input_validation middleware",
+    "resolve legacy route auth dependency through effective_route_contexts and keep dependency override semantics",
+    "add auth_token fixture/header to adapter and stats endpoint tests",
+    "require ALLOW_REAL_LLM_IN_TESTS=true before integration tests use a real OpenAI-backed LLMEngine"
+  ],
+  "verification": [
+    "targeted slice: 10 passed, 23 warnings on local Python 3.13 venv",
+    "workflow-shaped no-coverage backend selection: 421 passed, 8 skipped, 24 deselected, 230 warnings",
+    "workflow-shaped backend command with coverage/junit: 421 passed, 8 skipped, 24 deselected, 230 warnings"
+  ],
+  "boundary": [
+    "local verification ran on Windows Python 3.13; GitHub Actions source-of-truth runs Ubuntu Python 3.11",
+    "no clinical/runtime readiness claim added",
+    "no provider/model completion was fired intentionally; integration tests default to local mock unless explicitly opted in"
+  ],
+  "changed_files": [
+    {
+      "path": "backend/middleware/input_validation.py",
+      "sha256": "0196b7fe4cbba131001b8083968467d345307e8fad71fd286f0502518b49a8d6"
+    },
+    {
+      "path": "tests/conftest_integration.py",
+      "sha256": "6e7e77f70c0deca92d6b39053e688d3ee311612e7cddcf8e94a0d8b17b4d3e57"
+    },
+    {
+      "path": "tests/test_adapter_endpoints.py",
+      "sha256": "6fedada8b4cd7d94c75d961e24bd2bee58a03070baf53d66e62b941ac1e53c6d"
+    },
+    {
+      "path": "tests/test_legacy_routes_missing_services.py",
+      "sha256": "79bf3af0c86ef7ded4a4420b88ab75346ef096302b0d8c88426fdabc75662499"
+    },
+    {
+      "path": "tests/test_stats_endpoint.py",
+      "sha256": "c34e0133af701dee12535953b212a826b8c010588ad8439db27244585e8a2d5d"
+    }
+  ]
+}

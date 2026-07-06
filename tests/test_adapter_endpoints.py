@@ -28,7 +28,7 @@ def _noop_lifespan(_app):
     return _lifespan
 
 
-def test_get_adapters_returns_stubbed_status():
+def test_get_adapters_returns_stubbed_status(auth_token):
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan(app)
 
@@ -48,7 +48,10 @@ def test_get_adapters_returns_stubbed_status():
 
     try:
         with TestClient(app) as client:
-            response = client.get("/api/v1/adapters")
+            response = client.get(
+                "/api/v1/adapters",
+                headers={"Authorization": f"Bearer {auth_token}"},
+            )
 
         assert response.status_code == 200
         body = response.json()

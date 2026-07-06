@@ -1,0 +1,8 @@
+HBPv1|doc=CI-BACKEND-TEST-FIX-2026-07-06|json=0
+CIFIX|repo=JesseBrown1980/AI-healthCare-project|pr=242|branch=codex/readme-clinical-boundary-20260706|evidence=MEASURED_ACER_LOCAL|json=0
+ROOTCAUSE|id=missing_os_import|file=backend/middleware/input_validation.py|detail=os.getenv_without_import_os|json=0
+ROOTCAUSE|id=route_context_introspection|file=tests/test_legacy_routes_missing_services.py|detail=app.routes_direct_scan_misses_included_router_effective_contexts|json=0
+ROOTCAUSE|id=auth_contract_tests|files=tests/test_adapter_endpoints.py,tests/test_stats_endpoint.py|detail=protected_routes_needed_auth_headers|json=0
+ROOTCAUSE|id=external_llm_in_tests|file=tests/conftest_integration.py|detail=real_llm_now_requires_ALLOW_REAL_LLM_IN_TESTS_true|json=0
+VERIFY|targeted=10_passed_23_warnings|workflow_no_cov=421_passed_8_skipped_24_deselected_230_warnings|workflow_cov=421_passed_8_skipped_24_deselected_230_warnings|json=0
+BOUNDARY|local_python=3.13_windows|github_source_of_truth=ubuntu_python_3.11_after_push|clinical_readiness_claim=0|provider_completion_fired=0|json=0

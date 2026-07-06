@@ -15,9 +15,10 @@ def real_llm_engine():
     This allows 'simulation' of real world without cost if key is missing.
     """
     api_key = os.getenv("OPENAI_API_KEY")
+    allow_real_llm = os.getenv("ALLOW_REAL_LLM_IN_TESTS", "false").lower() == "true"
     
-    if api_key and api_key.strip() and "dummy" not in api_key:
-        # Real Engine
+    if allow_real_llm and api_key and api_key.strip() and "dummy" not in api_key:
+        # Real Engine, only for explicitly requested integration runs.
         return LLMEngine(model_name="gpt-4", api_key=api_key)
     else:
         # High-Fidelity Local Mock

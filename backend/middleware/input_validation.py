@@ -3,6 +3,7 @@ Input validation middleware for automatic request sanitization and validation.
 """
 
 import logging
+import os
 import re
 from typing import Optional, Dict, Any, List
 from fastapi import Request, HTTPException, status
