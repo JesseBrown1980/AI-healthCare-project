@@ -1,0 +1,39 @@
+{
+  "receipt_id": "readme-clinical-boundary-ai-healthcare-project-2026-07-06",
+  "repo": "JesseBrown1980/AI-healthCare-project",
+  "local_path": "C:\\Users\\acer\\AI-healthCare-project",
+  "evidence_class": "MEASURED_GITHUB_AUTH_OWNER_VISIBLE",
+  "timestamp_utc": "2026-07-06T12:30:51.191Z",
+  "branch": "codex/readme-clinical-boundary-20260706",
+  "base_head": "80fe1ee9ccfcfa51ca59ae665da960f8b1a7ade4",
+  "remote_main": "80fe1ee9ccfcfa51ca59ae665da960f8b1a7ade4",
+  "scope": [
+    "README early clinical/regulatory boundary",
+    "SOFTWARE_VERIFICATION_REPORT REQ-09 disclaimer consistency",
+    "receipt sidecars"
+  ],
+  "changed_files": [
+    {
+      "path": "README.md",
+      "bytes": 28906,
+      "sha256": "382ec3c3f317eb908174689d6f2f7680892f32d7fcdfa77a7b83113707b5a594"
+    },
+    {
+      "path": "docs/regulatory/SOFTWARE_VERIFICATION_REPORT.md",
+      "bytes": 2457,
+      "sha256": "6c5e12f67f57c4af9b07424585b6e9144c18db56ddab5b50b8127da2dc65bada"
+    },
+    {
+      "path": ".gitattributes",
+      "bytes": 715,
+      "sha256": "f879ee6faf8af4313800ee82f242d877fc88fa88832272f31614b6690eddb5ea"
+    }
+  ],
+  "boundary": {
+    "no_clinical_deployment_claim": true,
+    "no_provider_call": true,
+    "no_runtime_fire": true,
+    "no_regulatory_approval_claim": true
+  },
+  "verdict": "PATCH_RECEIPT: high-stakes wording scope narrowed; clinical/regulatory boundary moved near README top; REQ-09 API disclaimer verification separated from broader Phase 4 product controls."
+}

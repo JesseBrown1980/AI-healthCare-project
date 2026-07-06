@@ -39,7 +39,7 @@ A detailed audit of the 9 regulatory requirements defined in `TRACEABILITY_MATRI
 - **Alert Ordering**: Critical alerts are prioritized correctly.
 
 ## 4. Pending Verifications (Phase 4)
-- **Regulatory Disclaimers**: To be implemented and verified.
+- **Product-level Regulatory Disclaimer Controls**: The REQ-09 API response disclaimer presence test is verified in this Phase 3 audit; broader product-level disclaimer placement, deployment UX controls, and regulatory-release enforcement remain Phase 4 work.
 - **Version Endpoint**: To be verified for audit trails.
 
 ## 5. Conclusion
