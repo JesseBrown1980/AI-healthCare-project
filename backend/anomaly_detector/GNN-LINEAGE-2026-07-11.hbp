@@ -1,0 +1,8 @@
+GNNLINEAGE|date=2026-07-11|origin=AI-healthCare-project|target=asolaria-behcs-256/services/gnn-sidecar|auditor=GPT-5.6-Pro|json=0
+GNNMODEL|name=EdgeLevelGNN|source=backend/anomaly_detector/models/gnn_baseline.py|source_blob=510f78890ec94b113f0610afbade8bafe6ca20e0|target_blob=510f78890ec94b113f0610afbade8bafe6ca20e0|byte_identical=1|reported_accuracy=91.87|json=0
+GNNMODEL|name=PrototypeGNN|source=backend/anomaly_detector/models/prototype_gnn.py|source_blob=99e3087a10ee58e90c0935f5ab63b72fd3cdd07e|target_blob=99e3087a10ee58e90c0935f5ab63b72fd3cdd07e|byte_identical=1|reported_accuracy=94.24|json=0
+GNNMODEL|name=ContrastiveGNN|source=backend/anomaly_detector/models/contrastive_gnn.py|source_blob=56329e61eb3e6ddb3ee97b46f997dd8dd8c6b39f|target_blob=56329e61eb3e6ddb3ee97b46f997dd8dd8c6b39f|byte_identical=1|reported_accuracy=94.71|json=0
+GNNMODEL|name=GSLGNN|source=backend/anomaly_detector/models/gsl_gnn.py|source_blob=886b3b0c0cdbddba983fa8c3ae083c4520d38f0e|target_blob=886b3b0c0cdbddba983fa8c3ae083c4520d38f0e|byte_identical=1|reported_accuracy=96.66|reported_roc_auc=99.70|reported_fpr=1.5|json=0
+GNNBOUNDARY|healthcare_tests=architecture-shape-forward-loss|healthcare_checkpoint_autoload=0|later_checkpoint_repo=Asolaria-fnns-trained-and-reverse-gnns-many|metric_tag=REPOSITORY_REPORTED_TRAINING|json=0
+GNNABSORB|bigpickle=L0:4792+L4:4793+G1+G2+G3+G4+OmniShannon+sha|hookwall=score-then-fischer-then-gate|storage_plane=HBP+HBI+SHA+cubes+disk-queues|json=0
+GNNVERIFY|audit=complete-source-and-lineage|runtime_benchmark_added=0|claim=no-new-healthcare-metric|json=0
