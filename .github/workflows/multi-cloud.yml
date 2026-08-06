@@ -167,7 +167,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          pytest tests/ -v -m "unit or not (integration or e2e or slow)" --timeout=60 -k "not redis and not fhir and not llm" --ignore=tests/test_calendar_endpoints.py --ignore=tests/test_oauth_endpoints.py || true
+          pytest tests/ -v -m "unit or not (integration or e2e or slow)" --timeout=60 -k "not redis and not fhir and not llm" --ignore=tests/test_calendar_endpoints.py --ignore=tests/test_oauth_endpoints.py
 
   # ==========================================================================
   # Database Compatibility Tests
