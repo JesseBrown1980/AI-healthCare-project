@@ -30,9 +30,16 @@ class _FakeFHIRConnector:
 
 
 def _override_auth_dependency(route_path: str, token: TokenContext) -> None:
-    route = next(route for route in app.routes if route.path == route_path)
-    auth_dependency = route.dependant.dependencies[0].call
-    app.dependency_overrides[auth_dependency] = lambda: token
+    for route in app.routes:
+        contexts = getattr(route, "effective_route_contexts", None)
+        candidates = contexts() if callable(contexts) else (contexts or [route])
+        for candidate in candidates:
+            if getattr(candidate, "path", None) == route_path:
+                auth_dependency = candidate.dependant.dependencies[0].call
+                app.dependency_overrides[auth_dependency] = lambda: token
+                return
+
+    raise AssertionError(f"Route not found: {route_path}")
 
 
 @asynccontextmanager

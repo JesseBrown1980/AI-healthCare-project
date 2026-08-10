@@ -4,6 +4,10 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Clinical and Regulatory Boundary
+
+This repository is a research, education, and demonstration project. It is not approved for clinical use, must not be used to make final clinical decisions, and requires qualified healthcare-provider oversight. Any real deployment requires local compliance review, regulatory approval, and clinical validation before patient-care use.
+
 ## Overview
 
 An intelligent healthcare data bridge that connects Electronic Health Record (EHR) systems via FHIR (Fast Healthcare Interoperability Resources) standards with cutting-edge AI analytics. This application serves as middleware between healthcare data and actionable clinical insights, powered by advanced machine learning techniques.

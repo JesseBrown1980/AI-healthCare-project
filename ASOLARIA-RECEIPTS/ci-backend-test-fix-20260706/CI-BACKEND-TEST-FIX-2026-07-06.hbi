@@ -1,0 +1,6 @@
+HBIv1|doc=CI-BACKEND-TEST-FIX-2026-07-06|json=0
+EMIT|family=GITHUBCI|name=backend-tests-job-fix|pid=AIHC.PR242.CI.BACKEND.TESTS.GREENLOCAL|json=0
+EMIT|family=PYTHON|name=missing-os-import|pid=AIHC.INPUTVALIDATION.OSIMPORT.FIXED|json=0
+EMIT|family=FASTAPI|name=included-router-effective-contexts|pid=AIHC.TESTS.ROUTECONTEXTS.AUTHOVERRIDE|json=0
+EMIT|family=AUTHCONTRACT|name=adapter-and-stats-tests-authenticated|pid=AIHC.TESTS.AUTHHEADERS.RESTORED|json=0
+EMIT|family=LLMTESTBOUNDARY|name=real-llm-opt-in-only|pid=AIHC.TESTS.REAL_LLM.EXPLICIT_ONLY|json=0

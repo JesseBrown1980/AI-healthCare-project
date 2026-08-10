@@ -29,7 +29,7 @@ def _noop_lifespan(_app):
     return _lifespan
 
 
-def test_stats_endpoint_returns_none_when_services_missing(dependency_overrides_guard):
+def test_stats_endpoint_returns_none_when_services_missing(dependency_overrides_guard, auth_token):
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan(app)
 
@@ -44,7 +44,10 @@ def test_stats_endpoint_returns_none_when_services_missing(dependency_overrides_
 
     try:
         with TestClient(app) as client:
-            response = client.get("/api/v1/stats")
+            response = client.get(
+                "/api/v1/stats",
+                headers={"Authorization": f"Bearer {auth_token}"},
+            )
 
         assert response.status_code == 200
         body = response.json()
@@ -57,7 +60,7 @@ def test_stats_endpoint_returns_none_when_services_missing(dependency_overrides_
         app.router.lifespan_context = original_lifespan
 
 
-def test_stats_endpoint_includes_stubbed_service_stats(dependency_overrides_guard):
+def test_stats_endpoint_includes_stubbed_service_stats(dependency_overrides_guard, auth_token):
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan(app)
 
@@ -73,7 +76,10 @@ def test_stats_endpoint_includes_stubbed_service_stats(dependency_overrides_guar
 
     try:
         with TestClient(app) as client:
-            response = client.get("/api/v1/stats")
+            response = client.get(
+                "/api/v1/stats",
+                headers={"Authorization": f"Bearer {auth_token}"},
+            )
 
         assert response.status_code == 200
         body = response.json()

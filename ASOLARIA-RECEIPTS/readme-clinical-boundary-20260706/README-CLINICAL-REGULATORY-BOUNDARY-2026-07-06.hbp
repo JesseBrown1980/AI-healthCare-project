@@ -1,0 +1,8 @@
+HBPv1|doc=README-CLINICAL-REGULATORY-BOUNDARY-2026-07-06|json=0
+PATCH|repo=JesseBrown1980/AI-healthCare-project|branch=codex/readme-clinical-boundary-20260706|base_head=80fe1ee9ccfcfa51ca59ae665da960f8b1a7ade4|remote_main=80fe1ee9ccfcfa51ca59ae665da960f8b1a7ade4|json=0
+SCOPE|readme_boundary=added_early|software_verification_req09=disambiguated|receipt_sidecars=added|json=0
+BOUNDARY|runtime_fire=0|provider_call=0|clinical_deployment_claim=0|regulatory_approval_claim=0|json=0
+VERDICT|status=high_stakes_readme_regulatory_boundary_patch|layer=readme_and_regulatory_docs_only|json=0
+FILE|path=README.md|bytes=28906|sha256=382ec3c3f317eb908174689d6f2f7680892f32d7fcdfa77a7b83113707b5a594|json=0
+FILE|path=docs/regulatory/SOFTWARE_VERIFICATION_REPORT.md|bytes=2457|sha256=6c5e12f67f57c4af9b07424585b6e9144c18db56ddab5b50b8127da2dc65bada|json=0
+FILE|path=.gitattributes|bytes=715|sha256=f879ee6faf8af4313800ee82f242d877fc88fa88832272f31614b6690eddb5ea|json=0

@@ -1,0 +1,5 @@
+HBIv1|doc=README-CLINICAL-REGULATORY-BOUNDARY-2026-07-06|json=0
+EMIT|family=READMEBOUNDARY|name=clinical-regulatory-boundary|pid=BH.AIHC.README.CLINICAL-BOUNDARY.20260706|json=0
+EMIT|family=REGULATORYDOCS|name=req09-disclaimer-status-disambiguated|pid=BH.AIHC.REQ09.API-VERIFIED.PRODUCT-PHASE4|json=0
+EMIT|family=ASOLARIARECEIPT|name=hbp-hbi-json-md-sidecars|pid=BH.AIHC.RECEIPT.SIDECARS.20260706|json=0
+EMIT|family=BOUNDARYLAW|name=no-clinical-deployment-claim|pid=BH.AIHC.NO-CLINICAL-DEPLOYMENT-CLAIM|json=0
